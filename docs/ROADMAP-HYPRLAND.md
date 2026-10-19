@@ -45,7 +45,7 @@ Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Branch `hyprland`, Work
 - [ ] **AP 22 Schließ-Regel**: Spotify-Popout offen, Spotify holen (oder ein Fenster geht auf) → Popout bleibt; zu nur durch Weghovern (nachdem die Maus drin war), Esc, Chip-Klick oder anderes Popout
 - [ ] **Licht-Chip** in der Bar (Birne neben dem Lautsprecher): Key Light, Hue-Szenen, Kamera – `$Q light open`
 - [ ] **Workspace-Modus** jetzt per Alt antippen oder Alt+Esc, Entf löscht, Alt+←/→ markiert im Modus
-- [ ] **Server-Chip** (sshs, `docs/SSHS.md`): Upload mit Mehrfach-Datei-Wähler, Files (yazi), Terminal; zuletzt benutzter oben – Super+Alt+U, `$Q servers open`
+- [ ] **Server im Dev-Popout** (`docs/SSHS.md`): eigener Server-Chip aufgelöst, Reiter **Server** im Dev-Popout = Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare aus `config/consoles.json`, Klick öffnet Helium) + sshs-Server mit Upload / Files / Terminal; Suche filtert mit; Dev-Chip immer da (Zahl nur, wenn etwas läuft) – Super+Alt+U, `$Q servers open`. Offen: Dokploy-URL in `~/.config/desktop/consoles.json`
 
 Testen: `Q="qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call"`
 

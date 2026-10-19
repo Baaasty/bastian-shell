@@ -50,7 +50,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + B` | Bar mode (letter opens a popout) |
 | `Super + Alt + S` | Sound mixer |
 | `Super + Alt + L` | Light |
-| `Super + Alt + U` | Servers (upload, files, terminal) |
+| `Super + Alt + U` | Dev popout, Server tab (consoles, upload, files, terminal) |
 | `Super + Alt + Z` | Notifications (keyboard) |
 | `Super + Alt + X` | Dismiss newest notification |
 | `Super + C` | Call cameras on/off |

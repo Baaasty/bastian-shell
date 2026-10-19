@@ -5,15 +5,21 @@ Zeigt pro Projekt, was gerade lokal läuft: **Dev-Server** (lauschende Ports eig
 
 ## Bedienung
 
-- **Chip** in der Bar (rechts, Symbol `dns` + Zahl) – **nur sichtbar, wenn etwas läuft**. Zahl = Dev-Prozesse
-  (einer je PID) + laufende Container (ohne Hintergrund-Container, s. u.). Klick öffnet das Popout.
+- **Chip** in der Bar (rechts, Symbol `dns`) – immer da (auch der Reiter Server lebt hier), die **Zahl nur, wenn etwas
+  läuft**. Zahl = Dev-Prozesse (einer je PID) + laufende Container (ohne Hintergrund-Container, s. u.). Läuft ein
+  sshs-Upload, steht `cloud_upload` im Glut-Ton. Klick öffnet das Popout, immer auf **Services** (merkt sich den
+  letzten Reiter nicht; nur Super+Alt+U, Bar-Modus `H` und `servers open` gehen direkt auf **Server**).
 - **Services**: eine Karte pro Projekt (Farbpunkt aus `projects.json`), darin Dev-Server und Container des Projekts.
   Unbekanntes unter **Other**. Darunter **Not running**: Projekte mit `dev.command`, in denen nichts läuft → **Start**.
 - **Containers**: alle Container (außer Distrobox/Toolbox), mit Start / Restart / Stop.
 - **Ports**: alle eigenen lauschenden Ports, auch Apps (Discord, VS Code …) und Container-Weiterleitungen. `LAN` = nicht nur auf localhost.
+- **Server** (früher eigener Server-Chip): Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare) und die sshs-Server mit
+  Upload / Files / Terminal – Details in [SSHS.md](SSHS.md). Direkt: **Super+Alt+U** bzw. Bar-Modus `H`.
 - Zeile anklicken / `open_in_new` = `http://localhost:<port>` in Helium. **Stop** fragt immer erst in der Zeile nach.
-- Suche (oben rechts) filtert nach Projekt, Port, Prozess, Befehl, Container, Image. Esc: Rückfrage weg → Suche leeren → schließen.
-- IPC: `qs ipc -p ~/Workspace/desktop-hyprland/shell call devservices toggle|open|close|refresh|status`
+- Suche (oben rechts) filtert nach Projekt, Port, Prozess, Befehl, Container, Image; im Reiter Server nach Konsole, Adresse, Server, Host.
+  Esc: Rückfrage weg → Suche leeren → schließen.
+- IPC: `qs ipc -p ~/Workspace/desktop-hyprland/shell call devservices toggle|open|close|refresh|status`,
+  Reiter Server: `… call servers open|close|toggle|refresh|status`
 
 ## Zuordnung zum Projekt
 
@@ -46,6 +52,7 @@ Eine Messung (`ss -ltnpH` + `podman ps -a`) dauert ~0,1 s.
 
 `scripts/devservices` (Python, nur Standardbibliothek; `scan` | `show` | `stop <pid>:<st>` | `start <projekt>` |
 `container <engine> start|stop|restart <id>`) · `shell/services/DevServices.qml` (Daten, Aktionen) ·
-`shell/modules/bar/DevChip.qml` (Chip + IPC) · `shell/modules/bar/DevPopout.qml` (Popout) · Einbau in `BarWindow.qml`.
+`shell/modules/bar/DevChip.qml` (Chip + IPC) · `shell/modules/bar/DevPopout.qml` (Popout) · Einbau in `BarWindow.qml` ·
+Reiter Server: `shell/services/Servers.qml` + `config/consoles.json`.
 Liest `projects/projects.json` nur (Ändern: `scripts/project set <projekt> dev.command …` bzw. `dev.ports …`).
 Zum Ausprobieren ohne Shell: `scripts/devservices show`.

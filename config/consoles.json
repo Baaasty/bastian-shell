@@ -1,0 +1,15 @@
+{
+  "_hilfe": [
+    "Web-Konsolen im Reiter Server des Dev-Popouts (shell/services/Servers.qml, Doku: docs/SSHS.md). Datei wird live gelesen.",
+    "Klick auf eine Zeile öffnet url in Helium. label = kleine Angabe rechts. Ohne url ist die Zeile ausgegraut.",
+    "Private Adressen (z. B. die eigene Dokploy-Instanz) nicht hier eintragen (Repo ist öffentlich), sondern in",
+    "~/.config/desktop/consoles.json: { \"consoles\": [ { \"id\": \"dokploy\", \"url\": \"https://…\" } ] } – Einträge dort ersetzen Felder gleicher id.",
+    "Bewusst keine Links pro Projekt."
+  ],
+  "consoles": [
+    { "id": "dokploy", "name": "Dokploy", "label": "admin", "icon": "rocket_launch", "url": "" },
+    { "id": "hetzner", "name": "Hetzner", "label": "cloud", "icon": "cloud", "url": "https://console.hetzner.com/" },
+    { "id": "inwx", "name": "INWX", "label": "domains", "icon": "language", "url": "https://www.inwx.de/de/customer/login" },
+    { "id": "cloudflare", "name": "Cloudflare", "label": "dns", "icon": "shield", "url": "https://dash.cloudflare.com/" }
+  ]
+}

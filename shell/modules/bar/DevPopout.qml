@@ -7,24 +7,31 @@ import qs.components
 
 // Dev-Dienste-Popout unter dem Dev-Chip (Klick öffnet, Klick daneben / Esc schließt).
 // Reiter: Services (pro Projekt: Dev-Server + Container, unbekannte unter „Other“, darunter „Not running“ mit Start),
-// Containers (alle podman/docker-Container außer Distrobox/Toolbox), Ports (alle eigenen lauschenden Ports, auch Apps).
+// Containers (alle podman/docker-Container außer Distrobox/Toolbox), Ports (alle eigenen lauschenden Ports, auch Apps),
+// Server (Web-Konsolen aus config/consoles.json + Server aus scripts/sshs mit Upload / Files / Terminal; früher eigener Chip).
+//   Pro sshs-Server: Benutzer-Pille (Anmelde-Benutzer ↔ root per su, Root-Login per SSH bleibt aus) und Container-Knopf,
+//   der die Container des Servers darunter aufklappt – nach Projekt (webbude, soulwick …), laufend/gestoppt, Ports.
 // Zeile anklicken = im Browser öffnen (Helium). Stoppen immer mit schlanker Rückfrage in der Zeile.
-// Daten + Aktionen: DevServices.qml → scripts/devservices. Doku: docs/DEVSERVICES.md
+// Daten + Aktionen: DevServices.qml → scripts/devservices, Servers.qml → scripts/sshs.
+// Doku: docs/DEVSERVICES.md, docs/SSHS.md
 PopupWindow {
     id: pop
 
     property var barWindow
     property Item chip
-    readonly property int cardW: 680
+    readonly property int cardW: 720
     readonly property int maxCardH: 680
     readonly property int quick: Math.round(Theme.fade * 0.6)
     readonly property int rowH: 44
     property real appear: 0
     property real _closedAt: 0
 
-    property string tab: "services"                    // services | containers | ports
+    property string tab: "services"                    // services | containers | ports | server
+    // Reiter fürs nächste Öffnen (Super+Alt+U, IPC servers); sonst öffnet es immer auf Services (Bastian: nicht merken)
+    property string nextTab: ""
     property string query: ""
     property var confirm: null                         // { key, kind: server|container, title, hint, warn, item }
+    property string sshPs: ""                          // sshs-Server, dessen Container aufgeklappt sind
 
     anchor.window: barWindow
     anchor.edges: Edges.Bottom | Edges.Right
@@ -57,6 +64,10 @@ PopupWindow {
         ti.text = "";
         confirm = null;
         DevServices.note = "";
+        tab = nextTab !== "" ? nextTab : "services";
+        nextTab = "";
+        if (tab === "server")
+            Servers.refresh();
         appear = 0;
         visible = true;
         appearAnim.restart();
@@ -85,6 +96,28 @@ PopupWindow {
             appearAnim.stop();
             confirm = null;
         }
+    }
+    onTabChanged: {
+        confirm = null;
+        if (tab === "server" && visible)
+            Servers.refresh();
+    }
+    // Super+Alt+U / Bar-Modus H: gleich auf den Reiter Server (BarKeys.aliases)
+    Connections {
+        target: BarKeys
+        function onTabRequested(name, t) {
+            if (name !== "devservices")
+                return;
+            if (pop.visible)
+                pop.tab = t;
+            else
+                pop.nextTab = t;
+        }
+    }
+    // Aktion im Reiter Server: erst zu (Wähler/Fenster brauchen die Tastatur), dann auslösen
+    function run(fn: var): void {
+        close();
+        Qt.callLater(fn);
     }
     // nur ein Bar-Popout gleichzeitig
     Connections {
@@ -208,6 +241,10 @@ PopupWindow {
                             project: c.project, kind: "container", lan: p.ip === "" || p.ip === "0.0.0.0" });
         return out.sort((a, b) => a.port - b.port);
     }
+
+    // Server: feste Web-Konsolen + sshs-Server, beide durchsucht
+    readonly property var consoleRows: Servers.consoles.filter(c => hit([c.name, c.label, c.url]))
+    readonly property var sshRows: Servers.list.filter(s => hit([s.name, s.host, s.user]))
 
     // ---------- Aktionen ----------
     function askServer(s: var): void {
@@ -462,6 +499,212 @@ PopupWindow {
         }
     }
 
+    // Port eines Server-Containers: „:8080→80“ nach außen offen, „80“ (gerahmt) nur im Container
+    component SrvPort: Rectangle {
+        property var p: ({})
+        readonly property bool open: (p.host || 0) > 0
+        width: spt.implicitWidth + 16
+        height: 22
+        radius: 11
+        color: open ? Theme.surface : "transparent"
+        border.width: open ? 0 : 1
+        border.color: Theme.border
+        MonoTxt {
+            id: spt
+            anchors.centerIn: parent
+            text: parent.open ? ":" + parent.p.host + (parent.p.host === parent.p.container ? "" : "→" + parent.p.container)
+                : String(parent.p.container)
+            color: parent.open ? Theme.textMuted : Theme.textFaint
+            font.pixelSize: 11
+        }
+    }
+
+    // Benutzer-Pille in der sshs-Zeile: Klick schaltet Anmelde-Benutzer ↔ root (sshs tippt nach der Anmeldung su)
+    component UserPill: Rectangle {
+        id: up
+        property string name
+        property string login
+        readonly property bool on: Servers.isRoot(name)
+        width: upRow.implicitWidth + 14
+        height: 20
+        radius: 10
+        color: on ? Theme.accentFill : upArea.containsMouse ? Theme.surfaceRaised : Theme.surface
+        Behavior on color { ColorAnimation { duration: pop.quick } }
+        Row {
+            id: upRow
+            anchors.centerIn: parent
+            spacing: 3
+            Icon {
+                anchors.verticalCenter: parent.verticalCenter
+                name: up.on ? "shield_person" : "person"
+                size: 13
+                color: up.on ? Theme.accentText : Theme.textFaint
+            }
+            Txt {
+                anchors.verticalCenter: parent.verticalCenter
+                text: up.on ? "root" : (up.login || "user")
+                font.pixelSize: 11
+                font.weight: Font.Normal
+                color: up.on ? Theme.accentText : Theme.textMuted
+            }
+        }
+        MouseArea {
+            id: upArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: Servers.setRoot(up.name, !up.on)
+        }
+    }
+
+    // Container eines sshs-Servers (aufgeklappt unter der Zeile): Projekt-Gruppen aus `sshs ps --json`
+    component ServerContainers: Column {
+        id: sc
+        property string name
+        readonly property var d: Servers.psHost === name ? Servers.ps : null
+        width: parent ? parent.width : 0
+        spacing: 0
+        bottomPadding: 6
+        // Kopf: Zustand + neu laden
+        Item {
+            width: parent.width
+            height: 32
+            Txt {
+                x: 82
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - x - scBtns.width - 16
+                text: !sc.d ? "Reading containers…"
+                    : !sc.d.ok ? sc.d.error
+                    : sc.d.groups.length === 0 ? "No containers"
+                    : sc.d.groups.reduce((n, g) => n + g.running, 0) + " of " + sc.d.groups.reduce((n, g) => n + g.total, 0)
+                        + " running · " + sc.d.engines.join(", ") + " as " + sc.d.user
+                color: sc.d && !sc.d.ok ? Theme.warning : Theme.textFaint
+                elide: Text.ElideRight
+                font.pixelSize: 12
+                font.weight: Font.Normal
+            }
+            Row {
+                id: scBtns
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                // ohne Docker-Rechte des Anmelde-Benutzers: Terminal, su, docker ps
+                Btn {
+                    visible: !!sc.d && !sc.d.ok && (sc.d.denied || []).length > 0
+                    small: true
+                    icon: "shield_person"
+                    text: "As root in terminal"
+                    onClicked: pop.run(() => Servers.rootRun(sc.name, (sc.d.denied[0] || "docker")
+                        + " ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"))
+                }
+                IconBtn {
+                    icon: "refresh"
+                    enabled: !Servers.psLoading
+                    onClicked: Servers.loadContainers(sc.name)
+                }
+            }
+        }
+        Repeater {
+            model: sc.d && sc.d.ok ? sc.d.groups : []
+            Column {
+                id: cg
+                required property var modelData
+                width: sc.width
+                spacing: 0
+                Item {
+                    width: parent.width
+                    height: 28
+                    Row {
+                        x: 82
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 8
+                        Txt {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cg.modelData.name
+                            font.weight: Font.DemiBold
+                            font.pixelSize: 13
+                        }
+                        Txt {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cg.modelData.running + "/" + cg.modelData.total + " running"
+                            color: cg.modelData.running > 0 ? Theme.success : Theme.textFaint
+                            font.pixelSize: 11
+                            font.weight: Font.Normal
+                        }
+                    }
+                }
+                Repeater {
+                    model: cg.modelData.containers
+                    Rectangle {
+                        id: ct
+                        required property var modelData
+                        readonly property var c: modelData
+                        width: cg.width
+                        height: 40
+                        radius: Theme.radiusSm
+                        color: ctHov.hovered ? Theme.surface : "transparent"
+                        Behavior on color { ColorAnimation { duration: pop.quick } }
+                        HoverHandler {
+                            id: ctHov
+                        }
+                        Dot {
+                            x: 82
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 8
+                            height: 8
+                            radius: 4
+                            tint: ct.c.running ? Theme.success : Theme.textFaint
+                        }
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 100
+                            anchors.right: ctRight.left
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 1
+                            Txt {
+                                width: parent.width
+                                text: ct.c.name
+                                elide: Text.ElideRight
+                                font.pixelSize: 13
+                                color: ct.c.running ? Theme.text : Theme.textMuted
+                            }
+                            MonoTxt {
+                                width: parent.width
+                                text: (ct.c.image || "").replace(/^docker\.io\/(library\/)?/, "") + " · " + ct.c.status
+                                elide: Text.ElideRight
+                                color: Theme.textFaint
+                                font.pixelSize: 11
+                            }
+                        }
+                        Row {
+                            id: ctRight
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+                            Repeater {
+                                model: (ct.c.ports || []).slice(0, 3)
+                                SrvPort {
+                                    required property var modelData
+                                    p: modelData
+                                }
+                            }
+                            Txt {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: (ct.c.ports || []).length > 3
+                                text: "+" + ((ct.c.ports || []).length - 3)
+                                color: Theme.textFaint
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Dev-Server-Zeile: Port, Name + Befehl, Aktionen (Öffnen, Log, Stopp); Klick = öffnen
     component ServerRow: Column {
         id: sr
@@ -710,6 +953,7 @@ PopupWindow {
                 }
             }
             Row {
+                id: tabsRow
                 anchors.left: titleLeft.right
                 anchors.leftMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
@@ -717,13 +961,14 @@ PopupWindow {
                 Tab { text: "Services"; count: DevServices.count; current: pop.tab === "services"; onPicked: { pop.tab = "services"; pop.confirm = null; } }
                 Tab { text: "Containers"; current: pop.tab === "containers"; onPicked: { pop.tab = "containers"; pop.confirm = null; } }
                 Tab { text: "Ports"; current: pop.tab === "ports"; onPicked: { pop.tab = "ports"; pop.confirm = null; } }
+                Tab { text: "Server"; current: pop.tab === "server"; onPicked: pop.tab = "server" }
             }
 
             Rectangle {
                 id: search
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                width: 170
+                width: Math.max(120, Math.min(170, parent.width - tabsRow.x - tabsRow.width - 12))
                 height: 36
                 radius: Theme.radiusMd
                 color: Theme.surfaceSunken
@@ -1112,6 +1357,265 @@ PopupWindow {
                         }
                     }
                 }
+
+                // ---------- Server: Web-Konsolen (config/consoles.json) + sshs ----------
+                Column {
+                    visible: pop.tab === "server"
+                    width: parent.width
+                    spacing: 2
+
+                    Section {
+                        text: "Consoles"
+                    }
+                    Txt {
+                        visible: pop.consoleRows.length === 0
+                        width: parent.width
+                        height: 40
+                        text: pop.query !== "" ? "No match" : "No consoles in config/consoles.json"
+                        color: Theme.textFaint
+                        font.weight: Font.Normal
+                    }
+                    Rectangle {
+                        visible: pop.consoleRows.length > 0
+                        width: parent.width
+                        height: conCol.implicitHeight + 16
+                        radius: Theme.radiusMd
+                        color: Theme.surfaceSunken
+                        Column {
+                            id: conCol
+                            x: 8
+                            y: 8
+                            width: parent.width - 16
+                            spacing: 0
+                            // wie die Ports-Zeilen: Symbol, Name, Adresse, rechts kleine Angabe
+                            Repeater {
+                                model: pop.consoleRows
+                                Rectangle {
+                                    id: cn
+                                    required property var modelData
+                                    readonly property bool ok: !!modelData.url
+                                    width: parent.width
+                                    height: 38
+                                    radius: Theme.radiusSm
+                                    color: cnArea.containsMouse && ok ? Theme.surface : "transparent"
+                                    Behavior on color { ColorAnimation { duration: pop.quick } }
+                                    MouseArea {
+                                        id: cnArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: cn.ok ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                        onClicked: if (cn.ok) Servers.openConsole(cn.modelData)
+                                    }
+                                    Item {
+                                        id: cnIcon
+                                        x: 8
+                                        width: 62
+                                        height: parent.height
+                                        Icon {
+                                            anchors.centerIn: parent
+                                            name: cn.modelData.icon || "public"
+                                            size: 18
+                                            color: cn.ok ? Theme.textMuted : Theme.textFaint
+                                        }
+                                    }
+                                    Txt {
+                                        id: cnTitle
+                                        anchors.left: cnIcon.right
+                                        anchors.leftMargin: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 170
+                                        text: cn.modelData.name || cn.modelData.id
+                                        color: cn.ok ? Theme.text : Theme.textMuted
+                                    }
+                                    MonoTxt {
+                                        anchors.left: cnTitle.right
+                                        anchors.leftMargin: 8
+                                        anchors.right: cnLabel.left
+                                        anchors.rightMargin: 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: cn.ok ? Servers.host(cn.modelData.url) : "no URL yet · ~/.config/desktop/consoles.json"
+                                        elide: Text.ElideMiddle
+                                        color: cn.ok ? Theme.textFaint : Theme.warning
+                                        font.pixelSize: 11
+                                    }
+                                    Txt {
+                                        id: cnLabel
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 10
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.min(implicitWidth, 150)
+                                        text: cn.modelData.label || ""
+                                        color: Theme.textFaint
+                                        font.pixelSize: 12
+                                        font.weight: Font.Normal
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // sshs-Server: zuletzt benutzter oben; Upload / Files / Terminal (Servers.qml, docs/SSHS.md)
+                    Item {
+                        width: parent.width
+                        height: 40
+                        Label {
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 6
+                            text: "SSH"
+                        }
+                        Btn {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 2
+                            small: true
+                            icon: "add"
+                            text: "New server"
+                            onClicked: {
+                                pop.close();
+                                Launch.cmd(["kitty", "--class", "sshs", "--title", "sshs · new server", "-e", Servers.sshs, "add"]);
+                            }
+                        }
+                    }
+                    Txt {
+                        visible: pop.sshRows.length === 0
+                        width: parent.width
+                        height: 40
+                        text: !Servers.ready ? "Reading…" : Servers.error !== "" ? Servers.error
+                            : pop.query !== "" ? "No match" : "No servers yet · “New server” or sshs add in a terminal"
+                        color: Theme.textFaint
+                        font.weight: Font.Normal
+                    }
+                    Rectangle {
+                        visible: pop.sshRows.length > 0
+                        width: parent.width
+                        height: sshCol.implicitHeight + 16
+                        radius: Theme.radiusMd
+                        color: Theme.surfaceSunken
+                        Column {
+                            id: sshCol
+                            x: 8
+                            y: 8
+                            width: parent.width - 16
+                            spacing: 2
+                            Repeater {
+                                model: pop.sshRows
+                                Column {
+                                    id: sh
+                                    required property var modelData
+                                    required property int index
+                                    readonly property var s: modelData
+                                    readonly property bool recent: index === 0 && s.last > 0 && pop.query === ""
+                                    readonly property bool busy: Servers.upHost === s.name
+                                    readonly property bool open: pop.sshPs === s.name
+                                    width: parent.width
+                                    spacing: 0
+                                    Rectangle {
+                                        width: parent.width
+                                        height: pop.rowH
+                                        radius: Theme.radiusSm
+                                        color: shHov.hovered || sh.open ? Theme.surface : "transparent"
+                                        Behavior on color { ColorAnimation { duration: pop.quick } }
+                                        HoverHandler {
+                                            id: shHov
+                                        }
+                                        Item {
+                                            id: shIcon
+                                            x: 8
+                                            width: 62
+                                            height: parent.height
+                                            Icon {
+                                                anchors.centerIn: parent
+                                                name: sh.busy ? "cloud_upload" : "dns"
+                                                size: 19
+                                                color: sh.busy || sh.recent ? Theme.accentText : Theme.textMuted
+                                            }
+                                        }
+                                        Column {
+                                            anchors.left: shIcon.right
+                                            anchors.leftMargin: 12
+                                            anchors.right: shActions.left
+                                            anchors.rightMargin: 8
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 1
+                                            Row {
+                                                width: parent.width
+                                                spacing: 8
+                                                Txt {
+                                                    id: shName
+                                                    width: Math.min(implicitWidth, parent.width - shUser.width - 8 - (shAgo.visible ? shAgo.implicitWidth + 8 : 0))
+                                                    text: sh.s.name
+                                                }
+                                                UserPill {
+                                                    id: shUser
+                                                    anchors.verticalCenter: shName.verticalCenter
+                                                    name: sh.s.name
+                                                    login: sh.s.user
+                                                }
+                                                Txt {
+                                                    id: shAgo
+                                                    anchors.baseline: shName.baseline
+                                                    visible: sh.s.last > 0
+                                                    text: Servers.ago(sh.s.last)
+                                                    color: Theme.textFaint
+                                                    font.pixelSize: 11
+                                                    font.weight: Font.Normal
+                                                }
+                                            }
+                                            MonoTxt {
+                                                width: parent.width
+                                                text: sh.busy ? "Uploading " + Servers.upCount + (Servers.upCount === 1 ? " item…" : " items…")
+                                                    : Servers.where(sh.s) + (shUser.on ? " · then su" : "")
+                                                elide: Text.ElideMiddle
+                                                color: sh.busy ? Theme.accentText : Theme.textFaint
+                                                font.pixelSize: 11
+                                            }
+                                        }
+                                        Row {
+                                            id: shActions
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 6
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 6
+                                            Btn {
+                                                small: true
+                                                icon: "upload"
+                                                text: "Upload"
+                                                tone: sh.recent ? "primary" : "plain"
+                                                enabled: !Servers.uploading
+                                                onClicked: pop.run(() => Servers.upload(sh.s.name))
+                                            }
+                                            Btn {
+                                                small: true
+                                                icon: "folder_open"
+                                                text: "Files"
+                                                onClicked: pop.run(() => Servers.files(sh.s.name))
+                                            }
+                                            Btn {
+                                                small: true
+                                                icon: "terminal"
+                                                text: "Terminal"
+                                                onClicked: pop.run(() => Servers.terminal(sh.s.name))
+                                            }
+                                            IconBtn {
+                                                icon: sh.open ? "expand_less" : "deployed_code"
+                                                onClicked: {
+                                                    pop.sshPs = sh.open ? "" : sh.s.name;
+                                                    if (pop.sshPs !== "")
+                                                        Servers.loadContainers(sh.s.name);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ServerContainers {
+                                        visible: sh.open
+                                        name: sh.s.name
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1136,9 +1640,16 @@ PopupWindow {
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
                 width: parent.width
-                text: DevServices.note !== "" ? DevServices.note
+                readonly property bool srv: pop.tab === "server"
+                text: srv ? (Servers.note !== "" ? Servers.note
+                        : Servers.uploading ? "Uploading to " + Servers.upHost + "…"
+                        : Servers.list.length + (Servers.list.length === 1 ? " server" : " servers")
+                            + " · click a console to open it in the browser · upload goes to ~")
+                    : DevServices.note !== "" ? DevServices.note
                     : DevServices.count + " running · checks every 5 s while open · click a row to open it in the browser"
-                color: DevServices.note === "" ? Theme.textFaint : DevServices.noteOk ? Theme.accentText : Theme.warning
+                color: srv ? (Servers.note !== "" || Servers.uploading ? Theme.accentText : Theme.textFaint)
+                    : DevServices.note === "" ? Theme.textFaint : DevServices.noteOk ? Theme.accentText : Theme.warning
+                elide: Text.ElideRight
                 font.pixelSize: 12
                 font.weight: Font.Normal
             }

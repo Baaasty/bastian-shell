@@ -23,12 +23,15 @@ Singleton {
         { key: "C", name: "discord", label: "Chat" },
         { key: "T", name: "tray", label: "Tray" },
         { key: "U", name: "updates", label: "Updates" },
-        { key: "H", name: "servers", label: "Servers (hosts)" },
+        { key: "H", name: "servers", label: "Servers" },
         { key: "A", name: "claudehub", label: "Claude" },
         { key: "O", name: "todo", label: "To-dos" },
         { key: "F", name: "focus", label: "Focus" },
         { key: "Z", name: "notifs", label: "Notifications" }
     ]
+
+    // Namen, die nur einen Reiter eines anderen Popouts meinen: Server (Konsolen + sshs) lebt im Dev-Popout
+    readonly property var aliases: ({ servers: { name: "devservices", tab: "server" } })
 
     property bool modeOn: false
     // im Modus mit ←/→/Tab markierter Chip (name), Enter/↓ öffnet ihn
@@ -47,6 +50,8 @@ Singleton {
 
     // an die Chips: dieses Popout per Tastatur öffnen (grab = mit Fokus-Griff)
     signal openRequested(string name, bool grab)
+    // an Popouts mit Reitern (aliases): vor dem Öffnen auf diesen Reiter schalten
+    signal tabRequested(string name, string tab)
     // an Popups.qml: Benachrichtigungen per Tastatur (an/aus)
     signal notifsRequested()
     // Test ohne Tastatur (IPC step/enter): Chip-Auswahl wie ←/→
@@ -80,7 +85,7 @@ Singleton {
     }
     // Einzelkürzel: erst Tastatur holen, beim nächsten Tasten-Ereignis öffnen (fire)
     function arm(name: string): void {
-        if (name === "notifs" || name === "updates" || kbOpen === name)
+        if (name === "notifs" || name === "updates" || kbOpen === (aliases[name] ? aliases[name].name : name))
             return popout(name, true);
         modeOn = false;
         fromMode = false;
@@ -116,6 +121,11 @@ Singleton {
     }
     function popout(name: string, grab: bool): void {
         modeOn = false;
+        const alias = aliases[name];
+        if (alias) {
+            name = alias.name;
+            tabRequested(name, alias.tab);
+        }
         // Benachrichtigungen haben kein Bar-Popout: die Popup-Karten selbst gehen in den Tastatur-Modus (Popups.qml)
         if (name === "notifs") {
             notifsRequested();

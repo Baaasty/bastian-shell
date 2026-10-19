@@ -9,7 +9,8 @@ Gibt JSON aus: { "<pfad>": { "dir", "branch", "changes",
 - Haupt-Roadmap: <dir>/docs/ROADMAP.md, sonst ROADMAP.md, sonst (docs/)PRD.md – das ist "file" (wie bisher).
   Vorrang hat die jüngste docs/ROADMAP-*.md (Bindestrich) im Ordner oder in einem verknüpften Git-Worktree des Repos
   (z. B. docs/ROADMAP-HYPRLAND.md im Worktree desktop-hyprland), sonst zeigt die Zentrale eine veraltete Roadmap.
-- Unter-Roadmaps (Standard v2): docs/roadmaps/*.md, dazu das ältere Muster docs/ROADMAP_*.md. done/total zählen
+  Ausgenommen sind Themen-Roadmaps mit "Status:" im Kopf – die zählen als Unter-Roadmaps.
+- Themen-Roadmaps: docs/ROADMAP-<THEMA>.md (Standard), dazu die älteren Muster docs/roadmaps/*.md und docs/ROADMAP_*.md. done/total zählen
   die Checkboxen (- [ ] / - [x]) aller Dateien zusammen; "parts" = je Datei { file, done, total, current }.
 - "next" = erster offener Punkt (ohne Markdown-Zierrat), und zwar aus
   1. der Unter-Roadmap, auf die die Haupt-Roadmap in einer Zeile mit "Aktuell:" verlinkt, sonst
@@ -104,6 +105,7 @@ def scan(f: str):
 
 def sub_roadmaps(d: str) -> list:
     found = sorted(glob.glob(os.path.join(d, "docs", "roadmaps", "*.md")))
+    found += sorted(glob.glob(os.path.join(d, "docs", "ROADMAP-*.md")))
     found += sorted(glob.glob(os.path.join(d, "docs", "ROADMAP_*.md")))
     return [f for f in found if os.path.isfile(f)]
 
@@ -124,12 +126,27 @@ def worktree_dirs(d: str) -> list:
     return dirs
 
 
+def is_theme_roadmap(f: str) -> bool:
+    """Themen-Roadmap des Standards (docs/ROADMAP-<THEMA>.md) trägt "Status:" im Kopf vor der ersten ##-Überschrift."""
+    try:
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("## "):
+                    return False
+                if re.search(r"(?<![\w-])Status\s*:", line):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 def newest_variant(d: str):
-    """Jüngste docs/ROADMAP-*.md (Bindestrich) in d oder einem Worktree von d, sonst None."""
+    """Jüngste docs/ROADMAP-*.md (Bindestrich) in d oder einem Worktree von d, sonst None.
+    Themen-Roadmaps (mit "Status:" im Kopf) sind keine Varianten der Haupt-Roadmap."""
     found = []
     for w in worktree_dirs(d):
         found += glob.glob(os.path.join(w, "docs", "ROADMAP-*.md"))
-    found = [f for f in found if os.path.isfile(f)]
+    found = [f for f in found if os.path.isfile(f) and not is_theme_roadmap(f)]
     return max(found, key=os.path.getmtime) if found else None
 
 

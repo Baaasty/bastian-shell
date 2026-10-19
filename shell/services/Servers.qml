@@ -3,7 +3,10 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Server aus scripts/sshs für den Server-Chip in der Bar (ServerChip/ServerPopout). Doku: docs/SSHS.md
+// Reiter „Server“ im Dev-Popout (DevPopout.qml): Web-Konsolen aus config/consoles.json und Server aus scripts/sshs.
+// Doku: docs/SSHS.md
+// Konsolen: config/consoles.json (feste Liste), private Adressen in ~/.config/desktop/consoles.json (gleiche id ersetzt
+// Felder), beide live gelesen. Öffnen wie die Ports im Dev-Popout (DevServices.openUrl).
 // Liste: `sshs list --json` (liest nur die SSH-Konfiguration, verbindet nicht), zuletzt benutzte zuerst – sshs merkt sich
 // das selbst (~/.local/state/sshs/recent.json), auch für Verbindungen aus dem Terminal.
 // Aktionen:
@@ -27,6 +30,48 @@ Singleton {
     property string note: ""            // letzte Rückmeldung (kurz im Popout)
     property string lastDir: home       // lokaler Ordner des letzten Uploads (Startordner des Wählers)
     readonly property bool uploading: upHost !== ""
+
+    // ---------- Web-Konsolen ----------
+    property var _baseConsoles: []
+    property var _userConsoles: []
+    readonly property var consoles: _baseConsoles.map(c => {
+        const u = _userConsoles.find(x => x && x.id === c.id);
+        return Object.assign({}, c, u || {});
+    })
+    function host(url: string): string {
+        return String(url || "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+    }
+    function openConsole(c: var): void {
+        if (c && c.url)
+            DevServices.openUrl(c.url);
+    }
+    function _consoles(t: string, which: string): var {
+        try {
+            const d = JSON.parse(t);
+            return d && Array.isArray(d.consoles) ? d.consoles.filter(c => c && typeof c.id === "string") : [];
+        } catch (e) {
+            console.warn("servers: " + which + " is not valid JSON, ignoring it");
+            return [];
+        }
+    }
+    FileView {
+        path: Quickshell.shellDir + "/../config/consoles.json"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root._baseConsoles = root._consoles(text(), "config/consoles.json")
+        onLoadFailed: root._baseConsoles = []
+    }
+    FileView {
+        path: root.home + "/.config/desktop/consoles.json"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root._userConsoles = root._consoles(text(), "~/.config/desktop/consoles.json")
+        onLoadFailed: root._userConsoles = []
+    }
 
     function refresh(): void {
         if (!lister.running)

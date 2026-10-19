@@ -92,7 +92,11 @@ Singleton {
         _run(["container", c.engine, action, c.id]);
     }
     function openPort(port: int): void {
-        Launch.cmd(["helium", "http://localhost:" + port]);
+        openUrl("http://localhost:" + port);
+    }
+    // auch für die Web-Konsolen im Reiter Server (Servers.consoles)
+    function openUrl(url: string): void {
+        Launch.cmd(["helium", url]);
     }
     // Log einer eigenen Unit im Terminal (journalctl folgt)
     function logs(unit: string): void {

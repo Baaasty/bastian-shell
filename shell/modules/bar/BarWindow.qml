@@ -322,7 +322,8 @@ PanelWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !rightZone.quiet
                 }
-                // Dev-Dienste: nur sichtbar, wenn Dev-Server/Container laufen (Zahl) – Klick öffnet das Dev-Popout
+                // Dev-Dienste + Server: Zahl, solange Dev-Server/Container laufen – Klick öffnet das Dev-Popout
+                // (Reiter Services, Containers, Ports, Server = Web-Konsolen + sshs; ersetzt den Server-Chip)
                 DevChip {
                     anchors.verticalCenter: parent.verticalCenter
                     quiet: rightZone.quiet
@@ -354,12 +355,6 @@ PanelWindow {
                 }
                 // Downloads: leises Symbol, nach einem neuen Download kurz im Glut-Ton – Klick öffnet die letzten Downloads
                 DownloadsChip {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: !rightZone.quiet
-                    barWindow: win
-                }
-                // Server (sshs): Upload, Dateien, Terminal – Klick öffnet das Server-Popout (docs/SSHS.md)
-                ServerChip {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !rightZone.quiet
                     barWindow: win
