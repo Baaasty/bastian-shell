@@ -10,7 +10,7 @@ import qs.components
 // Containers (alle podman/docker-Container außer Distrobox/Toolbox), Ports (alle eigenen lauschenden Ports, auch Apps),
 // Server (Web-Konsolen aus config/consoles.json + Server aus scripts/sshs mit Upload / Files / Terminal; früher eigener Chip).
 //   Pro sshs-Server: Benutzer-Pille (Anmelde-Benutzer ↔ root per su, Root-Login per SSH bleibt aus) und Container-Knopf,
-//   der die Container des Servers darunter aufklappt – nach Projekt (webbude, soulwick …), laufend/gestoppt, Ports.
+//   der die Container des Servers darunter aufklappt – nach Projekt (Compose-/Stack-Name), laufend/gestoppt, Ports.
 // Zeile anklicken = im Browser öffnen (Helium). Stoppen immer mit schlanker Rückfrage in der Zeile.
 // Daten + Aktionen: DevServices.qml → scripts/devservices, Servers.qml → scripts/sshs.
 // Doku: docs/DEVSERVICES.md, docs/SSHS.md

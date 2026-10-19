@@ -362,7 +362,7 @@ def cmd_migrate(data):
     if S.COMPAT.exists():
         j = json.loads(S.COMPAT.read_text())
         old = j.get("projects") or []
-    # gruppieren: gleicher Name = ein Projekt (soulwick: Arbeitsbereich + Repo)
+    # gruppieren: gleicher Name = ein Projekt (z. B. Arbeitsbereich + Repo)
     groups = {}
     for row in old:
         p = S.absp(row["path"])

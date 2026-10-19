@@ -428,7 +428,7 @@ def _labels(c) -> dict:
 
 def _group(name: str, lb: dict) -> str:
     """Projekt eines Containers: compose-/Stack-Projekt bzw. Dienst, sonst der Name – jeweils bis zum ersten -/_/.
-    (Dokploy: webbude-app-x1y2z3 → webbude)."""
+    (Dokploy: shop-app-x1y2z3 → shop)."""
     key = (lb.get("com.docker.compose.project") or lb.get("io.podman.compose.project")
            or lb.get("com.docker.stack.namespace") or lb.get("com.docker.swarm.service.name") or name)
     return re.split(r"[-_.]", key, maxsplit=1)[0] or key

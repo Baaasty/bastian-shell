@@ -6,8 +6,8 @@ import qs.config
 import qs.services
 import qs.components
 
-// Quicklinks eines Projekt-Workspaces (Idee n): localhost-Ports aus dev.ports (mit „läuft“-Punkt) und Links aus
-// projects.json (links). Klick öffnet in Helium. „Add link“ und das X an einem Link gehen über scripts/project
+// Quicklinks eines Projekt-Workspaces (Idee n): localhost-Ports aus dev.ports (mit „läuft“-Punkt), Container des
+// Projekts (Zuordnung aus DevServices, dieselbe wie im Dev-Popout) und Links aus projects.json (links). Klick öffnet in Helium. „Add link“ und das X an einem Link gehen über scripts/project
 // (link add / link rm) – die Datei wird nie von Hand oder aus QML geschrieben. Doku: docs/QUICKLINKS.md
 // Tastatur (Workspace-Modus, Q): ↑↓ wählen, Enter öffnet, 1–9 direkt, A Link ergänzen, Entf zweimal entfernt, Esc zurück.
 // Dann ohne eigenen Fokus-Grab: die Tasten liefert die Leiste (WorkBar.modeKey → key()), sie behält die Tastatur.
@@ -22,6 +22,19 @@ PopupWindow {
         return Object.keys(p).map(k => ({ role: k, port: Number(p[k]) }));
     }
     readonly property var links: (proj && proj.links) || []
+    // Container des Projekts: [{ name, running, ports: [int], web: int }] – web = Port mit Weboberfläche (Rolle in
+    // dev.infra wie „minio-console“), Klick öffnet ihn; ohne (postgres …) kopiert der Klick localhost:<port>
+    readonly property var containers: {
+        if (!proj)
+            return [];
+        const infra = (proj.dev && proj.dev.infra) || {};
+        const roleOf = port => Object.keys(infra).find(k => Number(infra[k]) === port) || "";
+        return DevServices.containers.filter(c => c.project === proj.id).map(c => {
+            const ports = [...new Set((c.ports || []).filter(p => p.proto === "tcp").map(p => p.host))].sort((a, b) => a - b);
+            const web = ports.find(p => /console|web|ui|admin|dashboard/i.test(roleOf(p))) || 0;
+            return { name: c.name, running: !!c.running, ports: ports, web: web };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+    }
     property var listening: ({})        // Port -> true, nur solange das Popup offen ist (ss -ltn)
     readonly property var git: proj ? GitInfo.git[proj.id] : undefined
     readonly property var ci: proj ? GitInfo.ci[proj.id] : undefined
@@ -42,6 +55,8 @@ PopupWindow {
         const out = [];
         for (const p of ports)
             out.push({ kind: "url", url: url(p.port) });
+        for (const c of containers)
+            out.push(containerItem(c));
         for (const l of links)
             out.push({ kind: "link", url: l.url, name: l.name });
         if (repoUrl)
@@ -60,8 +75,23 @@ PopupWindow {
             return;
         if (it.kind === "add")
             askLink();
-        else
+        else if (it.kind === "copy")
+            copyAddr(it.text);
+        else if (it.kind === "url")
             openUrl(it.url);
+    }
+    function containerItem(c: var): var {
+        if (c.web)
+            return { kind: "url", url: url(c.web) };
+        if (c.ports.length)
+            return { kind: "copy", text: "localhost:" + c.ports[0] };
+        return { kind: "none" };
+    }
+    // Datenbank & Co. haben keine Weboberfläche: Adresse in die Zwischenablage
+    function copyAddr(text: string): void {
+        visible = false;
+        Clipboard.copyText(text);
+        Quickshell.execDetached(["notify-send", "-a", "Desktop", "-u", "low", "Copied " + text]);
     }
     function askLink(): void {
         visible = false;
@@ -139,6 +169,7 @@ PopupWindow {
         host.openMenus += visible ? 1 : -1;
         if (visible) {
             scan.running = true;
+            DevServices.refresh();
         } else {
             host.stick();
             listening = ({});
@@ -276,6 +307,33 @@ PopupWindow {
                 }
             }
 
+            // Container des Projekts (unter Local, ohne eigene Überschrift)
+            Label {
+                visible: pop.ports.length === 0 && pop.containers.length > 0
+                leftPadding: 10
+                topPadding: 4
+                bottomPadding: 4
+                text: "Local"
+            }
+            Repeater {
+                model: pop.containers
+                QuickLinksRow {
+                    required property var modelData
+                    required property int index
+                    readonly property int idx: pop.ports.length + index
+                    kbMark: pop.kb && pop.sel === idx
+                    hint: pop.hintFor(idx)
+                    width: col.width
+                    icon: "deployed_code"
+                    title: modelData.name
+                    sub: modelData.ports.map(p => ":" + p).join(", ")
+                    showDot: true
+                    dotOn: modelData.running
+                    dotColor: Theme.success
+                    onActivated: pop.run(idx)
+                }
+            }
+
             // Links
             Label {
                 visible: pop.links.length > 0
@@ -289,7 +347,7 @@ PopupWindow {
                 QuickLinksRow {
                     required property var modelData
                     required property int index
-                    readonly property int idx: pop.ports.length + index
+                    readonly property int idx: pop.ports.length + pop.containers.length + index
                     kbMark: pop.kb && pop.sel === idx
                     kbConfirm: pop.armed === idx
                     hint: pop.hintFor(idx)
@@ -305,7 +363,7 @@ PopupWindow {
 
             // Repo-Seite (git remote), falls nicht schon als Link eingetragen
             QuickLinksRow {
-                readonly property int idx: pop.ports.length + pop.links.length
+                readonly property int idx: pop.ports.length + pop.containers.length + pop.links.length
                 visible: pop.repoUrl !== ""
                 height: visible ? 36 : 0
                 width: col.width
@@ -320,7 +378,7 @@ PopupWindow {
             // letzter CI-Lauf (nur wenn gh ihn kennt): Klick öffnet ihn auf GitHub
             QuickLinksRow {
                 readonly property var c: pop.ci
-                readonly property int idx: pop.ports.length + pop.links.length + (pop.repoUrl !== "" ? 1 : 0)
+                readonly property int idx: pop.ports.length + pop.containers.length + pop.links.length + (pop.repoUrl !== "" ? 1 : 0)
                 visible: pop.ciUrl !== ""
                 height: visible ? 36 : 0
                 width: col.width
@@ -333,7 +391,7 @@ PopupWindow {
             }
 
             Txt {
-                visible: pop.ports.length === 0 && pop.links.length === 0
+                visible: pop.ports.length === 0 && pop.containers.length === 0 && pop.links.length === 0
                 leftPadding: 10
                 topPadding: 4
                 bottomPadding: 8

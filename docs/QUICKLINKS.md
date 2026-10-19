@@ -15,6 +15,10 @@ Ohne eigenen Namen („Workspace 2“) gibt es kein Projekt. Umbenennen: Doppelk
 - Alternativ: Rechtsklick auf die Kachel → **Quick links**.
 - Popup: **Local** (Ports aus `dev.ports`, Punkt grün = läuft, Ring = läuft nicht; geprüft per `ss -ltn`, nur solange
   das Popup offen ist) und **Links**. Klick auf eine Zeile öffnet die Adresse in Helium (`http://localhost:<port>`).
+- Unter **Local** auch die **Container** des Projekts (Punkt grün = läuft), mit ihren Ports. Zuordnung kommt aus
+  `DevServices` (dieselbe wie im Dev-Popout, keine zweite Erkennung). Klick: Port mit Weboberfläche (Rolle in
+  `dev.infra` mit console/web/ui/admin/dashboard, z. B. `minio-console`) öffnet in Helium, sonst (postgres …) wird
+  `localhost:<port>` kopiert.
 - **Add link**: Eingabefeld unter dem Popup, Format `Name https://…` (nur `https://…` geht auch, dann ist der Host der Name).
 - **X** rechts an einem Link (nur bei Hover): erster Klick „Remove?“, zweiter entfernt.
 - **Tastatur**: Workspace-Modus (Alt antippen oder Alt+Esc), Kachel mit ←/→ markieren – bei Projekt-Workspaces steht

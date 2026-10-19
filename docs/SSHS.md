@@ -29,7 +29,7 @@ Solange die Dokploy-URL fehlt, ist die Zeile ausgegraut („no URL yet“).
 | **Upload** | Datei-Wähler der Shell, mehrere Dateien/Ordner: **Tab** oder Klick markiert (auch über mehrere Ordner), Strg+A alle Dateien im Ordner, Enter lädt hoch. Ziel: Home-Ordner `~` auf dem Server. Fortschritt + Ergebnis als Benachrichtigung, solange es läuft, zeigt der Dev-Chip `cloud_upload` im Glut-Ton |
 | **Files** | sshs-Kitty-Fenster, das nach der Anmeldung von selbst auf Dateien (yazi per SFTP) umschaltet |
 | **Terminal** | sshs-Kitty-Fenster mit der Shell auf dem Server |
-| Container (`deployed_code`) | klappt darunter die Container des Servers auf: `sshs ps <name> --json`, nach Projekt gruppiert (compose-/Stack-Projekt bzw. Name bis zum ersten `-`: webbude, soulwick, dokploy …), Punkt = läuft, Image · Status, Ports (`:8080→80` nach außen, gerahmt = nur im Container; Swarm-Dienste mit den Ports des Dienstes). Neu laden mit ↻. Darf der Anmelde-Benutzer nicht an docker (und `sudo -n` geht nicht), steht das dort, dazu „As root in terminal“ (`--su --run docker ps …`) |
+| Container (`deployed_code`) | klappt darunter die Container des Servers auf: `sshs ps <name> --json`, nach Projekt gruppiert (compose-/Stack-Projekt bzw. Name bis zum ersten `-`, z. B. shop, blog, dokploy …), Punkt = läuft, Image · Status, Ports (`:8080→80` nach außen, gerahmt = nur im Container; Swarm-Dienste mit den Ports des Dienstes). Neu laden mit ↻. Darf der Anmelde-Benutzer nicht an docker (und `sudo -n` geht nicht), steht das dort, dazu „As root in terminal“ (`--su --run docker ps …`) |
 | New server | `sshs add` in einem Kitty-Fenster |
 
 - Der zuletzt benutzte Server steht oben (Upload-Knopf im Glut-Ton). sshs merkt sich das selbst in
