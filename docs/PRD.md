@@ -96,7 +96,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 - **F40** Eigene Dialoge: Polkit-Agent, Share-Picker ([SHARING.md](knowledge/shell-features.md)), Datei-Wähler, Absturz-Karte statt DrKonqi ([CRASHES.md](knowledge/shell-features.md)).
 - **F41** Paketmanager (Super+P): dnf, COPR, Flatpak, AppImage, Updates; Root nur per pkexec.
 - **F42** Theming: `theme/palette.json` → Generatoren für Qt/KDE, GTK, Terminals, VS Code, Discord, Browser, Cursor, Wallpaper ([knowledge/theming.md](knowledge/theming.md)).
-- **F43** PC-Beleuchtung per OpenRGB statisch in der Akzentfarbe, auch nach Standby ([RGB.md](knowledge/hardware.md); wartet auf OpenRGB-Install).
+- **F43** PC-Beleuchtung per OpenRGB statisch in der Akzentfarbe, auch nach Standby ([hardware.md](knowledge/hardware.md)); Drop ALT ausgenommen.
 - **F44** PC neu aufsetzen: `system/bootstrap` (dry-run, `--apply`), Paketlisten, Dotfiles; Sitzung per `scripts/hypr install|uninstall`.
 
 ## 7. Nicht-Ziele

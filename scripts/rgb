@@ -126,8 +126,12 @@ def parse_list(text):
 
 
 def scan():
-    r = run_openrgb(["--list-devices"])
+    # OpenRGB 1.1: Typ und Modi nur noch in --list-detailed (-l zeigt nur Namen); rc2 kennt -ld nicht → Rückfall
+    r = run_openrgb(["--list-detailed"])
     devices = parse_list(r.stdout)
+    if not any(d["modes"] for d in devices):
+        r = run_openrgb(["--list-devices"])
+        devices = parse_list(r.stdout)
     if r.returncode != 0 and not devices:
         tail = (r.stderr or r.stdout).strip().splitlines()[-3:]
         raise RuntimeError("openrgb -l fehlgeschlagen: " + " | ".join(tail))

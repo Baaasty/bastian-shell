@@ -16,6 +16,8 @@ aufrollen. Große Entscheidungen mit abgewogenen Optionen: eigene Datei `decisio
 - 2026-10-18 · Discord-Client: normales Discord (RPM) mit eigenem Equicord-Build statt Equibop · OFFEN · angenommen
 - 2026-10-18 · Discord, Spotify, Thunderbird als RPM statt Flatpak; Start RPM zuerst, Flatpak-Fallback (`scripts/app-run`) · OFFEN · angenommen (Umzug `scripts/flatpak-to-native` steht in der Roadmap noch offen)
 - 2026-10-18 · Mail/Kalender: Thunderbird behalten (RPM 157, eigene Benachrichtigungen aus), Plan B Evolution nach 2–3 Wochen, falls zu unruhig; Betterbird nur bei Look-Bruch durch Updates; kein Mail-Eigenbau in der Shell · Shell-Daten (`mail-status`, `agenda-status`, `mail-watch`) laufen über eigenes IMAP/CalDAV, an Thunderbird hängen nur Start und `mid:`-Deeplink; Look ist gebaut, Kalender + CardDAV in einem Fenster; Geary (kein Kalender, eingeschlafen), KMail (Akonadi), Mailspring (Electron, Abo) und Terminal-Clients (kein HTML, Kalender getrennt) bringen weniger, als sie kosten · vorläufig (Bastian entscheidet noch, ROADMAP-HYPRLAND „Von dir“)
+- 2026-10-19 · OpenRGB 1.1 als RPM von Codeberg (+ hidapi-hotplug) statt Fedoras 1.0~rc2 · rc2 hält den Lightspeed-Empfänger der G502 X PLUS für eine G915 und hängt, kennt die Funk-Maus nicht; ohne Flatpak · angenommen (Updates von Hand)
+- 2026-10-19 · Drop ALT bleibt ohne Palettenfarbe · Stock-Firmware ohne Raw-HID, eigene QMK-Firmware (1–2 h) lohnt gerade nicht · vorläufig
 
 ## Architektur
 

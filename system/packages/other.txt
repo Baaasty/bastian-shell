@@ -105,6 +105,12 @@ Schalter der Shell (von Hand pflegbar, optional): ~/.config/desktop/{goxlr,audio
 - Login-Bildschirm: scripts/loginscreen apply (sudo, eigener Schritt im Repo, nur als Hinweis in bootstrap 10)
 Nicht mehr nötig: Chrome-Repo/Brave-Repo (siehe repos.txt), KWin-Shell-Paket (~/.local/share/plasma/shells/de.bastian.desktop, nur --kwin)
 
+## RPMs außerhalb der Repos (von Hand, sudo; Updates von Hand)
+openrgb        1.1.0     https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/openrgb_1.1_x86_64_f44_8e16de2.rpm
+hidapi-hotplug 0.15.0    https://codeberg.org/OpenRGB/hidapi-hotplug/releases/download/hidapi-hotplug-0.15.0/hidapi-hotplug-0.15.0-3.fc43.x86_64.rpm
+                 Fedoras openrgb 1.0~rc2 + openrgb-udev-rules vorher entfernen (gleiche udev-Datei): sudo dnf remove openrgb openrgb-udev-rules,
+                 dann sudo dnf install ./hidapi-hotplug-….rpm ./openrgb_1.1_….rpm; danach G915-Detektor aus (docs/knowledge/hardware.md)
+
 ## Ordner, die vorausgesetzt werden
 <Workspace>/<repo>   dieses Repo (~/Workspace/bastian-shell; Umzug aus den alten Ordnern desktop/desktop-hyprland: docs/setup/migrate.md –
                      bootstrap leitet den Pfad aus seinem eigenen Ort ab), ~/Workspace/<org> (eigene Projekt-Repos, per gh geklont; Pfade: projects/projects.json),

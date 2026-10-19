@@ -29,16 +29,22 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
 
 `scripts/rgb` setzt alle RGBs im PC **statisch** auf `accent` der aktiven Palette-Variante (hearth `#DB6B4C`), kein Effekt.
 Hardware: MSI MPG B550 Gaming Plus (Mystic Light, `1462:7c56`), NZXT Smart Device V2 (`1e71:200f`), RAM über SMBus
-(`/dev/i2c-0…2`, PIIX4), evtl. GPU; Maus/Tastatur, wenn OpenRGB sie erkennt.
+(`/dev/i2c-0…2`, PIIX4), GPU (Gigabyte RTX 3070 Ti, nur `Direct`), Maus G502 X PLUS (Lightspeed-Empfänger `046d:c547`).
+Nicht steuerbar: Drop ALT (`04d8:eed3`) – Stock-Firmware ohne Raw-HID, ginge nur mit eigener QMK-Firmware (bewusst gelassen).
+
+- **OpenRGB 1.1 von Codeberg** (RPM `openrgb` + `hidapi-hotplug`, siehe `system/packages/other.txt`), nicht Fedoras
+  `1.0~rc2`: rc2 kennt die Funk-G502 nicht und hält den Empfänger `c547` für eine **G915** – deren Protokoll wartet ohne
+  Timeout auf Antworten der Maus, der ganze Aufruf hing (> 90 s). Deshalb steht der G915-Detektor in
+  `~/.config/OpenRGB/OpenRGB.json` auf `false` (Sicherung daneben `.vor-g915-aus`). 1.1 zeigt Typ/Modi nur mit `-ld`.
 
 - OpenRGB **ohne Server** (`--noautoconnect`): ein Scan, dann je Gerät der erste passende Modus `Static` → `Fixed` (NZXT)
   → `Direct`. Jeder Aufruf höchstens 90 s, eine Sperre verhindert parallele Läufe; fehlt openrgb: eine Logzeile, Exit 0.
   Den System-Dienst `openrgb.service` nicht einschalten.
 - Wann: beim Login (`hypr/autostart.conf`, `--boot`) und nach Standby (`after_sleep_cmd` in `hypr/hypridle.conf`,
   `--delay 3`, bis USB wieder da ist). Nach `scripts/rice variant` einmal `scripts/rgb apply`, sonst erst beim nächsten Login.
-- Rechte: `openrgb-udev-rules` (sudo, zusammen mit `openrgb`) gibt dem Login per `uaccess` Zugriff auf alle `/dev/i2c-*`
+- Rechte: die udev-Regel aus dem OpenRGB-RPM (`60-openrgb.rules`) gibt dem Login per `uaccess` Zugriff auf alle `/dev/i2c-*`
   und die USB-Geräte; keine Gruppe nötig. Geräte auslassen: `~/.config/desktop/rgb.json` → `{"skip": ["G502"]}`.
-- Ein gemeinsamer OpenRGB-Aufruf für alle Geräte; hängt er (> 90 s, z. B. G915 über Lightspeed), setzt `apply` jedes Gerät
+- Ein gemeinsamer OpenRGB-Aufruf für alle Geräte; hängt er (> 90 s, z. B. ein falsch erkanntes Gerät), setzt `apply` jedes Gerät
   einzeln (je 45 s). Hängende Geräte merkt `~/.local/state/desktop/rgb-slow.json` und setzt sie künftig einzeln zuletzt.
 
 Stolperfallen:
@@ -46,5 +52,6 @@ Stolperfallen:
 - Keine Geräte: udev-Regeln neu laden oder neu starten; `ls -l /dev/i2c-0` muss ein `+` (ACL) zeigen.
 - NZXT-Lüfter/Streifen dunkel: Zonengröße fehlt → einmal im OpenRGB-Fenster „Resize zone“ setzen (wird gemerkt).
 - RAM fehlt: im OpenRGB-Fenster unter Supported Devices aktivieren; Kernel-Parameter erst danach (Wiki „SMBus Access“).
+- Maus: Farbe ist flüchtig (OpenRGB schreibt nicht ins Onboard-Profil); dauerhaft nur per Solaar-Profil (nicht eingerichtet).
 - Nach Standby falsche Farbe: hypridle mit neuer Config neu starten, sonst `--delay 5`.
   Log: `journalctl --user --since -5min | grep rgb`.
