@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Beim Login (hypr/autostart.conf, einmal pro Sitzung): GoXLR-Routing komplett aus, Standard-Ausgang auf 100 %.
+# Wartet auf den Daemon (goxlr.service startet evtl. später als die Sitzung). Schalter: ~/.config/desktop/goxlr.json
+# (resetRoutingOnLogin) und ~/.config/desktop/audio.json (lockVolume). Doku: docs/setup/goxlr.md
+set -u
+DIR=$(dirname "$(readlink -f "$0")")
+
+"$DIR/goxlr-reset-routing" --wait 60 --if resetRoutingOnLogin || true
+
+# Lautstärke 100 % und nicht stumm (der Wächter in shell/services/Audio.qml hält sie dort)
+lock=$(python3 -I - <<'PY'
+import json, os
+try:
+    print(str(bool(json.load(open(os.path.expanduser("~/.config/desktop/audio.json"))).get("lockVolume", True))).lower())
+except (OSError, ValueError):
+    print("true")
+PY
+)
+if [ "$lock" = true ]; then
+    for _ in $(seq 1 30); do
+        wpctl status 2>/dev/null | grep -q 'GoXLRMini' && break
+        sleep 2
+    done
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0 2>/dev/null || true
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true
+fi
+exit 0

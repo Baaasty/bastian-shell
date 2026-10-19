@@ -1,0 +1,111 @@
+{
+  "_hinweis": "BEISPIEL – gilt nur, solange projects/projects.json fehlt. Eigene Projekte: scripts/project add <ordner> (legt die lokale, gitignorierte projects/projects.json an). Schema: projects/README.md.",
+  "version": 1,
+  "global": {
+    "links": [
+      {
+        "name": "GitHub",
+        "icon": "code",
+        "url": "https://github.com"
+      }
+    ],
+    "org": {
+      "github": "example-org",
+      "dir": "~/Workspace/clients",
+      "labs": "~/Workspace/labs",
+      "internal": []
+    }
+  },
+  "ignore": [],
+  "projects": {
+    "bakery-site": {
+      "name": "bakery-site",
+      "paths": [
+        "~/Workspace/clients/bakery-site"
+      ],
+      "workspace": null,
+      "kind": "kunde",
+      "org": false,
+      "color": "moos",
+      "tint": true,
+      "dev": {
+        "command": "bun run dev",
+        "services": null,
+        "block": null,
+        "ports": {
+          "web": 3000
+        },
+        "infra": {}
+      },
+      "open": {
+        "code": true,
+        "browser": [
+          "web"
+        ],
+        "terminal": null
+      },
+      "links": [
+        {
+          "name": "Repo",
+          "url": "https://github.com/example/bakery-site",
+          "icon": "code"
+        }
+      ]
+    },
+    "habit-tracker": {
+      "name": "habit-tracker",
+      "paths": [
+        "~/Workspace/labs/habit-tracker"
+      ],
+      "workspace": null,
+      "kind": "labs",
+      "org": false,
+      "color": "pflaume",
+      "tint": true,
+      "dev": {
+        "command": "bun run dev",
+        "services": "bun run services:up",
+        "block": 1,
+        "ports": {
+          "web": 3100,
+          "api": 3101
+        },
+        "infra": {
+          "postgres": 5532
+        }
+      },
+      "open": {
+        "code": true,
+        "browser": [
+          "web"
+        ],
+        "terminal": "dev"
+      },
+      "links": []
+    },
+    "dotfiles": {
+      "name": "dotfiles",
+      "paths": [
+        "~/Workspace/dotfiles"
+      ],
+      "workspace": null,
+      "kind": "privat",
+      "org": false,
+      "color": "honig",
+      "tint": true,
+      "dev": {
+        "command": null,
+        "services": null,
+        "block": null,
+        "ports": {},
+        "infra": {}
+      },
+      "open": {
+        "code": true,
+        "browser": [],
+        "terminal": null
+      },
+      "links": []
+    }
+  }
+}

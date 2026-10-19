@@ -1,0 +1,147 @@
+# ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/yazi.py
+#:schema https://yazi-rs.github.io/schemas/theme.json
+
+[mgr]
+cwd             = { fg = "#F2A58A", bold = true }
+find_keyword    = { fg = "#E0AE55", bold = true, underline = true }
+find_position   = { fg = "#F2A58A", italic = true }
+symlink_target  = { fg = "#B5A591", italic = true }
+marker_copied   = { fg = "#A3B083", bg = "#A3B083" }
+marker_cut      = { fg = "#E0604F", bg = "#E0604F" }
+marker_marked   = { fg = "#A07C5C", bg = "#A07C5C" }
+marker_selected = { fg = "#E0AE55", bg = "#E0AE55" }
+count_copied    = { fg = "#2B1A12", bg = "#A3B083", bold = true }
+count_cut       = { fg = "#2B1A12", bg = "#E0604F", bold = true }
+count_selected  = { fg = "#2B1A12", bg = "#E0AE55", bold = true }
+border_style    = { fg = "#67503C" }
+syntect_theme   = "~/.config/bat/themes/desktop.tmTheme"
+
+[indicator]
+parent  = { fg = "#D2C2AE", bg = "#45372E" }
+current = { fg = "#F6ECDD", bg = "#5C392D", bold = true }
+preview = { fg = "#F6ECDD", bg = "#382D26" }
+
+[tabs]
+active   = { fg = "#2B1A12", bg = "#A07C5C", bold = true }
+inactive = { fg = "#D2C2AE", bg = "#382D26" }
+
+[mode]
+normal_main = { fg = "#2B1A12", bg = "#DB6B4C", bold = true }
+normal_alt  = { fg = "#F2A58A", bg = "#45372E" }
+select_main = { fg = "#2B1A12", bg = "#E0AE55", bold = true }
+select_alt  = { fg = "#E0AE55", bg = "#45372E" }
+unset_main  = { fg = "#2B1A12", bg = "#E0604F", bold = true }
+unset_alt   = { fg = "#E0604F", bg = "#45372E" }
+
+[status]
+overall         = { fg = "#D2C2AE" }
+perm_sep        = { fg = "#908272" }
+perm_type       = { fg = "#A07C5C" }
+perm_read       = { fg = "#E0AE55" }
+perm_write      = { fg = "#E0604F" }
+perm_exec       = { fg = "#A3B083" }
+progress_label  = { fg = "#F6ECDD", bold = true }
+progress_normal = { fg = "#DB6B4C", bg = "#2F2620" }
+progress_error  = { fg = "#E0604F", bg = "#2F2620" }
+
+[which]
+border          = { fg = "#67503C" }
+mask            = { bg = "#2F2620" }
+cand            = { fg = "#F2A58A", bold = true }
+rest            = { fg = "#B5A591" }
+desc            = { fg = "#F6ECDD" }
+separator_style = { fg = "#908272" }
+
+[confirm]
+border  = { fg = "#DB6B4C" }
+title   = { fg = "#F2A58A", bold = true }
+body    = { fg = "#F6ECDD" }
+list    = { fg = "#D2C2AE" }
+btn_yes = { fg = "#2B1A12", bg = "#DB6B4C", bold = true }
+btn_no  = { fg = "#D2C2AE", bg = "#45372E" }
+
+[spot]
+border   = { fg = "#67503C" }
+title    = { fg = "#F2A58A", bold = true }
+tbl_col  = { fg = "#A07C5C" }
+tbl_cell = { fg = "#F6ECDD", bg = "#5C392D" }
+
+[notify]
+title_info  = { fg = "#A3B083", bold = true }
+title_warn  = { fg = "#E0AE55", bold = true }
+title_error = { fg = "#E0604F", bold = true }
+
+[pick]
+border   = { fg = "#67503C" }
+active   = { fg = "#F6ECDD", bg = "#5C392D", bold = true }
+inactive = { fg = "#D2C2AE" }
+
+[input]
+border   = { fg = "#DB6B4C" }
+title    = { fg = "#F2A58A", bold = true }
+value    = { fg = "#F6ECDD" }
+selected = { fg = "#F6ECDD", bg = "#5C392D" }
+
+[cmp]
+border   = { fg = "#67503C" }
+active   = { fg = "#F6ECDD", bg = "#5C392D", bold = true }
+inactive = { fg = "#D2C2AE" }
+
+[tasks]
+border  = { fg = "#67503C" }
+title   = { fg = "#F2A58A", bold = true }
+hovered = { fg = "#F6ECDD", bg = "#5C392D", bold = true }
+
+[help]
+border  = { fg = "#67503C" }
+chord   = { fg = "#F2A58A" }
+action  = { fg = "#F6ECDD" }
+hovered = { fg = "#F6ECDD", bg = "#5C392D", bold = true }
+
+[filetype]
+rules = [
+	{ mime = "**/image/*", fg = "#B8788A" },
+	{ mime = "**/{audio,video}/*", fg = "#7E8FA8" },
+	{ mime = "**/application/{zip,rar,7z*,tar,gzip,xz,zstd,bzip*,lzma,compress,archive,cpio,arj,xar,ms-cab*}", fg = "#F2A58A" },
+	{ mime = "**/application/{pdf,doc,rtf,epub*,vnd.oasis.opendocument.*,vnd.openxmlformats-officedocument.*}", fg = "#7FA394" },
+	{ mime = "vfs/{absent,stale}", fg = "#B5A591" },
+	{ url = "*", is = "orphan", fg = "#E0604F", crossed = true },
+	{ url = "*", is = "link", fg = "#D2C2AE", italic = true },
+	{ url = "*", is = "exec", fg = "#A3B083" },
+	{ url = "*", is = "dummy", fg = "#E0604F", italic = true },
+	{ url = "*/", is = "dummy", fg = "#E0604F", italic = true },
+	{ url = "*/", fg = "#A07C5C", bold = true },
+	{ url = "*", fg = "#F6ECDD" },
+]
+
+[icon]
+prepend_dirs = [
+	{ name = ".config", text = "", fg = "#A07C5C" },
+	{ name = ".git", text = "", fg = "#A07C5C" },
+	{ name = ".github", text = "", fg = "#A07C5C" },
+	{ name = ".npm", text = "", fg = "#A07C5C" },
+	{ name = "Desktop", text = "", fg = "#A07C5C" },
+	{ name = "Development", text = "", fg = "#A07C5C" },
+	{ name = "Documents", text = "", fg = "#A07C5C" },
+	{ name = "Downloads", text = "", fg = "#A07C5C" },
+	{ name = "Library", text = "", fg = "#A07C5C" },
+	{ name = "Movies", text = "", fg = "#A07C5C" },
+	{ name = "Music", text = "", fg = "#A07C5C" },
+	{ name = "Pictures", text = "", fg = "#A07C5C" },
+	{ name = "Public", text = "", fg = "#A07C5C" },
+	{ name = "Videos", text = "", fg = "#A07C5C" },
+]
+prepend_conds = [
+	{ if = "orphan", text = "", fg = "#E0604F" },
+	{ if = "link", text = "", fg = "#B5A591" },
+	{ if = "block", text = "", fg = "#E0AE55" },
+	{ if = "char", text = "", fg = "#E0AE55" },
+	{ if = "fifo", text = "", fg = "#E0AE55" },
+	{ if = "sock", text = "", fg = "#E0AE55" },
+	{ if = "sticky", text = "", fg = "#E0AE55" },
+	{ if = "dummy", text = "", fg = "#E0604F" },
+	{ if = "dir & hovered", text = "", fg = "#A07C5C" },
+	{ if = "dir", text = "", fg = "#A07C5C" },
+	{ if = "exec", text = "", fg = "#A3B083" },
+	{ if = "!dir", text = "", fg = "#D2C2AE" },
+]

@@ -1,0 +1,554 @@
+#!/usr/bin/env python3
+"""favicons – Website-Icons für das Passwort-Panel (shell/services/Favicons.qml).
+
+Abruf DIREKT von der Website (nur die Domain, kein Dritter, keine Cookies, kein Referer):
+  1. Startseite (https) laden, <link rel="icon|shortcut icon|apple-touch-icon…"> auswerten, bestes Icon holen
+  2. Rückfall /favicon.ico
+  3. sonst nichts (die Shell zeigt dann die Buchstaben-Kachel)
+Ergebnis: ~/.cache/desktop/favicons/<domain>.png (64×64) bzw. <domain>.none (Negativ-Cache, 7 Tage).
+
+  favicons run [--force] <domain…>   holt fehlende Icons (2 gleichzeitig, kleine Pause); je Domain eine Zeile
+                                     "<domain> ok|cached|none|skip|error", am Ende "done <ok> <none> <error>"
+  favicons list                      Domains mit Icon im Cache (eine pro Zeile)
+  favicons config [auto on|off]      Einstellung (~/.config/desktop/favicons.json): auto = beim Öffnen des Panels nachladen
+  favicons --selftest                Test ohne Netz
+
+Schutz: nur http(s) auf Port 80/443; vor jedem Kontakt (auch Weiterleitungen) wird der Name aufgelöst und
+nur öffentliche Adressen werden angesprochen (kein localhost/privat/link-local); die geprüfte Adresse wird
+direkt verwendet (kein zweites Auflösen). Nur Standardbibliothek; Bilder werden mit Pillow (falls da) oder
+ImageMagick, SVG mit rsvg-convert gerendert. Nie wird HTML/Skript als Bild angenommen (Magic Bytes).
+"""
+
+import concurrent.futures
+import gzip
+import html.parser
+import http.client
+import io
+import ipaddress
+import json
+import os
+import re
+import shutil
+import socket
+import ssl
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.parse
+
+CACHE = os.environ.get("FAVICONS_CACHE") or os.path.expanduser("~/.cache/desktop/favicons")
+CONFIG = os.environ.get("FAVICONS_CONFIG") or os.path.expanduser("~/.config/desktop/favicons.json")
+UA = "Mozilla/5.0 (compatible; favicon-fetch/1.0)"
+TIMEOUT = 5
+HTML_MAX = 512 * 1024
+IMG_MAX = 200 * 1024
+SVG_MAX = 100 * 1024
+NONE_TTL = 7 * 86400
+OK_TTL = 30 * 86400
+WORKERS = 2
+PAUSE = 0.25
+OUT = 64
+
+DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+class Fail(Exception):
+    """kind: 'net' (vorübergehend, nicht cachen) | 'gone' (Seite antwortet nicht brauchbar -> Negativ-Cache)"""
+
+    def __init__(self, msg, kind="gone"):
+        super().__init__(msg)
+        self.kind = kind
+
+
+# ------------------------------------------------------------------ Domain / Adresse prüfen
+def clean_domain(v):
+    """URL oder Host -> normalisierte Domain (ASCII, Kleinbuchstaben) oder None. Keine IPs, kein Port, keine Zugangsdaten."""
+    v = (v or "").strip()
+    if not v or len(v) > 300:
+        return None
+    if "://" not in v:
+        v = "https://" + v
+    try:
+        h = urllib.parse.urlsplit(v).hostname
+    except ValueError:
+        return None
+    if not h:
+        return None
+    try:
+        h = h.strip(".").lower().encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
+    if h.startswith("www."):
+        h = h[4:]
+    return h if DOMAIN_RE.match(h) and ".." not in h else None
+
+
+def public_addrs(host, port):
+    """Auflösen und prüfen: nur globale Adressen. Gibt [(family, ip)] zurück, sonst Fail."""
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        raise Fail("dns: %s" % e.args[0], "gone" if e.args[0] in (socket.EAI_NONAME, getattr(socket, "EAI_NODATA", -5)) else "net")
+    out = []
+    for fam, _t, _p, _c, sa in infos:
+        ip = ipaddress.ip_address(sa[0].split("%")[0])
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        if not ip.is_global or ip.is_multicast:
+            raise Fail("blocked address", "gone")
+        out.append((fam, sa[0]))
+    if not out:
+        raise Fail("no address", "gone")
+    return out
+
+
+# ------------------------------------------------------------------ HTTP (Adresse festgenagelt, Weiterleitungen von Hand)
+class _Pinned:
+    """Mixin: statt erneut aufzulösen die geprüfte Adresse verwenden."""
+
+    pinned = None
+
+    def _connect_sock(self):
+        last = None
+        for fam, ip in self.pinned:
+            try:
+                s = socket.socket(fam, socket.SOCK_STREAM)
+                s.settimeout(TIMEOUT)
+                s.connect((ip, self.port))
+                return s
+            except OSError as e:
+                last = e
+        raise last or OSError("connect failed")
+
+
+class _HTTP(_Pinned, http.client.HTTPConnection):
+    def connect(self):
+        self.sock = self._connect_sock()
+
+
+class _HTTPS(_Pinned, http.client.HTTPSConnection):
+    def connect(self):
+        sock = self._connect_sock()
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+_CTX = ssl.create_default_context()
+
+
+def http_get(url, limit, deadline, accept="*/*", redirects=3):
+    """GET mit Prüfungen. Gibt (finale_url, content_type, bytes) zurück; bytes ist auf `limit` gekappt (truncated -> Flag in Fail nicht nötig)."""
+    cur = url
+    for _hop in range(redirects + 1):
+        if time.monotonic() > deadline:
+            raise Fail("timeout", "net")
+        u = urllib.parse.urlsplit(cur)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            raise Fail("scheme", "gone")
+        port = u.port or (443 if u.scheme == "https" else 80)
+        if port not in (80, 443):
+            raise Fail("port", "gone")
+        if u.username or u.password:
+            raise Fail("userinfo", "gone")
+        host = u.hostname.lower()
+        try:
+            ipaddress.ip_address(host)
+            raise Fail("ip literal", "gone")
+        except ValueError:
+            pass
+        addrs = public_addrs(host, port)
+        if u.scheme == "https":
+            c = _HTTPS(host, port, timeout=TIMEOUT, context=_CTX)
+        else:
+            c = _HTTP(host, port, timeout=TIMEOUT)
+        c.pinned = addrs
+        try:
+            path = (u.path or "/") + ("?" + u.query if u.query else "")
+            c.request("GET", path, headers={"User-Agent": UA, "Accept": accept, "Accept-Encoding": "gzip, identity",
+                                            "Connection": "close"})
+            r = c.getresponse()
+            if r.status in (301, 302, 303, 307, 308):
+                loc = r.getheader("Location")
+                if not loc:
+                    raise Fail("redirect without target", "gone")
+                cur = urllib.parse.urljoin(cur, loc)
+                continue
+            if r.status != 200:
+                raise Fail("http %d" % r.status, "gone")
+            ctype = (r.getheader("Content-Type") or "").split(";")[0].strip().lower()
+            raw = r.read(limit + 1 if r.getheader("Content-Encoding", "").lower() != "gzip" else limit * 4)
+            if r.getheader("Content-Encoding", "").lower() == "gzip":
+                try:
+                    raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read(limit + 1)
+                except (OSError, EOFError):
+                    raise Fail("bad gzip", "gone")
+            return cur, ctype, raw[: limit + 1]
+        except (OSError, http.client.HTTPException, ssl.SSLError) as e:
+            raise Fail("%s" % type(e).__name__, "net")
+        finally:
+            c.close()
+    raise Fail("too many redirects", "gone")
+
+
+# ------------------------------------------------------------------ HTML: Icon-Kandidaten
+class _Links(html.parser.HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links = []
+        self.base = None
+        self.done = False
+
+    def handle_starttag(self, tag, attrs):
+        a = dict((k, v or "") for k, v in attrs)
+        if tag == "base" and a.get("href") and self.base is None:
+            self.base = a["href"]
+        elif tag == "link" and a.get("href"):
+            rel = set(a.get("rel", "").lower().split())
+            if rel & {"icon", "apple-touch-icon", "apple-touch-icon-precomposed"} or a.get("rel", "").lower().strip() == "shortcut icon":
+                self.links.append((rel, a["href"].strip(), a.get("sizes", "").lower(), a.get("type", "").lower()))
+
+    def handle_endtag(self, tag):
+        if tag == "head":
+            self.done = True
+
+
+def icon_candidates(page_url, text):
+    """Liste von URLs, bestes zuerst."""
+    p = _Links()
+    try:
+        p.feed(text)
+    except Exception:
+        pass
+    base = urllib.parse.urljoin(page_url, p.base) if p.base else page_url
+    scored = []
+    seen = set()
+    for rel, href, sizes, typ in p.links:
+        if href.lower().startswith(("data:", "javascript:")):
+            continue
+        url = urllib.parse.urljoin(base, href)
+        if url in seen:
+            continue
+        seen.add(url)
+        size = 0
+        m = re.findall(r"(\d+)x(\d+)", sizes)
+        if m:
+            size = max(int(a) for a, _b in m)
+        is_svg = "svg" in typ or urllib.parse.urlsplit(url).path.lower().endswith(".svg") or sizes == "any"
+        apple = bool(rel & {"apple-touch-icon", "apple-touch-icon-precomposed"})
+        if is_svg:
+            score = 90
+        elif apple:
+            score = 100 - abs((size or 180) - 128) / 4          # typisch 180: sehr gut, wird verkleinert
+        elif size:
+            score = 80 - abs(size - 96) / 3 if size >= 32 else 20 + size / 2
+        else:
+            score = 50                                          # ohne Größenangabe (meist .ico / 16–32 px)
+        if urllib.parse.urlsplit(url).path.lower().endswith(".ico"):
+            score -= 10
+        scored.append((score, url))
+    scored.sort(key=lambda x: -x[0])
+    return [u for _s, u in scored]
+
+
+# ------------------------------------------------------------------ Bild prüfen und auf 64×64 bringen
+def sniff(b):
+    if b[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if b[:4] == b"\x00\x00\x01\x00" and len(b) > 22:
+        return "ico"
+    if b[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "webp"
+    head = b[:2048].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+    if head.startswith((b"<svg", b"<?xml")) and b"<svg" in b[:4096].lower():
+        return "svg"
+    return None
+
+
+def svg_ok(b):
+    t = b.decode("utf-8", "ignore").lower()
+    if "<script" in t or "<foreignobject" in t or "<!entity" in t or "<iframe" in t or "<html" in t:
+        return False
+    # keine externen Verweise (nur data: und #intern)
+    return not re.search(r"""href\s*=\s*["'](?!data:|#)""", t) and "url(" not in re.sub(r"url\(\s*['\"]?#", "", t)
+
+
+def to_png64(b):
+    """Bytes -> PNG-Bytes (64×64, transparent aufgefüllt). Fail bei Unbrauchbarem."""
+    kind = sniff(b)
+    if kind is None:
+        raise Fail("not an image", "gone")
+    if kind == "svg":
+        if not svg_ok(b) or len(b) > SVG_MAX:
+            raise Fail("unsafe svg", "gone")
+        exe = shutil.which("rsvg-convert")
+        if not exe:
+            raise Fail("no svg renderer", "gone")
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                r = subprocess.run([exe, "-w", str(OUT), "-h", str(OUT), "--keep-aspect-ratio", "-f", "png"], input=b,
+                                   capture_output=True, timeout=10, cwd=td)
+            except (subprocess.TimeoutExpired, OSError):
+                raise Fail("svg render", "gone")
+        if r.returncode != 0 or sniff(r.stdout) != "png":
+            raise Fail("svg render", "gone")
+        b, kind = r.stdout, "png"
+    try:
+        from PIL import Image
+        Image.MAX_IMAGE_PIXELS = 4096 * 4096
+        im = Image.open(io.BytesIO(b))
+        if (im.format or "").lower() not in ("png", "ico", "jpeg", "webp"):
+            raise Fail("format", "gone")
+        if im.format == "ICO":
+            sizes = sorted(im.ico.sizes(), key=lambda s: s[0] * s[1])
+            if sizes:
+                im.size = sizes[-1]
+        im = im.convert("RGBA")
+        if im.getbbox() is None or im.getchannel("A").getbbox() is None:
+            raise Fail("empty image", "gone")
+        im.thumbnail((OUT, OUT), Image.LANCZOS)
+        canvas = Image.new("RGBA", (OUT, OUT), (0, 0, 0, 0))
+        canvas.paste(im, ((OUT - im.width) // 2, (OUT - im.height) // 2))
+        out = io.BytesIO()
+        canvas.save(out, "PNG")
+        return out.getvalue()
+    except ImportError:
+        pass
+    except Fail:
+        raise
+    except Exception:
+        raise Fail("decode", "gone")
+    exe = shutil.which("magick")
+    if not exe:
+        raise Fail("no image library", "gone")
+    try:
+        r = subprocess.run([exe, "%s:-" % kind, "-background", "none", "-resize", "%dx%d" % (OUT, OUT), "-gravity", "center",
+                            "-extent", "%dx%d" % (OUT, OUT), "png:-"], input=b, capture_output=True, timeout=15)
+    except (subprocess.TimeoutExpired, OSError):
+        raise Fail("decode", "gone")
+    if r.returncode != 0 or sniff(r.stdout) != "png":
+        raise Fail("decode", "gone")
+    return r.stdout
+
+
+# ------------------------------------------------------------------ eine Domain
+def fetch_icon(domain):
+    """Gibt PNG-Bytes zurück oder wirft Fail ('net' nur, wenn keine einzige Antwort kam)."""
+    deadline = time.monotonic() + 25
+    answered = False                    # hat irgendein Server/DNS eindeutig geantwortet?
+    page_url = "https://%s/" % domain
+    cands = []
+    fav = page_url + "favicon.ico"
+    try:
+        final, _ct, raw = http_get(page_url, HTML_MAX, deadline, accept="text/html,application/xhtml+xml")
+        answered = True
+        cands = icon_candidates(final, raw.decode("utf-8", "ignore"))
+        o = urllib.parse.urlsplit(final)
+        fav = "%s://%s/favicon.ico" % (o.scheme, o.netloc)
+    except Fail as e:
+        answered = answered or e.kind == "gone"
+    seen = set()
+    for url in cands[:4] + [fav]:
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            _f, ct, data = http_get(url, IMG_MAX, deadline, accept="image/*,*/*;q=0.5")
+            answered = True
+            if len(data) > IMG_MAX or ct.startswith("text/html"):
+                continue
+            return to_png64(data)
+        except Fail as e:
+            answered = answered or e.kind == "gone"
+    raise Fail("no icon", "gone" if answered else "net")
+
+
+def paths(domain):
+    return os.path.join(CACHE, domain + ".png"), os.path.join(CACHE, domain + ".none")
+
+
+def age(p):
+    try:
+        return time.time() - os.path.getmtime(p)
+    except OSError:
+        return None
+
+
+def ensure_dir():
+    os.makedirs(CACHE, mode=0o700, exist_ok=True)
+
+
+def process(domain, force):
+    ok_p, none_p = paths(domain)
+    a_ok, a_none = age(ok_p), age(none_p)
+    if not force:
+        if a_ok is not None and a_ok < OK_TTL:
+            return "cached"
+        if a_none is not None and a_none < NONE_TTL:
+            return "none"
+    try:
+        png = fetch_icon(domain)
+    except Fail as e:
+        if e.kind == "net":
+            return "error"
+        if a_ok is not None:            # vorhandenes Icon behalten, nur Zeitstempel erneuern
+            os.utime(ok_p)
+            return "cached"
+        with open(none_p, "w"):
+            pass
+        return "none"
+    fd, tmp = tempfile.mkstemp(dir=CACHE, suffix=".tmp")
+    with os.fdopen(fd, "wb") as f:
+        f.write(png)
+    os.replace(tmp, ok_p)
+    try:
+        os.unlink(none_p)
+    except OSError:
+        pass
+    return "ok"
+
+
+# ------------------------------------------------------------------ Befehle
+_lock = threading.Lock()
+
+
+def cmd_run(args):
+    force = "--force" in args
+    domains = []
+    for a in args:
+        if a.startswith("--"):
+            continue
+        d = clean_domain(a)
+        if d and d not in domains:
+            domains.append(d)
+        elif not d:
+            print("-", "skip", flush=True)
+    ensure_dir()
+    counts = {"ok": 0, "none": 0, "error": 0}
+
+    def work(d):
+        try:
+            st = process(d, force)
+        except Exception:
+            st = "error"
+        if st in ("ok", "none", "error"):
+            time.sleep(PAUSE)
+        with _lock:
+            if st in counts:
+                counts[st] += 1
+            print(d, st, flush=True)
+        return st
+
+    with concurrent.futures.ThreadPoolExecutor(WORKERS) as ex:
+        list(ex.map(work, domains))
+    print("done %d %d %d" % (counts["ok"], counts["none"], counts["error"]), flush=True)
+    return 0
+
+
+def cmd_list():
+    try:
+        for n in sorted(os.listdir(CACHE)):
+            if n.endswith(".png") and DOMAIN_RE.match(n[:-4]):
+                print(n[:-4])
+    except OSError:
+        pass
+    return 0
+
+
+def read_config():
+    try:
+        with open(CONFIG) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def cmd_config(args):
+    c = read_config()
+    if args[:1] == ["auto"] and len(args) == 2 and args[1] in ("on", "off"):
+        c["auto"] = args[1] == "on"
+        os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
+        with open(CONFIG, "w") as f:
+            json.dump(c, f)
+    elif args:
+        sys.stderr.write("favicons: usage: config [auto on|off]\n")
+        return 1
+    print(json.dumps({"auto": bool(c.get("auto", False))}))
+    return 0
+
+
+# ------------------------------------------------------------------ Selbsttest (ohne Netz)
+def selftest():
+    bad = 0
+
+    def check(name, cond):
+        nonlocal bad
+        print(("ok   " if cond else "FAIL ") + name)
+        bad += 0 if cond else 1
+
+    check("domain plain", clean_domain("https://www.GitHub.com/login") == "github.com")
+    check("domain port+userinfo", clean_domain("https://u:p@example.org:8443/x") == "example.org")
+    check("domain ip rejected", clean_domain("http://192.168.1.1/") is None and clean_domain("[::1]") is None)
+    check("domain no dot", clean_domain("localhost") is None)
+    check("domain idna", clean_domain("bücher.de") == "xn--bcher-kva.de")
+    check("domain traversal", clean_domain("../etc/passwd") is None and clean_domain("a b.de") is None)
+    for h in ("localhost", "127.0.0.1", "10.0.0.5", "169.254.169.254", "192.168.0.1"):
+        try:
+            public_addrs(h, 80)
+            check("ssrf blocks " + h, False)
+        except Fail:
+            check("ssrf blocks " + h, True)
+    doc = """<html><head><base href="/sub/"><link rel="shortcut icon" href="f.ico">
+      <link rel="icon" sizes="32x32" href="/a32.png"><link rel="apple-touch-icon" sizes="180x180" href="https://cdn.x/a.png">
+      <link rel="icon" href="v.svg" type="image/svg+xml"><link rel="icon" href="data:image/png;base64,AAAA"></head></html>"""
+    c = icon_candidates("https://x.org/", doc)
+    check("cands order", c[0] == "https://x.org/sub/v.svg" and c[1] == "https://cdn.x/a.png" and "https://x.org/sub/f.ico" in c and not any(u.startswith("data") for u in c))
+    check("sniff", sniff(b"\x89PNG\r\n\x1a\n....") == "png" and sniff(b"<html><svg") is None and sniff(b"<!DOCTYPE html>") is None
+          and sniff(b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>') == "svg" and sniff(b"GIF89a") is None)
+    check("svg script blocked", not svg_ok(b"<svg><script>x</script></svg>") and not svg_ok(b'<svg><image href="file:///etc/passwd"/></svg>'))
+    check("svg ok", svg_ok(b'<svg xmlns="http://www.w3.org/2000/svg"><circle r="5" fill="red"/></svg>'))
+    try:
+        from PIL import Image
+        b = io.BytesIO()
+        Image.new("RGBA", (200, 100), (200, 50, 50, 255)).save(b, "PNG")
+        out = to_png64(b.getvalue())
+        im = Image.open(io.BytesIO(out))
+        check("png -> 64x64", im.size == (64, 64) and im.format == "PNG")
+        b = io.BytesIO()
+        Image.new("RGBA", (48, 48), (10, 120, 200, 255)).save(b, "ICO", sizes=[(16, 16), (48, 48)])
+        check("ico -> 64x64", Image.open(io.BytesIO(to_png64(b.getvalue()))).size == (64, 64))
+    except ImportError:
+        check("pillow (übersprungen)", True)
+    try:
+        to_png64(b"<html>hi</html>")
+        check("html not image", False)
+    except Fail:
+        check("html not image", True)
+    return 1 if bad else 0
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    cmd, args = argv[0], argv[1:]
+    if cmd == "--selftest":
+        return selftest()
+    if cmd == "run":
+        return cmd_run(args)
+    if cmd == "list":
+        return cmd_list()
+    if cmd == "config":
+        return cmd_config(args)
+    sys.stderr.write("favicons: unknown command %s\n" % cmd)
+    return 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except KeyboardInterrupt:
+        sys.exit(130)

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Qt-Stil Kvantum „DesktopHearth“ ein-/ausschalten (Menüs mit Theme-Radien, Menü = surfaceRaised, ruhiger Hover).
+
+  scripts/kvantum-theme on       Theme erzeugen (theme/gen/kvantum.py), nach ~/.config/Kvantum/DesktopHearth kopieren,
+                                 ~/.config/Kvantum/kvantum.kvconfig -> theme=DesktopHearth, kdeglobals [KDE] widgetStyle=kvantum
+  scripts/kvantum-theme off      alles zurück wie vorher (Breeze), Kopie bleibt liegen
+  scripts/kvantum-theme status
+
+Braucht einmal: sudo dnf install kvantum   (Qt6-Plugin + KvFlat als Basis; ohne das bricht `on` ab).
+Merkdatei: ~/.local/state/desktop/kvantum-theme.json (alter widgetStyle + alte kvantum.kvconfig).
+Laufende Qt-Apps übernehmen den Stil erst nach Neustart (Dolphin, Okular, Einstellungen …).
+"""
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOME = pathlib.Path.home()
+NAME = "DesktopHearth"
+KV = HOME / ".config/Kvantum"
+STATE = HOME / ".local/state/desktop"
+MEMO = STATE / "kvantum-theme.json"
+PLUGIN = pathlib.Path("/usr/lib64/qt6/plugins/styles/libkvantum.so")
+MARK = "ERZEUGT aus theme/palette.json"
+
+
+def kread(key: str) -> str:
+    r = subprocess.run(["kreadconfig6", "--file", "kdeglobals", "--group", "KDE", "--key", key],
+                       capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+def kwrite(key: str, value: str | None):
+    if value:
+        subprocess.run(["kwriteconfig6", "--file", "kdeglobals", "--group", "KDE", "--key", key, value], check=True)
+    else:
+        subprocess.run(["kwriteconfig6", "--file", "kdeglobals", "--group", "KDE", "--key", key, "--delete"], check=True)
+
+
+def on():
+    if not PLUGIN.exists():
+        sys.exit("Kvantum fehlt. Einmal: sudo dnf install kvantum  – dann nochmal: scripts/kvantum-theme on")
+    subprocess.run([sys.executable, "-I", str(ROOT / "theme/gen/kvantum.py")], cwd=ROOT, check=True)
+    src = ROOT / "theme/out/kvantum" / NAME
+    dst = KV / NAME
+    if dst.exists():
+        if MARK not in (dst / f"{NAME}.kvconfig").read_text(errors="ignore"):
+            sys.exit(f"Abbruch: {dst} stammt nicht von hier.")
+        shutil.rmtree(dst)
+    KV.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
+    memo = json.loads(MEMO.read_text()) if MEMO.exists() else {}
+    if "widgetStyle" not in memo:  # nur beim ersten Einschalten merken
+        cfg = KV / "kvantum.kvconfig"
+        memo = {"widgetStyle": kread("widgetStyle"), "kvconfig": cfg.read_text() if cfg.exists() else None}
+        STATE.mkdir(parents=True, exist_ok=True)
+        MEMO.write_text(json.dumps(memo, indent=1))
+    (KV / "kvantum.kvconfig").write_text(f"[General]\ntheme={NAME}\n")
+    kwrite("widgetStyle", "kvantum")
+    print(f"an: Qt-Stil Kvantum/{NAME} – Qt-Apps neu starten (zurück: scripts/kvantum-theme off)")
+
+
+def off():
+    if not MEMO.exists():
+        print("war nicht an (keine Merkdatei) – nichts zu tun")
+        return
+    memo = json.loads(MEMO.read_text())
+    kwrite("widgetStyle", memo.get("widgetStyle") or None)
+    cfg = KV / "kvantum.kvconfig"
+    if memo.get("kvconfig") is None:
+        cfg.unlink(missing_ok=True)
+    else:
+        cfg.write_text(memo["kvconfig"])
+    MEMO.unlink()
+    print(f"aus: widgetStyle={memo.get('widgetStyle') or '(Standard = Breeze)'} – Qt-Apps neu starten")
+
+
+def status():
+    style = kread("widgetStyle") or "(Standard = Breeze)"
+    print(f"Kvantum-Plugin: {'da' if PLUGIN.exists() else 'fehlt (sudo dnf install kvantum)'}")
+    print(f"widgetStyle:    {style}")
+    print(f"Theme kopiert:  {'ja' if (KV / NAME).exists() else 'nein'} · Merkdatei: {'ja' if MEMO.exists() else 'nein'}")
+
+
+cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+{"on": on, "off": off, "status": status}.get(cmd, lambda: sys.exit(__doc__))()

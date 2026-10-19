@@ -1,0 +1,11 @@
+# Termine und Todos alle 5 min (erster Lauf kurz nach dem Login)
+[Unit]
+Description=Desktop: Termine und Todos alle 5 min
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

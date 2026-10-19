@@ -1,0 +1,7 @@
+#%PAM-1.0
+# Desktop-Sperrbildschirm (shell/modules/lock, Quickshell PamContext config "desktop-lock").
+# Nur das eigene Passwort prüfen (pam_unix über das setuid-Hilfsprogramm unix_chkpwd), kein nullok:
+# ein leeres Passwort entsperrt nie. 2 s Wartezeit nach Fehlversuch wie Fedoras password-auth (Plasma-Sperre).
+# "include system-auth" geht hier nicht: Includes sucht PAM im selben (eigenen) Ordner.
+auth    required    pam_faildelay.so    delay=2000000
+auth    required    pam_unix.so

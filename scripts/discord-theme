@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""discord-theme – Desktop-Look für Discord (normaler Client, RPM) mit Equicord ein- und ausschalten.
+
+  discord-theme install   Theme aus der Palette erzeugen, nach ~/.config/Equicord/themes/ kopieren, einschalten
+  discord-theme off       Theme ausschalten und die Datei wieder entfernen
+  discord-theme status    was ist da, was ist an, läuft Discord
+
+Das Theme: Flächen und Text wie die Shell, Discord-Blurple als Erkennungszeichen, Ember nur für Erwähnungen
+(theme/gen/discord.py). Läuft Discord, ändert das Skript keine Einstellungen (Equicord schreibt sie selbst),
+sondern kopiert bei install nur die Datei und nennt den Klickweg:
+Discord → Einstellungen → Equicord → Themes → „Desktop (Discord)“ einschalten.
+
+Geändert wird nur: ~/.config/Equicord/themes/desktop-discord.theme.css (neu) und in
+~/.config/Equicord/settings/settings.json der Eintrag "desktop-discord.theme.css" in "enabledThemes"
+(fehlt die Datei, wird {"enabledThemes": [...]} angelegt – den Rest setzt Equicord selbst auf Standard).
+Sicherung vorher: ~/.local/state/desktop/theme-backup-<Datum>/equicord/.
+Umgebung: EQUICORD_CONFIG (Standard ~/.config/Equicord).
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+GEN = os.path.join(REPO, "theme", "gen", "discord.py")
+NAME = "desktop-discord.theme.css"
+SRC = os.path.join(REPO, "theme", "out", "discord", NAME)
+CFG = os.path.expanduser(os.environ.get("EQUICORD_CONFIG") or "~/.config/Equicord")
+THEMES = os.path.join(CFG, "themes")
+DST = os.path.join(THEMES, NAME)
+SETTINGS = os.path.join(CFG, "settings", "settings.json")
+MARK = "ERZEUGT aus theme/palette.json"
+STATE = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+BACKUP = os.path.join(STATE, "desktop", "theme-backup-" + time.strftime("%Y-%m-%d"), "equicord")
+ME = os.path.join(REPO, os.path.relpath(os.path.realpath(__file__), REPO))
+CLICK = "Discord → Einstellungen (Zahnrad unten links) → Equicord → Themes → „Desktop (Discord)“ einschalten"
+
+
+def say(msg):
+    print(msg, flush=True)
+
+
+def die(msg):
+    print("Fehler: " + msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def running():
+    if os.environ.get("DISCORD_THEME_TEST"):  # nur für Tests mit einer Kopie der Config (EQUICORD_CONFIG)
+        return False
+    return subprocess.run(["pgrep", "-x", "Discord"], capture_output=True).returncode == 0
+
+
+def read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_json(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp-%d" % os.getpid()
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def generate():
+    # --nur-out: der Generator soll hier nicht selbst kopieren, das macht install
+    r = subprocess.run([sys.executable, "-I", GEN, "--nur-out"], cwd=REPO)
+    if r.returncode or not os.path.exists(SRC):
+        die("Theme konnte nicht erzeugt werden (python3 -I theme/gen/discord.py)")
+
+
+def foreign(path):
+    """True, wenn dort eine Datei liegt, die nicht von uns stammt."""
+    if not os.path.exists(path):
+        return False
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        return MARK not in f.read()
+
+
+def backup():
+    os.makedirs(BACKUP, mode=0o700, exist_ok=True)
+    stamp = time.strftime("%H%M%S")
+    for p in (SETTINGS, DST):
+        if os.path.exists(p):
+            shutil.copy2(p, os.path.join(BACKUP, os.path.basename(p) + "." + stamp))
+    return BACKUP
+
+
+def enabled():
+    try:
+        return NAME in (read_json(SETTINGS).get("enabledThemes") or [])
+    except (OSError, ValueError):
+        return None
+
+
+def copy_theme():
+    os.makedirs(THEMES, exist_ok=True)
+    shutil.copy2(SRC, DST)
+
+
+def install():
+    generate()
+    if foreign(DST):
+        die("%s existiert und stammt nicht von hier – nicht überschrieben." % DST)
+    if running():
+        copy_theme()
+        say("Theme-Datei kopiert: %s" % DST)
+        say("Discord läuft – Einstellungen fasse ich nicht an. Einmal per Klick einschalten:")
+        say("  " + CLICK)
+        say("(Taucht es nicht auf: in der Themes-Liste neu laden oder Discord neu starten. Ist es schon an, lädt Equicord die neue Datei selbst.)")
+        return
+    se = {}
+    if os.path.exists(SETTINGS):
+        try:
+            se = read_json(SETTINGS)
+        except ValueError:
+            die("%s ist kein gültiges JSON – nichts geändert." % SETTINGS)
+    dst = backup()
+    copy_theme()
+    se["enabledThemes"] = [t for t in (se.get("enabledThemes") or []) if t != NAME] + [NAME]
+    write_json(SETTINGS, se)
+    say("Theme installiert und eingeschaltet: %s" % DST)
+    say("Sicherung: %s" % dst)
+    say("Jetzt Discord starten (Einstellungen → Aussehen: Dunkel). Zurück: %s off" % ME)
+
+
+def off():
+    if running():
+        say("Discord läuft – Einstellungen fasse ich nicht an. Entweder per Klick ausschalten:")
+        say("  " + CLICK.replace("einschalten", "ausschalten"))
+        say("oder Discord beenden und dann: %s off" % ME)
+        return
+    dst = backup()
+    if os.path.exists(SETTINGS):
+        se = read_json(SETTINGS)
+        if NAME in (se.get("enabledThemes") or []):
+            se["enabledThemes"] = [t for t in se["enabledThemes"] if t != NAME]
+            (se.get("themeActivationModes") or {}).pop(NAME, None)
+            write_json(SETTINGS, se)
+    if os.path.exists(DST) and not foreign(DST):
+        os.remove(DST)
+    say("Theme aus und Datei entfernt. Sicherung: %s" % dst)
+
+
+def status():
+    say("Quelle:        %s" % ("erzeugt" if os.path.exists(SRC) else "noch nicht erzeugt (install erzeugt sie)"))
+    same = os.path.exists(DST) and os.path.exists(SRC) and open(DST, "rb").read() == open(SRC, "rb").read()
+    say("Themes-Ordner: %s" % (("liegt da" + ("" if same else " (anderer Stand als theme/out – install erneuert)"))
+                               if os.path.exists(DST) else "leer"))
+    en = enabled()
+    say("Eingeschaltet: %s" % ("ja" if en else "nein" if en is not None else "unbekannt (settings.json fehlt)"))
+    say("Discord läuft: %s" % ("ja" if running() else "nein"))
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "install":
+        install()
+    elif cmd == "off":
+        off()
+    elif cmd == "status":
+        status()
+    else:
+        print(__doc__)
+        sys.exit(0 if cmd in ("", "-h", "--help") else 1)
+
+
+if __name__ == "__main__":
+    main()

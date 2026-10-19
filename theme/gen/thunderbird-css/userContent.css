@@ -1,0 +1,145 @@
+/* Inhalts-Tabs und Mailtext im desktop-Look (Vorlage für theme/gen/thunderbird.py).
+ * KEINE Farbwerte hier – nur var(--desk-*), der Generator setzt Tokens und base.css an @@BASE@@ ein.
+ *
+ * Teil 1: Adressbuch, Einstellungen, Add-ons, Kontoeinstellungen, Import … laufen in type="content"-Browsern,
+ *         dort greift userChrome.css nicht – darum hier dieselbe Basis plus Adressbuch-Kacheln.
+ * Teil 2: angezeigte Mails (imap:/mailbox:/news:/ews:/…). HTML-Mails behalten ihr Layout: Thunderbirds
+ *         Dunkel-Lesemodus (mail.dark-reader.enabled) dunkelt sie ab, hier nur Grundfarben, Zitate, Links, Schrift.
+ * Webseiten und der Mail-Editor bleiben unberührt.
+ */
+
+@-moz-document url-prefix("about:addressbook"), url-prefix("about:preferences"), url-prefix("about:settings"),
+  url-prefix("about:addons"), url-prefix("about:accountsettings"), url-prefix("about:import"),
+  url-prefix("about:support"), url-prefix("about:policies"), url-prefix("about:profiles"),
+  url-prefix("about:downloads"), url-prefix("about:config"), url-prefix("about:about"),
+  url-prefix("chrome://messenger/content/"), url-prefix("chrome://calendar/content/"),
+  url-prefix("chrome://mozapps/content/"), url-prefix("chrome://global/content/") {
+
+/* @@BASE@@ */
+
+  /* ── Adressbuch: Bücher · Kontakte · Details als Kacheln mit Fuge, wie die Mail-Ansicht ── */
+  :root:has(> body > #booksPane) {
+    background: var(--desk-bg-deep) !important;
+  }
+  body:has(> #booksPane) {
+    box-sizing: border-box !important;
+    block-size: 100% !important;
+    margin: 0 !important;
+    padding: 8px !important;
+    background-color: var(--desk-bg-deep) !important;
+  }
+  body:has(> #booksPane) > hr[is="pane-splitter"]:not(.splitter-collapsed) {
+    --splitter-content-size: 8px !important;
+    --splitter-occupy-size: 8px !important;
+    border-color: transparent !important;
+  }
+  #booksPane,
+  #cardsPane,
+  #detailsPane:not([hidden], .collapsed-by-splitter) {
+    border: 1px solid var(--desk-line) !important;
+    border-radius: var(--desk-radius-md) !important;
+    overflow: hidden !important;
+  }
+  #booksPane {
+    background-color: var(--desk-surface) !important;
+    padding-inline: 4px !important;
+  }
+  #cardsPane {
+    background-color: var(--desk-bg) !important;
+  }
+  #cardsPane .tree-view-scrollable-container,
+  #cards {
+    background-color: var(--desk-bg) !important;
+  }
+  #detailsPane {
+    background-color: var(--desk-surface) !important;
+  }
+  body.is-editing #detailsPane {
+    background-color: var(--desk-surface) !important;
+    box-shadow: none !important;
+  }
+  #detailsPaneBackdrop {
+    background-color: var(--desk-dim) !important;
+  }
+  #booksPaneHeaderBar,
+  #cardsPaneHeader {
+    background-color: transparent !important;
+  }
+  #books li > .container {
+    border-radius: var(--desk-radius-sm) !important;
+  }
+  .contact-header,
+  #detailsBody section,
+  #detailsFooter {
+    border-color: var(--desk-line) !important;
+  }
+  #detailsFooter {
+    background-color: var(--desk-surface) !important;
+  }
+
+  /* ── Einstellungen / Add-ons: ruhiger Grund, Kacheln für Abschnitte ── */
+  #categories,
+  .main-content {
+    background-color: var(--desk-bg) !important;
+  }
+  #categories > .category[selected] {
+    background-color: var(--desk-accent-soft) !important;
+    color: var(--desk-text) !important;
+    border-radius: var(--desk-radius-sm) !important;
+  }
+  #categories > .category:not([selected]):hover {
+    background-color: var(--desk-hover-bg) !important;
+  }
+}
+
+@-moz-document url-prefix("imap:"), url-prefix("imap-message:"), url-prefix("mailbox:"),
+  url-prefix("mailbox-message:"), url-prefix("news:"), url-prefix("ews:"), url-prefix("owl:") {
+
+  /* Grundfarben, die messageBody.css im Dunkel-Lesemodus nutzt */
+  :root {
+    --color-gray-90: var(--desk-bg) !important;
+    --color-gray-80: var(--desk-surface) !important;
+    --color-gray-70: var(--desk-raised) !important;
+    --color-text-base-dark: var(--desk-text) !important;
+    --color-text-highlight-dark: var(--desk-accent-text) !important;
+    --color-text-highlight: var(--desk-text-muted) !important;
+    scrollbar-color: var(--desk-wood) transparent;
+  }
+
+  ::selection {
+    background-color: var(--desk-selection) !important;
+  }
+
+  /* Zitate: Holz → Creme → Moos → Amber, keine Regenbogenfarben */
+  body blockquote[type="cite"] {
+    color: var(--desk-text-muted) !important;
+    border-inline-start: 2px solid var(--desk-quote-1) !important;
+    border-radius: 0 !important;
+    padding-inline-start: 12px !important;
+  }
+  blockquote[type="cite"] blockquote[type="cite"] {
+    border-inline-start-color: var(--desk-quote-2) !important;
+  }
+  blockquote[type="cite"] blockquote[type="cite"] blockquote[type="cite"] {
+    border-inline-start-color: var(--desk-quote-3) !important;
+  }
+  blockquote[type="cite"] blockquote[type="cite"] blockquote[type="cite"] blockquote[type="cite"] {
+    border-inline-start-color: var(--desk-quote-4) !important;
+  }
+
+  /* Signatur leiser */
+  .moz-txt-sig,
+  .moz-signature {
+    color: var(--desk-text-faint) !important;
+  }
+
+  /* Reine Textmails: Festbreite in JetBrains Mono, ruhige Zeilenhöhe */
+  .moz-text-plain pre,
+  pre.moz-quote-pre {
+    font-family: var(--desk-font-mono) !important;
+    line-height: 1.5 !important;
+  }
+  .moz-text-flowed {
+    line-height: 1.5 !important;
+  }
+}

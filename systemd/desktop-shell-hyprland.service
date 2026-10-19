@@ -1,0 +1,18 @@
+# Desktop-Shell (Quickshell) unter Hyprland: startet mit der uwsm-Sitzung, Neustart bei Absturz.
+# Gegenstück zu desktop-shell.service (Plasma). Läuft nur, wenn die Sitzung Hyprland ist – unter Plasma
+# hält ExecCondition sie an. Repo-Pfad kommt aus ~/.config/desktop/hyprland.env (DESKTOP=…).
+# Installiert/entfernt über scripts/hypr install|uninstall (Link nach ~/.config/systemd/user).
+[Unit]
+Description=Desktop Shell (Quickshell, Hyprland)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+EnvironmentFile=%h/.config/desktop/hyprland.env
+ExecCondition=/bin/sh -c 'case ":$${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) exit 0 ;; esac; exit 1'
+ExecStart=/usr/bin/qs -p ${DESKTOP}/shell
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

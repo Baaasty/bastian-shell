@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Claude-Code-Verbrauch aus den lokalen Logs (~/.claude/projects/**/*.jsonl) -> JSON auf stdout.
+
+Zählt nur Zahlen (message.usage), liest/zeigt nie Inhalte. Schnell: nur Dateien, die in den
+letzten 7 Tagen geändert wurden; nur Zeilen mit "usage" werden geparst; doppelte Zeilen
+(eine Antwort = mehrere Zeilen mit gleicher message.id) zählen einmal.
+
+Ausgabe:
+{ "today":  { "tokens", "input", "output", "cacheCreate", "cacheRead", "requests",
+              "sessions", "agents", "activeMs", "topProject", "topProjectRequests" },
+  "window": { "active", "start", "reset", "tokens", "requests" },   # ms seit Epoche
+  "days":   { "YYYY-MM-DD": { "tokens", "input", "output", "cacheCreate", "cacheRead", "requests" } },
+            # letzte 7 Tage inkl. heute (lokal)
+  "updated": ms }
+tokens = input + output + cacheCreate (Cache-Lesezugriffe separat, die wären sonst dominant)
+5-h-Fenster: beginnt mit der ersten Anfrage (auf volle Stunde abgerundet), endet 5 h später;
+die erste Anfrage danach eröffnet das nächste Fenster.
+sessions = Hauptsitzungen mit Anfragen heute, agents = Subagent-Läufe (isSidechain),
+activeMs = Summe der Lücken ≤ 5 min zwischen Anfragen (grob: wie lange Claude heute gearbeitet hat),
+topProject = Repo mit den meisten Anfragen heute.
+"""
+import datetime as dt
+import json
+import os
+import sys
+import time
+
+ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+WINDOW_MS = 5 * 3600 * 1000
+ACTIVE_GAP_MS = 5 * 60 * 1000
+
+
+def project_of(cwd: str, cache: dict) -> str:
+    """Name des Git-Repos (oberster Ordner mit .git), sonst Ordnername."""
+    if not cwd:
+        return ""
+    if cwd in cache:
+        return cache[cwd]
+    path = os.path.abspath(cwd)
+    name = os.path.basename(path)
+    probe = path
+    while probe and probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, ".git")):
+            name = os.path.basename(probe)
+            break
+        probe = os.path.dirname(probe)
+    cache[cwd] = name
+    return name
+
+
+def parse_ts(value: str) -> int:
+    # "2026-10-18T01:25:24.216Z" -> ms
+    try:
+        return int(dt.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+    except (ValueError, AttributeError):
+        return 0
+
+
+def main() -> None:
+    now = int(time.time() * 1000)
+    midnight = int(dt.datetime.combine(dt.date.today(), dt.time()).timestamp() * 1000)
+    # Woche: 6 Tage vor heute Mitternacht; Fenster kann vor Mitternacht begonnen haben -> 10 h zurück reicht sicher
+    week_start = int(dt.datetime.combine(dt.date.today() - dt.timedelta(days=6), dt.time()).timestamp() * 1000)
+    since = min(week_start, now - 2 * WINDOW_MS)
+
+    seen = set()
+    events = []  # (ts, tokens) für das 5-h-Fenster
+    today = {"tokens": 0, "input": 0, "output": 0, "cacheCreate": 0, "cacheRead": 0, "requests": 0}
+    sessions = set()
+    agents = set()
+    stamps = []        # Zeitpunkte heute (für activeMs)
+    days = {(dt.date.today() - dt.timedelta(days=i)).isoformat(): dict.fromkeys(
+        ("tokens", "input", "output", "cacheCreate", "cacheRead", "requests"), 0) for i in range(7)}
+    projects = {}      # Repo -> Anfragen heute
+    pcache = {}
+
+    for dirpath, _dirs, files in os.walk(ROOT):
+        for name in files:
+            if not name.endswith(".jsonl"):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                if os.path.getmtime(path) * 1000 < since:
+                    continue
+                f = open(path, "rb")
+            except OSError:
+                continue
+            with f:
+                for line in f:
+                    if b'"usage"' not in line or b'"assistant"' not in line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except ValueError:
+                        continue
+                    msg = e.get("message")
+                    if not isinstance(msg, dict):
+                        continue
+                    u = msg.get("usage")
+                    if not isinstance(u, dict):
+                        continue
+                    ts = parse_ts(e.get("timestamp", ""))
+                    if ts < since:
+                        continue
+                    key = (msg.get("id"), e.get("requestId"))
+                    if key != (None, None):
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    inp = int(u.get("input_tokens") or 0)
+                    out = int(u.get("output_tokens") or 0)
+                    cc = int(u.get("cache_creation_input_tokens") or 0)
+                    cr = int(u.get("cache_read_input_tokens") or 0)
+                    tok = inp + out + cc
+                    events.append((ts, tok))
+                    if ts >= week_start:
+                        day = dt.date.fromtimestamp(ts / 1000).isoformat()
+                        if day in days:
+                            dd = days[day]
+                            dd["tokens"] += tok
+                            dd["input"] += inp
+                            dd["output"] += out
+                            dd["cacheCreate"] += cc
+                            dd["cacheRead"] += cr
+                            dd["requests"] += 1
+                    if ts >= midnight:
+                        today["input"] += inp
+                        today["output"] += out
+                        today["cacheCreate"] += cc
+                        today["cacheRead"] += cr
+                        today["tokens"] += tok
+                        today["requests"] += 1
+                        stamps.append(ts)
+                        if e.get("isSidechain"):
+                            agents.add(path)
+                        elif e.get("sessionId"):
+                            sessions.add(e.get("sessionId"))
+                        proj = project_of(e.get("cwd") or "", pcache)
+                        if proj:
+                            projects[proj] = projects.get(proj, 0) + 1
+
+    stamps.sort()
+    active = sum(b - a for a, b in zip(stamps, stamps[1:]) if b - a <= ACTIVE_GAP_MS)
+    top = max(projects.items(), key=lambda kv: kv[1]) if projects else ("", 0)
+    today.update({"sessions": len(sessions), "agents": len(agents), "activeMs": active,
+                  "topProject": top[0], "topProjectRequests": top[1]})
+
+    # 5-h-Fenster durchgehen
+    events.sort()
+    start = None
+    wtok = wreq = 0
+    for ts, tok in events:
+        if start is None or ts >= start + WINDOW_MS:
+            start = ts - ts % 3600000
+            wtok = wreq = 0
+        wtok += tok
+        wreq += 1
+    active = start is not None and now < start + WINDOW_MS
+    window = {
+        "active": active,
+        "start": start if active else 0,
+        "reset": start + WINDOW_MS if active else 0,
+        "tokens": wtok if active else 0,
+        "requests": wreq if active else 0,
+    }
+
+    json.dump({"today": today, "window": window, "days": days, "updated": now}, sys.stdout)
+    sys.stdout.write("\n")
+
+
+if __name__ == "__main__":
+    main()

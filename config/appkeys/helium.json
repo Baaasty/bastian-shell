@@ -1,0 +1,65 @@
+{
+  "name": "Helium",
+  "about": "Browser (Chromium). Vimium C keys work on normal web pages, not on helium:// pages or the Web Store",
+  "match": { "class": ["helium", "google-chrome", "chromium", "chromium-browser"] },
+  "order": 10,
+  "sections": [
+    {
+      "name": "Tabs",
+      "keys": [
+        { "keys": "Ctrl+T", "title": "New tab" },
+        { "keys": "Ctrl+W", "title": "Close tab" },
+        { "keys": "Ctrl+Shift+T", "title": "Reopen closed tab" },
+        { "keys": ["Ctrl+Tab", "Ctrl+PgDn"], "title": "Next tab" },
+        { "keys": ["Ctrl+Shift+Tab", "Ctrl+PgUp"], "title": "Previous tab" },
+        { "keys": "Ctrl+1…8", "title": "Go to tab 1…8" },
+        { "keys": "Ctrl+9", "title": "Go to last tab" },
+        { "keys": "Ctrl+Shift+A", "title": "Search open tabs" },
+        { "keys": "Ctrl+N", "title": "New window" },
+        { "keys": "Ctrl+Shift+N", "title": "New incognito window" }
+      ]
+    },
+    {
+      "name": "Page",
+      "keys": [
+        { "keys": ["Ctrl+L", "Alt+D"], "title": "Address bar" },
+        { "keys": "Alt+←", "title": "Back" },
+        { "keys": "Alt+→", "title": "Forward" },
+        { "keys": ["F5", "Ctrl+R"], "title": "Reload" },
+        { "keys": "Ctrl+Shift+R", "title": "Reload without cache" },
+        { "keys": "Ctrl+F", "title": "Find in page" },
+        { "keys": "Ctrl+D", "title": "Bookmark this page" },
+        { "keys": "Ctrl+H", "title": "History" },
+        { "keys": "Ctrl+J", "title": "Downloads" },
+        { "keys": ["Ctrl+Plus", "Ctrl+-", "Ctrl+0"], "title": "Zoom in / out / reset" },
+        { "keys": "F11", "title": "Fullscreen" },
+        { "keys": ["F12", "Ctrl+Shift+I"], "title": "Developer tools" }
+      ]
+    },
+    {
+      "name": "Vimium C",
+      "keys": [
+        { "keys": "f", "title": "Click a link (letters on every link)" },
+        { "keys": "Shift+F", "title": "Open a link in a new tab" },
+        { "keys": "j k", "title": "Scroll down / up" },
+        { "keys": "d u", "title": "Half a page down / up" },
+        { "keys": "g g", "title": "Top of the page" },
+        { "keys": "Shift+G", "title": "Bottom of the page" },
+        { "keys": "Shift+H L", "title": "Back / forward" },
+        { "keys": "Shift+J K", "title": "Tab left / right" },
+        { "keys": "o", "title": "Open URL, bookmark or history" },
+        { "keys": "Shift+O", "title": "Same, in a new tab" },
+        { "keys": "Shift+T", "title": "Search open tabs" },
+        { "keys": "b", "title": "Open a bookmark" },
+        { "keys": "/", "title": "Find in page", "note": "n / Shift+N next / previous match" },
+        { "keys": "x", "title": "Close tab" },
+        { "keys": "Shift+X", "title": "Restore closed tab" },
+        { "keys": "y y", "title": "Copy page URL" },
+        { "keys": "g i", "title": "Jump into the first text field" },
+        { "keys": "i", "title": "Insert mode (keys go to the page)" },
+        { "keys": "Esc", "title": "Leave a mode / cancel hints" },
+        { "keys": "?", "title": "All Vimium C keys" }
+      ]
+    }
+  ]
+}

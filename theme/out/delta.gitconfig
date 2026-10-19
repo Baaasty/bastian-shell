@@ -1,0 +1,39 @@
+# ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/delta.py
+[core]
+	pager = delta
+[interactive]
+	diffFilter = delta --color-only
+[merge]
+	conflictStyle = zdiff3
+[diff]
+	colorMoved = default
+[delta]
+	navigate = true
+	dark = true
+	syntax-theme = desktop
+	line-numbers = true
+	hyperlinks = true
+	hyperlinks-file-link-format = "file://{path}"
+	file-style = "#F6ECDD" bold
+	file-decoration-style = "#DB6B4C" ul
+	file-modified-label = "~"
+	file-added-label = "+"
+	file-removed-label = "-"
+	hunk-header-style = file line-number syntax
+	hunk-header-decoration-style = "#5C4031" box
+	hunk-header-file-style = "#D2C2AE"
+	hunk-header-line-number-style = "#A07C5C"
+	plus-style = syntax "#363227"
+	plus-emph-style = syntax "#4D4D3A"
+	minus-style = syntax "#40251E"
+	minus-emph-style = syntax "#623229"
+	zero-style = syntax
+	line-numbers-zero-style = "#604B38"
+	line-numbers-plus-style = "#A3B083"
+	line-numbers-minus-style = "#E0604F"
+	line-numbers-left-style = "#5C4031"
+	line-numbers-right-style = "#5C4031"
+	blame-palette = "#211A15 #30241C"
+	merge-conflict-begin-symbol = ▼
+	merge-conflict-end-symbol = ▲
+	map-styles = bold purple => syntax "#473822", bold cyan => syntax "#3A2E23"

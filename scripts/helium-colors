@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Helium (Chromium) in Desktop-Farben – überall: Tabs, Toolbar, Adressleiste + Vorschläge, Menüs (⋮, Rechtsklick),
+Seitenleiste, Einstellungsseiten, Dialoge, Knöpfe.
+
+  scripts/helium-colors on       Farbe setzen (nur bei geschlossenem Helium)
+  scripts/helium-colors off      vorherigen Stand zurück (Helium-Standard: Grau)
+  scripts/helium-colors status
+
+Wie: Helium/Chromium färbt seine ganze Oberfläche (Material-Farbsystem) aus EINER Grundfarbe – dieselbe Einstellung
+wie „Customize Helium“ → Farbe. Grundfarbe = Palette-`accent`, Variante „neutral“ (dunkle Flächen fast exakt
+bg/surfaceRaised, Terrakotta als Akzent), Modus dunkel. Geprüft mit Helium 0.19.4.1 (Chromium 155):
+  Rahmen #291D19 (≈ bg #2A211B) · Toolbar/aktiver Tab #41332F (≈ surfaceRaised #45372E) · Menüs/Vorschläge warm dunkel.
+Wichtig: Eine Theme-Erweiterung („Desktop Theme“) ersetzt die Grundfarbe – dann sind Menüs wieder grau.
+In Helium also NICHT „Desktop Theme“ laden (die Erweiterung „Desktop“ für die neue Tab-Seite bleibt).
+
+Schreibt in ~/.config/net.imput.helium/Default/Preferences:
+  browser.theme.user_color2 / color_variant2 / color_scheme2, löscht is_grayscale2, extensions.theme.id=user_color_theme_id
+Sicherung: Preferences.vor-desktop-colors (ganze Datei, einmal) + ~/.local/state/desktop/helium-colors.json (alter Theme-Block).
+Ohne Skript, per Klick: ⋮ → Customize Helium → Dark → Stift-Kachel (eigene Farbe) → #DB6B4C.
+"""
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOME = pathlib.Path.home()
+PROFILE = HOME / ".config/net.imput.helium"
+PREFS = PROFILE / "Default/Preferences"
+STATE = HOME / ".local/state/desktop"
+MEMO = STATE / "helium-colors.json"
+VARIANT_NEUTRAL, SCHEME_DARK = 2, 2  # ui::mojom::BrowserColorVariant::kNeutral, BrowserColorScheme::kDark
+
+
+def running() -> bool:
+    lock = PROFILE / "SingletonLock"
+    if lock.is_symlink():
+        pid = os.readlink(lock).rsplit("-", 1)[-1]
+        if pid.isdigit() and pathlib.Path(f"/proc/{pid}").exists():
+            return True
+    # vorsichtig: irgendein Helium-Prozess -> als laufend werten
+    return subprocess.run(["pgrep", "-x", "helium"], capture_output=True).returncode == 0
+
+
+def seed() -> tuple[str, int]:
+    pal = json.loads((ROOT / "theme/palette.json").read_text())
+    accent = pal["themes"][pal["defaultTheme"]]["accent"]
+    argb = 0xFF000000 | int(accent.lstrip("#"), 16)
+    return accent, argb - (1 << 32)  # Chromium speichert SkColor als vorzeichenbehaftetes int
+
+
+def load() -> dict:
+    if not PREFS.exists():
+        sys.exit(f"{PREFS} fehlt – Helium einmal starten und schließen.")
+    return json.loads(PREFS.read_text())
+
+
+def save(p: dict):
+    tmp = PREFS.with_suffix(".desktop-tmp")
+    tmp.write_text(json.dumps(p, separators=(",", ":")))
+    os.replace(tmp, PREFS)
+
+
+def guard():
+    if running():
+        sys.exit("Helium läuft – erst schließen (Helium wird nicht von hier beendet), dann nochmal.")
+
+
+def on():
+    guard()
+    p = load()
+    accent, value = seed()
+    old_bt = p.get("browser", {}).get("theme")
+    old_et = p.get("extensions", {}).get("theme")
+    bt = p.setdefault("browser", {}).setdefault("theme", {})
+    et = p.setdefault("extensions", {}).setdefault("theme", {})
+    if not MEMO.exists():
+        backup = PREFS.with_name("Preferences.vor-desktop-colors")
+        if not backup.exists():
+            shutil.copy2(PREFS, backup)
+        STATE.mkdir(parents=True, exist_ok=True)
+        MEMO.write_text(json.dumps({"browser.theme": old_bt, "extensions.theme": old_et}, indent=1))
+    bt.update({"user_color2": value, "color_variant2": VARIANT_NEUTRAL, "color_scheme2": SCHEME_DARK})
+    bt.pop("is_grayscale2", None)
+    for k in ("pack", "system_theme"):
+        et.pop(k, None)
+    et["id"] = "user_color_theme_id"
+    save(p)
+    print(f"an: Grundfarbe {accent}, Variante neutral, dunkel – beim nächsten Helium-Start aktiv "
+          "(zurück: scripts/helium-colors off)")
+
+
+def off():
+    guard()
+    if not MEMO.exists():
+        print("war nicht an (keine Merkdatei) – nichts zu tun")
+        return
+    memo = json.loads(MEMO.read_text())
+    p = load()
+    for group, key in (("browser", "browser.theme"), ("extensions", "extensions.theme")):
+        if memo[key] is None:
+            p.get(group, {}).pop("theme", None)  # gab es vorher nicht
+        else:
+            p.setdefault(group, {})["theme"] = memo[key]
+    save(p)
+    MEMO.unlink()
+    print("aus: Theme-Einstellungen wie vorher (Sicherung der ganzen Datei bleibt: Preferences.vor-desktop-colors)")
+
+
+def status():
+    p = load()
+    bt = p.get("browser", {}).get("theme", {})
+    et = p.get("extensions", {}).get("theme", {})
+    col = bt.get("user_color2")
+    hexcol = f"#{col & 0xFFFFFF:06X}" if isinstance(col, int) else "–"
+    print(f"Helium läuft: {'ja' if running() else 'nein'}")
+    print(f"Grundfarbe: {hexcol} · Variante {bt.get('color_variant2', '–')} · Modus {bt.get('color_scheme2', '–')}"
+          f" · grau: {bt.get('is_grayscale2', False)} · Theme: {et.get('id') or et.get('pack') or 'Standard'}")
+    print(f"Desktop-Farben: {'an' if MEMO.exists() else 'aus'}")
+
+
+cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+{"on": on, "off": off, "status": status}.get(cmd, lambda: sys.exit(__doc__))()

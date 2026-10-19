@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Desktop-Einstieg „New Project“: Ordner ~/Workspace/<name> anlegen, VS Code dort öffnen und einen
+# Claude-Code-Tab mit vorausgefülltem „/new-project <name>“ aufmachen (Bastian drückt nur Enter).
+#   new-project <name> [--dry-run]
+# Weg: VS-Code-Erweiterung anthropic.claude-code, URI vscode://anthropic.claude-code/open?prompt=…
+# (öffnet einen neuen Claude-Tab im aktiven Fenster, Text steht im Eingabefeld, wird nicht abgeschickt).
+# Ohne VS Code: Konsole im Ordner mit `claude "/new-project <name>"`.
+# Der Skill /new-project ist privat (nicht in diesem Repo). Fehlt er in ~/.claude/skills (oder .claude/skills
+# im Ordner), wird stattdessen „/desktop-project add <ordner>“ vorausgefüllt (claude/skills/desktop-project,
+# nur Desktop-Registry); fehlt auch der, öffnet nur VS Code und eine Meldung nennt scripts/project add.
+# Wird aus der Shell per systemd-run --user --scope gestartet (Launch.cmd) – überlebt Quickshell-Neustarts.
+set -euo pipefail
+
+name="${1:-}"
+dry=0
+[ "${2:-}" = "--dry-run" ] && dry=1
+# wie im Skill und in Templates.newProject: Umlaute umschreiben, Leerzeichen -> "-", nur Buchstaben, Ziffern, . _ -
+name=$(printf '%s' "$name" | LC_ALL=C sed -E 's/ä/ae/g; s/ö/oe/g; s/ü/ue/g; s/Ä/Ae/g; s/Ö/Oe/g; s/Ü/Ue/g; s/ß/ss/g;
+  s/^[[:space:]]+|[[:space:]]+$//g; s/[[:space:]]+/-/g; s/[^A-Za-z0-9._-]//g; s/^[.-]+//')
+[ -n "$name" ] || { echo "Aufruf: new-project <name>" >&2; exit 1; }
+
+dir="$HOME/Workspace/$name"
+has_skill() { [ -e "$HOME/.claude/skills/$1/SKILL.md" ] || [ -e "$dir/.claude/skills/$1/SKILL.md" ]; }
+if has_skill new-project; then prompt="/new-project $name"
+elif has_skill desktop-project; then prompt="/desktop-project add ~/Workspace/$name"
+else prompt=""; fi
+uri="vscode://anthropic.claude-code/open?prompt=$(python3 -Ic 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$prompt")"
+code_bin=""
+if [ -x /usr/bin/code ]; then code_bin=/usr/bin/code
+elif flatpak info com.visualstudio.code >/dev/null 2>&1; then code_bin="flatpak run com.visualstudio.code"; fi
+ext=$(ls -d "$HOME"/.vscode/extensions/anthropic.claude-code-* 2>/dev/null | tail -1 || true)
+
+notify() { notify-send -a "New Project" -i folder-new "$1" "${2:-}" 2>/dev/null || true; }
+
+if [ $dry = 1 ]; then
+  printf 'dir=%s\nexists=%s\ncode=%s\nclaude-ext=%s\nprompt=%s\nuri=%s\n' "$dir" "$([ -e "$dir" ] && echo ja || echo nein)" \
+    "${code_bin:-–}" "${ext:-–}" "${prompt:-–}" "${prompt:+$uri}"
+  exit 0
+fi
+
+mkdir -p "$dir"
+
+if [ -z "$prompt" ]; then
+  # kein passender Claude-Skill: nur Ordner öffnen, Rest per Hand
+  if [ -n "$code_bin" ]; then $code_bin --new-window "$dir"; else konsole --workdir "$dir" & disown; fi
+  notify "Project „$name“" "No /new-project skill installed – register it with: scripts/project add ~/Workspace/$name"
+  exit 0
+fi
+
+if [ -n "$code_bin" ] && [ -n "$ext" ]; then
+  # warten, bis das Fenster den Ordner geladen hat (VS Code legt dafür workspaceStorage/*/workspace.json an),
+  # damit die URI im neuen Fenster landet und nicht in einem anderen Projekt
+  want="\"folder\": \"file://$dir\""
+  known() { grep -qsF "$want" "$HOME"/.config/Code/User/workspaceStorage/*/workspace.json; }
+  before=0; known && before=1
+  $code_bin --new-window "$dir"
+  if [ $before = 1 ]; then
+    sleep 5    # Ordner war schon mal offen: kein frisches Signal, fester Puffer fürs Fenster
+  else
+    for _ in $(seq 1 40); do known && break; sleep 0.5; done
+    sleep 2.5  # Fenster steht, Erweiterung kurz hochkommen lassen
+  fi
+  $code_bin --open-url "$uri"
+  notify "Project „$name“" "VS Code is open – press Enter in the Claude tab to set it up."
+elif [ -n "$code_bin" ]; then
+  $code_bin --new-window "$dir"
+  notify "Project „$name“" "Claude extension missing – type $prompt in Claude."
+else
+  # Fallback: Konsole mit Claude CLI im Projektordner
+  konsole --workdir "$dir" -e claude "$prompt" &
+  disown
+  notify "Project „$name“" "Claude is running in Konsole."
+fi

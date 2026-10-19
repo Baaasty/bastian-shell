@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Discord (Chat-Client), Spotify, Thunderbird, Equibop (alter Rückfall) starten – natives RPM zuerst, Flatpak als
+# Fallback (Umzug: scripts/flatpak-to-native).
+#
+#   scripts/app-run <discord|spotify|thunderbird|equibop> [argumente …]   starten (exec, Argumente gehen an die App)
+#   scripts/app-run --which <app>                                  native | flatpak | none (Exit 1 bei none)
+#
+# Discord/Equibop: das RPM gewinnt immer, sobald es installiert ist (richtet sich beim ersten Start selbst ein,
+# Anmeldung neu); das Flatpak nur, wenn das RPM fehlt.
+# Spotify/Thunderbird: nativ gewinnt, sobald das RPM da ist UND (die Daten umgezogen sind ODER das Flatpak fehlt).
+# So öffnet die Shell vor dem Umzug nicht aus Versehen ein leeres natives Profil (das würde den Umzug blockieren).
+# Selbst nicht über systemd-run starten – das macht der Aufrufer (Launch.cmd, mail-watch spawn_app).
+set -u
+
+flatpak_id() {
+    case "$1" in
+        equibop)     echo io.github.equicord.equibop ;;
+        discord)     echo com.discordapp.Discord ;;
+        spotify)     echo com.spotify.Client ;;
+        thunderbird) echo org.mozilla.thunderbird_esr ;;
+    esac
+}
+
+native_bin() {
+    case "$1" in
+        equibop)     echo /opt/Equibop/equibop ;;
+        discord)     echo /usr/bin/discord ;;
+        spotify)     echo /usr/bin/spotify ;;
+        thunderbird) echo /usr/bin/thunderbird ;;
+    esac
+}
+
+# natives Profil schon da (umgezogen oder frisch eingerichtet)? Discord/Equibop: egal, das RPM gewinnt immer.
+native_data() {
+    case "$1" in
+        equibop|discord) true ;;
+        spotify)     [ -n "$(ls -A "$HOME/.config/spotify" 2>/dev/null)" ] ;;
+        thunderbird) [ -f "$HOME/.thunderbird/profiles.ini" ] || [ -f "$HOME/.config/mozilla/thunderbird/profiles.ini" ] ;;
+    esac
+}
+
+which_app() {
+    local bin fp has_native=0 has_fp=0
+    bin=$(native_bin "$1"); fp=$(flatpak_id "$1")
+    [ -x "$bin" ] && has_native=1
+    command -v flatpak >/dev/null 2>&1 && flatpak info "$fp" >/dev/null 2>&1 && has_fp=1
+    if (( has_native )) && { (( ! has_fp )) || native_data "$1"; }; then echo native
+    elif (( has_fp )); then echo flatpak
+    else echo none; return 1
+    fi
+}
+
+if [ "${1:-}" = "--which" ]; then
+    [ -n "$(flatpak_id "${2:-}")" ] || { echo "unbekannte App: ${2:-}" >&2; exit 2; }
+    which_app "$2"
+    exit
+fi
+
+app=${1:-}
+[ -n "$(flatpak_id "$app")" ] || { echo "Aufruf: app-run <discord|spotify|thunderbird|equibop> [argumente …] | --which <app>" >&2; exit 2; }
+shift
+case "$(which_app "$app")" in
+    native)
+        if [ "$app" = discord ]; then
+            # eigenes Equicord (Plugin desktopBridge) nach einem Discord-Update neu einspielen; still, nie abbrechen
+            "$(dirname -- "$(readlink -f -- "$0")")/equicord" inject --if-needed || true
+            # Kameras/Plugin sollen auch minimiert/weggeräumt weiterlaufen (Chromium drosselt sonst Hintergrund-Fenster)
+            set -- --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding "$@"
+        fi
+        if [ "$app" = discord ] || [ "$app" = equibop ]; then
+            # Absturz alle paar Minuten im Call (SIGSEGV in libnvcuvid): Video-Dekodieren über VA-API → nvidia-vaapi-driver
+            # (offiziell nur für Firefox). Darum ohne Hardware-Videodekodierung; Zeichnen bleibt auf der GPU.
+            # Unbekannter Treibername = VA-API startet nicht, auch nicht im eigenen Voice-Modul von Discord.
+            export LIBVA_DRIVER_NAME=none
+            set -- --disable-accelerated-video-decode "$@"
+        fi
+        exec "$(native_bin "$app")" "$@" ;;
+    flatpak) exec flatpak run "$(flatpak_id "$app")" "$@" ;;
+    *)       echo "$app ist weder als RPM noch als Flatpak installiert" >&2; exit 1 ;;
+esac

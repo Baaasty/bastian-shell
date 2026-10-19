@@ -1,0 +1,15 @@
+#!/bin/sh
+# Farbe eines Pixels -> Zwischenablage. Aufruf: snip-color BILD.png X Y   (Bildpixel, 0-basiert)
+# Ausgabe: #RRGGBB (oder ERR). Liest nur das eingefrorene Bild von Snip, nichts wird gespeichert.
+img=$1 x=$2 y=$3
+[ -r "$img" ] && [ "$x" -ge 0 ] 2>/dev/null && [ "$y" -ge 0 ] 2>/dev/null || { echo ERR; exit 1; }
+set -- $(magick identify -format '%w %h' "$img[0]" 2>/dev/null) "$x" "$y"
+[ "$3" -lt "$1" ] && [ "$4" -lt "$2" ] || { echo ERR; exit 1; }
+hex=$(magick "$img" -depth 8 -crop 1x1+"$x"+"$y" +repage -format '%[hex:p{0,0}]' info: 2>/dev/null | cut -c1-6)
+case $hex in
+    [0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]) ;;
+    *) echo ERR; exit 1 ;;
+esac
+out="#$(printf '%s' "$hex" | tr a-f A-F)"
+printf '%s' "$out" | wl-copy >/dev/null 2>&1
+echo "$out"

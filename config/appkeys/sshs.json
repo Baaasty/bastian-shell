@@ -1,0 +1,25 @@
+{
+  "name": "sshs",
+  "about": "Server window (scripts/sshs) · everything from Kitty works too",
+  "match": { "class": ["sshs"] },
+  "order": 55,
+  "sections": [
+    {
+      "name": "Server window",
+      "keys": [
+        { "keys": "Ctrl+Space", "title": "Terminal ↔ files", "note": "the folder comes along" },
+        { "keys": "Ctrl+Shift+T", "title": "New tab to the same server" },
+        { "keys": "Ctrl+Shift+U", "title": "Upload files", "note": "into the folder that is open" },
+        { "keys": "Ctrl+Shift+D", "title": "Download files", "note": "from this folder to ~/Downloads" }
+      ]
+    },
+    {
+      "name": "Server list (sshs)",
+      "keys": [
+        { "keys": "Enter", "title": "Connect" },
+        { "keys": "Ctrl+N", "title": "Add a server" },
+        { "keys": "Ctrl+E", "title": "Edit the list" }
+      ]
+    }
+  ]
+}

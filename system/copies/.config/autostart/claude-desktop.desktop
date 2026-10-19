@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Claude
+Comment=Claude Desktop (läuft in der distrobox „ubuntu“)
+Exec=/usr/bin/distrobox-enter -n ubuntu -- claude-desktop --startup
+Icon=claude-desktop
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Szenen steuern (config/scenes.json, Engine: shell/services/Scenes.qml, Doku: docs/SCENES.md).
+
+  scene list                  alle Szenen, an/aus, Schritte (läuft auch ohne Shell)
+  scene on|off|toggle NAME    Szene schalten (über die laufende Shell)
+  scene NAME                  wie toggle
+  scene ... --dry-run         nur zeigen, was passieren würde (liest echten Gerätezustand, ändert nichts)
+  scene status                was gerade an ist, Protokoll des letzten Laufs
+  scene check                 config/scenes.json auf Fehler prüfen (ohne Shell)
+"""
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SHELL = ROOT / "shell"
+CONF = ROOT / "config" / "scenes.json"
+STATE = Path.home() / ".local" / "state" / "desktop" / "scenes.json"
+TYPES = {"hue", "keylight", "brightness", "dnd", "bar", "park", "music", "focus", "cmd"}
+
+
+def ipc(*args):
+    # nach einem Shell-Reload antwortet qs kurz mit "Not ready to accept queries yet." -> ein paarmal wiederholen
+    for _ in range(8):
+        r = subprocess.run(["qs", "ipc", "--any-display", "-p", str(SHELL), "call", "scene", *args],
+                           capture_output=True, text=True, timeout=15)
+        out = (r.stdout + r.stderr).strip()
+        if "not ready" not in out.lower():
+            break
+        time.sleep(0.5)
+    if r.returncode != 0:
+        raise RuntimeError(out or "qs ipc failed")
+    return r.stdout.strip()
+
+
+def load_conf():
+    try:
+        return json.loads(CONF.read_text())
+    except (OSError, ValueError) as e:
+        sys.exit(f"scene: {CONF} nicht lesbar: {e}")
+
+
+def active_names():
+    try:
+        return set(json.loads(STATE.read_text()).get("active", {}))
+    except (OSError, ValueError):
+        return set()
+
+
+def step_text(s):
+    t = s.get("do", "?")
+    rest = ", ".join(f"{k}={v}" for k, v in s.items() if k not in ("do", "enabled"))
+    off = "" if s.get("enabled", True) else "  (disabled)"
+    return f"{t}" + (f" {rest}" if rest else "") + off
+
+
+def cmd_list():
+    conf = load_conf()
+    on = active_names()
+    link = conf.get("settings", {}).get("focusLink", True)
+    for name, sc in conf.get("scenes", {}).items():
+        print(f"{'[on] ' if name in on else '[off]'} {name:10} {sc.get('title', '')}")
+        for label in ("on", "off"):
+            for s in sc.get(label, []):
+                print(f"        {label:3} {step_text(s)}")
+    print(f"\nfocus link: {'on' if link else 'off'} (scene '{conf.get('settings', {}).get('focusScene', 'focus')}')")
+
+
+def cmd_check():
+    conf = load_conf()
+    bad = 0
+    cmds = conf.get("commands", {})
+    for name, sc in conf.get("scenes", {}).items():
+        for label in ("on", "off"):
+            for i, s in enumerate(sc.get(label, [])):
+                where = f"{name}.{label}[{i}]"
+                if s.get("do") not in TYPES:
+                    print(f"{where}: unknown step type {s.get('do')!r}")
+                    bad += 1
+                if s.get("do") == "cmd":
+                    a = cmds.get(s.get("name"))
+                    if not (isinstance(a, list) and a and all(isinstance(x, str) for x in a)):
+                        print(f"{where}: command {s.get('name')!r} missing in \"commands\" (list of strings)")
+                        bad += 1
+    fs = conf.get("settings", {}).get("focusScene", "focus")
+    if conf.get("settings", {}).get("focusLink", True) and fs not in conf.get("scenes", {}):
+        print(f"settings.focusScene {fs!r} is not a scene")
+        bad += 1
+    print("ok" if not bad else f"{bad} problem(s)")
+    return 1 if bad else 0
+
+
+def wait_done():
+    """Wartet, bis die Shell fertig ist (Lesen der Geräte dauert bis ~4 s), und druckt das Protokoll."""
+    time.sleep(0.15)
+    for _ in range(60):
+        st = json.loads(ipc("status"))
+        if not st["busy"] and not st["queued"]:
+            break
+        time.sleep(0.25)
+    for line in st["last"]:
+        print(line)
+    return st
+
+
+def main(argv):
+    dry = "--dry-run" in argv
+    argv = [a for a in argv if a != "--dry-run"]
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    verb = argv[0]
+    if verb == "list":
+        cmd_list()
+        return 0
+    if verb == "check":
+        return cmd_check()
+    try:
+        if verb == "status":
+            st = json.loads(ipc("status"))
+            print("on:", ", ".join(st["active"]) or "-")
+            print("focus link:", "on" if st["focusLink"] else "off")
+            for line in st["last"]:
+                print(line)
+            return 0
+        if verb == "probe":
+            print(ipc("probe"))
+            return 0
+        if verb in ("on", "off", "toggle"):
+            name = argv[1] if len(argv) > 1 else ""
+        else:   # "scene game" = toggle
+            verb, name = "toggle", verb
+        if not name:
+            sys.exit("scene: Name fehlt (scene list zeigt sie)")
+        if name not in load_conf().get("scenes", {}):
+            sys.exit(f"scene: unbekannte Szene {name!r} (scene list)")
+        if dry:
+            ipc("dry", name, verb)
+        else:
+            ipc(verb, name)
+        wait_done()
+    except RuntimeError as e:
+        print(f"scene: Shell nicht erreichbar ({e}). Läuft Quickshell?", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

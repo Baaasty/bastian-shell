@@ -1,0 +1,44 @@
+{
+  "name": "Discord",
+  "about": "Ctrl+/ shows Discord's own list",
+  "match": { "class": ["discord", "equibop", "vesktop", "com.discordapp.discord"] },
+  "order": 20,
+  "sections": [
+    {
+      "name": "Navigate",
+      "keys": [
+        { "keys": "Ctrl+K", "title": "Quick switcher", "note": "type a server, channel or name, Enter jumps" },
+        { "keys": "Alt+↑ ↓", "title": "Previous / next channel" },
+        { "keys": "Alt+Shift+↑ ↓", "title": "Previous / next unread channel" },
+        { "keys": "Ctrl+Alt+↑ ↓", "title": "Previous / next server" },
+        { "keys": "Ctrl+Shift+Alt+↑ ↓", "title": "Unread channel with mention" },
+        { "keys": "Ctrl+F", "title": "Search messages" },
+        { "keys": "Ctrl+I", "title": "Inbox (mentions, unreads)" },
+        { "keys": "Ctrl+P", "title": "Pinned messages" },
+        { "keys": "Ctrl+U", "title": "Member list" }
+      ]
+    },
+    {
+      "name": "Messages",
+      "keys": [
+        { "keys": "Esc", "title": "Mark channel as read" },
+        { "keys": "Shift+Esc", "title": "Mark server as read" },
+        { "keys": "↑", "title": "Edit your last message", "note": "in the empty message box" },
+        { "keys": "Shift+PgUp", "title": "Jump to oldest unread message" },
+        { "keys": "Ctrl+E", "title": "Emoji picker" },
+        { "keys": "Ctrl+G", "title": "GIF picker" },
+        { "keys": "Ctrl+Shift+U", "title": "Upload a file" },
+        { "keys": "Shift+Enter", "title": "New line without sending" }
+      ]
+    },
+    {
+      "name": "Voice",
+      "keys": [
+        { "keys": "Ctrl+Shift+M", "title": "Mute microphone" },
+        { "keys": "Ctrl+Shift+D", "title": "Deafen" },
+        { "keys": "Ctrl+Enter", "title": "Answer incoming call" },
+        { "keys": "Esc", "title": "Decline incoming call" }
+      ]
+    }
+  ]
+}

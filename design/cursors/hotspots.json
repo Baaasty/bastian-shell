@@ -1,0 +1,462 @@
+{
+  "default": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [
+      "arrow",
+      "left_ptr"
+    ]
+  },
+  "pointer": {
+    "hotspot": {
+      "x": 12,
+      "y": 3
+    },
+    "aliases": [
+      "hand2",
+      "hand1"
+    ]
+  },
+  "text": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "xterm",
+      "ibeam"
+    ]
+  },
+  "vertical-text": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": []
+  },
+  "crosshair": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "cross",
+      "tcross"
+    ]
+  },
+  "help": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [
+      "question_arrow",
+      "whats_this"
+    ]
+  },
+  "not-allowed": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "crossed_circle",
+      "forbidden"
+    ]
+  },
+  "no-drop": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [
+      "dnd-no-drop"
+    ]
+  },
+  "grab": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "openhand"
+    ]
+  },
+  "grabbing": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "closedhand",
+      "dnd-none"
+    ]
+  },
+  "move": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "fleur",
+      "size_all"
+    ]
+  },
+  "all-scroll": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": []
+  },
+  "copy": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [
+      "dnd-copy"
+    ]
+  },
+  "alias": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [
+      "dnd-link",
+      "link"
+    ]
+  },
+  "context-menu": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": []
+  },
+  "cell": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "plus"
+    ]
+  },
+  "col-resize": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "sb_h_double_arrow",
+      "split_h"
+    ]
+  },
+  "row-resize": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "sb_v_double_arrow",
+      "split_v"
+    ]
+  },
+  "ns-resize": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "n-resize",
+      "s-resize",
+      "size_ver",
+      "top_side",
+      "bottom_side",
+      "v_double_arrow"
+    ]
+  },
+  "ew-resize": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "e-resize",
+      "w-resize",
+      "size_hor",
+      "left_side",
+      "right_side",
+      "h_double_arrow"
+    ]
+  },
+  "nwse-resize": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "nw-resize",
+      "se-resize",
+      "size_fdiag",
+      "top_left_corner",
+      "bottom_right_corner"
+    ]
+  },
+  "nesw-resize": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [
+      "ne-resize",
+      "sw-resize",
+      "size_bdiag",
+      "top_right_corner",
+      "bottom_left_corner"
+    ]
+  },
+  "zoom-in": {
+    "hotspot": {
+      "x": 13,
+      "y": 13
+    },
+    "aliases": []
+  },
+  "zoom-out": {
+    "hotspot": {
+      "x": 13,
+      "y": 13
+    },
+    "aliases": []
+  },
+  "pencil": {
+    "hotspot": {
+      "x": 4,
+      "y": 28
+    },
+    "aliases": [
+      "draft"
+    ]
+  },
+  "color-picker": {
+    "hotspot": {
+      "x": 4,
+      "y": 28
+    },
+    "aliases": []
+  },
+  "wait-00": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-01": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-02": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-03": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-04": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-05": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-06": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-07": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-08": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-09": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-10": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "wait-11": {
+    "hotspot": {
+      "x": 16,
+      "y": 16
+    },
+    "aliases": [],
+    "frame_of": "wait"
+  },
+  "progress-00": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-01": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-02": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-03": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-04": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-05": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-06": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-07": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-08": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-09": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-10": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "progress-11": {
+    "hotspot": {
+      "x": 4,
+      "y": 3
+    },
+    "aliases": [],
+    "frame_of": "progress"
+  },
+  "_animation": {
+    "wait": {
+      "frames": 12,
+      "delay_ms": 60
+    },
+    "progress": {
+      "frames": 12,
+      "delay_ms": 60
+    }
+  },
+  "_viewBox": 32,
+  "_render_sizes": [
+    24,
+    32,
+    48,
+    64
+  ]
+}

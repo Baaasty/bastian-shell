@@ -1,0 +1,654 @@
+#!/usr/bin/env bash
+# PC neu aufsetzen: Fedora 44 (KDE oder Workstation) → Hyprland 0.56 + Quickshell („desktop“), Plasma bleibt Rückfall.
+# Standard ist --dry-run: zeigt nur, was fehlt und was passieren würde. Ändern erst mit --apply.
+#
+#   system/bootstrap                 = --dry-run (prüft nur lesend, kein sudo)
+#   system/bootstrap --apply         wirklich ausführen (sudo wird einmal am Anfang gefragt, nur für Schritt 1–3)
+#   system/bootstrap --only 2,10     nur diese Schritte (geht mit und ohne --apply)
+#   system/bootstrap --list          Schritte auflisten ([sudo] = braucht Root)
+#   --kwin          zusätzlich der KWin-/Plasma-Rice (%-Pakete aus dnf.txt, Shell-Paket, rice on) – Standard: nur Hyprland
+#   --no-hyprland   Hyprland-Teil auslassen (Builds in 6, Sitzung in 10) – z. B. mit --kwin für den alten Stand
+#   --optional      auch die ?-Pakete aus dnf.txt installieren (sonst nur Hinweis)
+#
+# Idempotent: Jeder Schritt prüft erst, ob es schon da ist. Zweimal laufen lassen schadet nicht.
+# Listen: system/packages/*.txt · Dotfiles: system/dotfiles.md (+ copies.txt, sync) · Anleitung: system/README.md
+# Secrets kommen hier nie rein – die Hinweise am Ende (Schritt 11) sagen, was von Hand bleibt.
+# Kein pipefail: die Prüfungen nutzen `… | grep -q`, das sonst per SIGPIPE fälschlich "fehlt" meldet.
+set -u
+
+# ---------------------------------------------------------------- Pfade (AP 13 Repo-Umbau: NUR HIER ändern)
+WORKSPACE="$HOME/Workspace"
+REPO_NAME="desktop"                    # AP 13: wird "shell"
+REPO_BRANCH="hyprland"                 # AP 13: wird "main" (Hyprland-Stand); KWin-Stand dann Branch "kwin"
+EXPECTED_REPO="$WORKSPACE/$REPO_NAME"  # Ort des Klons auf einem frischen PC (README Schritt 2)
+# Weitere Checkouts desselben Repos (Worktrees). Links/Pfade, die in einen davon zeigen, gelten als „unsere“
+# und werden NICHT umgebogen (sonst springt das System zwischen den Checkouts hin und her).
+# Umbiegen auf einen Checkout = die Installer (scripts/hypr install, scripts/session install …) von dort aus aufrufen.
+CHECKOUTS=("$WORKSPACE/desktop" "$WORKSPACE/desktop-hyprland")   # AP 13: nur noch "$WORKSPACE/shell"
+EQUICORD_DIR="$HOME/.local/src/equicord"                          # wie scripts/equicord (EQUICORD_DIR)
+# ----------------------------------------------------------------
+
+SYS="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+REPO="$(dirname "$SYS")"               # der Checkout, aus dem bootstrap läuft – alles Neue zeigt hierhin
+PKG="$SYS/packages"
+DOT="$SYS/dotfiles"
+STATE="$HOME/.local/state/desktop"
+UNITS_DIR="$HOME/.config/systemd/user"
+
+GODOT_VER="4.7.2"
+PNPM_VER="12.8.1"                      # nur für den Equicord-Build (other.txt)
+FONT_DIR="$HOME/.local/share/fonts/desktop"
+# Dotfiles: system/dotfiles/ wird nach ~ VERLINKT, system/copies/ (Liste: copies.txt) wird KOPIERT,
+# weil Apps diese Dateien atomar neu schreiben. Abgleich danach: system/sync (siehe dotfiles.md)
+COPIES="$SYS/copies"
+DOCKER_LINE='export DOCKER_HOST=unix:///run/user/$UID/podman/podman.sock'   # alte Zeile in ~/.bashrc → jetzt .bashrc.d/desktop.sh
+# Backup-Ziel fürs Original: <datei>.vor-desktop daneben (Bastians Muster). Ausnahmen ~/.bashrc.d/ (Bash
+# lädt dort jede Datei) und ~/.local/bin/ (läge im PATH) → Backup nach ~/.local/state/desktop/dotfiles-backup/.
+backup_of() {
+    local rel="$1" dst="$HOME/$1" b
+    if [[ "$rel" == .bashrc.d/* || "$rel" == .local/bin/* ]]; then b="$STATE/dotfiles-backup/$rel"
+    else b="$dst.vor-desktop"; fi
+    [ -e "$b" ] && b="$b-$(date +%Y%m%d-%H%M%S)"
+    printf '%s' "$b"
+}
+
+STEPS=(
+    "1|[sudo] Paketquellen (RPM Fusion, COPR Quickshell + Hyprland + Helium, VS Code)"
+    "2|[sudo] dnf-Pakete (+ ffmpeg-Swap, KDE-Gruppe auf Workstation, KDE-Apps entfernen, GoXLR-RPM, Spotify per lpf)"
+    "3|[sudo] System (kvm, vhost_vsock, nodocker, Anmeldung Plasma Login, Firewall, podman.socket)"
+    "4|Flatpaks (System-Flatpaks fragen per polkit)"
+    "5|VS Code-Erweiterungen"
+    "6|User-Tools (Bun, Claude CLI, Starship, Godot, pnpm, Schriften, icp; Hyprland: hyprflow, Share-Picker, Equicord bauen)"
+    "7|distrobox ubuntu + Claude Desktop"
+    "8|Dotfiles (system/dotfiles → ~ verlinken, system/copies → ~ kopieren)"
+    "9|Desktop gemeinsam (Theme erzeugen + an, Kitty, Wallpaper, Claude-Skills, Helium-Host, User-Dienste)"
+    "10|Sitzung: Hyprland (hypr install, Shell-Dienst, Session-Restore, Share-Picker, Equicord) · mit --kwin KWin-Rice"
+    "11|Manuelle Schritte (Hinweise)"
+)
+
+APPLY=0
+ONLY=""
+KWIN=0
+HYPR=1
+OPTIONAL=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --apply) APPLY=1 ;;
+        --dry-run) APPLY=0 ;;
+        --only) ONLY=",${2:-},"; shift ;;
+        --kwin) KWIN=1 ;;
+        --no-hyprland) HYPR=0 ;;
+        --optional) OPTIONAL=1 ;;
+        --list) for s in "${STEPS[@]}"; do printf '  %2s  %s\n' "${s%%|*}" "${s#*|}"; done; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+        *) echo "Unbekannt: $1 (--help)" >&2; exit 1 ;;
+    esac
+    shift
+done
+
+FAILS=()
+TODO=0
+SUDO_TODO=0
+head_() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
+ok()    { printf '  \033[32mok\033[0m  %s\n' "$1"; }
+info()  { printf '  ..  %s\n' "$1"; }
+warn()  { printf '  \033[33m!!\033[0m  %s\n' "$1"; }
+# run "<Befehl als String>" – dry: nur zeigen · apply: ausführen, Fehler sammeln, weitermachen.
+# Befehle mit sudo bekommen die Marke [sudo] (gelb).
+run() {
+    local tag=""
+    TODO=$((TODO + 1))
+    if [[ "$1" == *sudo\ * ]]; then tag=$'\033[33m[sudo]\033[0m '; SUDO_TODO=$((SUDO_TODO + 1)); fi
+    if (( APPLY )); then
+        printf '  \033[36m+\033[0m   %s%s\n' "$tag" "$1"
+        bash -c "$1" || { warn "fehlgeschlagen: $1"; FAILS+=("$1"); }
+    else
+        printf '  \033[36m→\033[0m   %s%s\n' "$tag" "$1"
+    fi
+}
+want() { [ -z "$ONLY" ] || [[ "$ONLY" == *",$1,"* ]]; }
+have() { command -v "$1" >/dev/null 2>&1; }
+trim() { local s="${1%%#*}"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+step_title() { for s in "${STEPS[@]}"; do [ "${s%%|*}" = "$1" ] && head_ "$1 · ${s#*|}"; done; }
+
+# link_owner <ziel> <pfad-im-repo>: Ist <ziel> ein Link auf <checkout>/<pfad-im-repo> (dieser Checkout oder einer aus
+# CHECKOUTS)? Dann den Checkout ausgeben, sonst Rückgabe 1.
+link_owner() {
+    local dst="$1" rel="$2" t c
+    [ -L "$dst" ] || return 1
+    t="$(readlink -f "$dst")"
+    for c in "$REPO" "${CHECKOUTS[@]}"; do
+        [ "$t" = "$(readlink -f "$c" 2>/dev/null)/$rel" ] && { printf '%s' "$c"; return 0; }
+    done
+    return 1
+}
+# checkout_of <pfad>: In welchem unserer Checkouts liegt das (Link-)Ziel? (Ausgabe: Checkout, sonst Rückgabe 1)
+checkout_of() {
+    local t c r
+    t="$(readlink -f "$1" 2>/dev/null)" || return 1
+    for c in "$REPO" "${CHECKOUTS[@]}"; do
+        r="$(readlink -f "$c" 2>/dev/null)" || continue
+        [ -n "$r" ] && [[ "$t" == "$r"/* ]] && { printf '%s' "$c"; return 0; }
+    done
+    return 1
+}
+# Pfad-Hinweis, wenn etwas auf einen anderen Checkout zeigt als den, aus dem bootstrap läuft
+where_note() { [ "$1" = "$REPO" ] && printf '' || printf ' (zeigt auf %s)' "$1"; }
+# Ist <pfad> einer unserer Checkouts?
+is_checkout() { local c; for c in "$REPO" "${CHECKOUTS[@]}"; do [ "$1" = "$c" ] && return 0; done; return 1; }
+
+# unit_on <datei aus systemd/> [<unit zum Aktivieren>]: User-Unit aus dem Repo verlinken + aktivieren (enable --now)
+unit_on() {
+    local u="$1" en="${2:-$1}" f="$UNITS_DIR/$1" c
+    if c="$(link_owner "$f" "systemd/$u")"; then
+        if systemctl --user is-enabled "$en" >/dev/null 2>&1; then ok "$en$(where_note "$c")"; return 0; fi
+        run "systemctl --user daemon-reload && systemctl --user enable --now $en"
+        return 0
+    fi
+    if [ -e "$f" ] || [ -L "$f" ]; then
+        warn "$f ist eine fremde Datei/ein fremder Link → wird als $f.vor-desktop gesichert"
+        run "mv '$f' '$f.vor-desktop'"
+    fi
+    run "mkdir -p '$UNITS_DIR' && ln -s '$REPO/systemd/$u' '$f'"
+    run "systemctl --user daemon-reload && systemctl --user enable --now $en"
+}
+
+GUI=0
+[ -n "${WAYLAND_DISPLAY:-}" ] && GUI=1
+IN_HYPR=0; [[ ":${XDG_CURRENT_DESKTOP:-}:" == *:Hyprland:* ]] && IN_HYPR=1
+IN_PLASMA=0; [[ ":${XDG_CURRENT_DESKTOP:-}:" == *:KDE:* ]] && (( GUI )) && IN_PLASMA=1
+
+# ---------------------------------------------------------------- 0 Vorab
+head_ "0 · Vorab"
+(( APPLY )) && echo "  Modus: APPLY (ändert das System)" || echo "  Modus: dry-run (ändert nichts – echt: --apply)"
+echo "  Ziel:  $( (( HYPR )) && printf 'Hyprland' )$( (( HYPR && KWIN )) && printf ' + ' )$( (( KWIN )) && printf 'KWin-Rice' )$( (( HYPR || KWIN )) || printf 'nur Basis (weder Hyprland noch KWin)' ) · Plasma bleibt installiert (Rückfall)$( (( OPTIONAL )) && printf ' · mit ?-Paketen' )"
+[ "$(id -u)" = 0 ] && { echo "Nicht als root starten – sudo kommt im Skript." >&2; exit 1; }
+. /etc/os-release 2>/dev/null
+[ "${ID:-}" = fedora ] && ok "Fedora ${VERSION_ID:-?} (${VARIANT_ID:-?})" || warn "kein Fedora (${ID:-?}) – Listen sind für Fedora 44"
+[ "${VERSION_ID:-}" = 44 ] || warn "Listen stammen von Fedora 44, hier ${VERSION_ID:-?}"
+if [ "$REPO" = "$EXPECTED_REPO" ]; then ok "Repo liegt in $EXPECTED_REPO"
+elif is_checkout "$REPO"; then
+    others=(); for c in "${CHECKOUTS[@]}"; do [ "$c" != "$REPO" ] && [ -d "$c" ] && others+=("$c"); done
+    info "läuft aus dem Checkout $REPO (Worktree) – Neues zeigt hierhin${others[*]:+, Links nach ${others[*]} bleiben}"
+else warn "Repo liegt in $REPO, erwartet $EXPECTED_REPO (Pfade oben im Skript, AP 13)"; fi
+branch="$(git -C "$REPO" branch --show-current 2>/dev/null)"
+if [ -f "$REPO/hypr/hyprland.conf" ]; then ok "Branch ${branch:-?} hat den Hyprland-Stand"
+elif (( HYPR )); then warn "kein hypr/ in $REPO (Branch ${branch:-?}) → erst: git -C $REPO checkout $REPO_BRANCH"; HYPR=0; fi
+# sudo nur, wenn ein Schritt dabei ist, der es braucht (1–3: Repos, Pakete, System)
+if (( APPLY )) && { want 1 || want 2 || want 3; }; then
+    sudo -v || { echo "sudo abgelehnt – Abbruch." >&2; exit 1; }
+fi
+
+# ---------------------------------------------------------------- 1 Repos
+if want 1; then
+    step_title 1
+    if rpm -q rpmfusion-free-release rpmfusion-nonfree-release >/dev/null 2>&1; then ok "RPM Fusion free + nonfree"
+    else run "sudo dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-\$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-\$(rpm -E %fedora).noarch.rpm"; fi
+
+    coprs="$(dnf copr list 2>/dev/null)"
+    # Quickshell 0.3.2 (Fedoras 0.2.1 kann keinen Blur) · Hyprland 0.56 + uwsm/hypridle/hyprlock/hyprsunset · Helium (Browser)
+    for c in errornointernet/quickshell sdegler/hyprland imput/helium; do
+        if grep -qx "copr.fedorainfracloud.org/$c" <<<"$coprs"; then ok "COPR $c"
+        else run "sudo dnf copr enable -y $c"; fi
+    done
+
+    if [ -f /etc/yum.repos.d/vscode.repo ]; then ok "vscode"
+    else
+        run "sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc"
+        run "printf '[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc\n' | sudo tee /etc/yum.repos.d/vscode.repo >/dev/null"
+    fi
+    for r in google-chrome brave-browser; do
+        [ -f "/etc/yum.repos.d/$r.repo" ] && info "$r.repo liegt noch da (Browser nicht installiert) – optional: sudo rm /etc/yum.repos.d/$r.repo"
+    done
+fi
+
+# ---------------------------------------------------------------- 2 dnf
+if want 2; then
+    step_title 2
+    # dnf.txt: paket = installieren · -paket = entfernen · ?paket = optional (--optional) · %paket = nur KWin (--kwin)
+    inst=(); rem=(); opt=(); kw=()
+    while IFS= read -r line; do
+        p="$(trim "$line")"; [ -z "$p" ] && continue
+        case "$p" in
+            -*) rem+=("${p#-}") ;;
+            \?*) opt+=("${p#\?}") ;;
+            %*) kw+=("${p#%}") ;;
+            *) inst+=("$p") ;;
+        esac
+    done < "$PKG/dnf.txt"
+    (( KWIN )) && inst+=("${kw[@]}")
+    (( OPTIONAL )) && inst+=("${opt[@]}")
+
+    # Fedora Workstation (GNOME): Plasma als Grundlage nachholen (Qt/KDE-Look, Dolphin, Konsole, Plasma Login, Rückfall-Sitzung)
+    if [ "${VARIANT_ID:-}" != kde ] && ! rpm -q plasma-workspace >/dev/null 2>&1; then
+        run "sudo dnf group install -y kde-desktop"
+    fi
+
+    # ffmpeg: Fedoras ffmpeg-free gegen das volle ffmpeg aus RPM Fusion tauschen
+    if rpm -q ffmpeg >/dev/null 2>&1; then ok "ffmpeg (RPM Fusion)"
+    else run "sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing"; fi
+
+    missing=()
+    for p in "${inst[@]}"; do
+        [ "$p" = ffmpeg ] && continue
+        rpm -q --whatprovides "$p" >/dev/null 2>&1 || missing+=("$p")
+    done
+    ok "$(( ${#inst[@]} - ${#missing[@]} )) von ${#inst[@]} Paketen schon da"
+    (( ${#missing[@]} )) && run "sudo dnf install -y ${missing[*]}"
+    if (( ! OPTIONAL )); then
+        o=(); for p in "${opt[@]}"; do rpm -q "$p" >/dev/null 2>&1 || o+=("$p"); done
+        (( ${#o[@]} )) && info "optional, nicht installiert (nur mit --optional): ${o[*]}"
+    fi
+    if (( ! KWIN )); then
+        k=(); for p in "${kw[@]}"; do rpm -q "$p" >/dev/null 2>&1 || k+=("$p"); done
+        (( ${#k[@]} )) && info "nur KWin, nicht installiert (nur mit --kwin): ${k[*]}"
+    fi
+    # Spotify: lpf-spotify-client baut das RPM spotify-client lokal aus Spotifys Paket (darf nicht verteilt werden).
+    # lpf baut als Gruppe pkg-build (einmal hinzufügen, dann neu anmelden); `lpf update` = Lizenz bestätigen, bauen, installieren.
+    if rpm -q spotify-client >/dev/null 2>&1; then ok "spotify-client (lpf)"
+    else
+        id -nG "$USER" | tr ' ' '\n' | grep -qx pkg-build && ok "Gruppe pkg-build" \
+            || { run "sudo usermod -aG pkg-build $USER"; info "pkg-build greift erst nach neuem Anmelden (oder: newgrp pkg-build)"; }
+        run "lpf update spotify-client"
+    fi
+    # git-lfs kam früher als Binary nach ~/.local/bin – das steht im PATH vor /usr/bin und überdeckt das RPM
+    [ -x "$HOME/.local/bin/git-lfs" ] && info "altes Binary ~/.local/bin/git-lfs überdeckt das dnf-Paket → nach dem Install: rm ~/.local/bin/git-lfs"
+
+    present=()
+    for p in "${rem[@]}"; do rpm -q "$p" >/dev/null 2>&1 && present+=("$p"); done
+    if (( ${#present[@]} )); then run "sudo dnf remove -y ${present[*]}"; else ok "unerwünschte KDE-Apps sind weg (${#rem[@]})"; fi
+
+    # GoXLR Utility: kein Repo, RPM aus dem neuesten GitHub-Release (die Nicht-SUSE-Datei)
+    if rpm -q goxlr-utility >/dev/null 2>&1; then ok "goxlr-utility"
+    else
+        run "url=\$(curl -fsSL https://api.github.com/repos/GoXLR-on-Linux/goxlr-utility/releases/latest | jq -r '.assets[].browser_download_url' | grep '\\.rpm\$' | grep -vi suse | head -1) && t=\$(mktemp -d) && curl -fsSLo \"\$t/goxlr.rpm\" \"\$url\" && sudo dnf install -y \"\$t/goxlr.rpm\"; rm -rf \"\$t\""
+    fi
+    # Chat-Client = Discord (RPM) + eigener Equicord-Build (Schritt 6/10). Equibop wird nicht mehr installiert (Roadmap 18.10.).
+    rpm -q equibop >/dev/null 2>&1 && info "equibop ist noch installiert – fliegt raus, wenn Discord+Equicord läuft: sudo dnf remove equibop"
+    info "NVIDIA: akmod baut das Kernelmodul beim nächsten Boot – Secure Boot: MOK einschreiben (Schritt 11)"
+fi
+
+# ---------------------------------------------------------------- 3 System
+if want 3; then
+    step_title 3
+    id -nG "$USER" | tr ' ' '\n' | grep -qx kvm && ok "Gruppe kvm" || run "sudo usermod -aG kvm $USER"
+    [ -f /etc/modules-load.d/vhost_vsock.conf ] && ok "vhost_vsock beim Boot" \
+        || run "echo vhost_vsock | sudo tee /etc/modules-load.d/vhost_vsock.conf >/dev/null && sudo modprobe vhost_vsock"
+    [ -e /etc/containers/nodocker ] && ok "/etc/containers/nodocker" || run "sudo touch /etc/containers/nodocker"
+    # Anmeldung: Plasma Login Manager (zeigt Plasma UND „Hyprland (uwsm-managed)“). Auf Workstation stand hier GDM.
+    dm="$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)"
+    if [[ "$dm" == */plasmalogin.service ]]; then ok "Anmeldung: Plasma Login"
+    elif [ -e /usr/lib/systemd/system/plasmalogin.service ]; then
+        info "Anmeldung ist ${dm##*/} – wechselt auf plasmalogin (greift nach Neustart)"
+        run "sudo systemctl enable --force plasmalogin.service"
+    else info "plasmalogin.service fehlt noch (plasma-login-manager kommt mit Schritt 2)"; fi
+    if have firewall-cmd && rpm -q krdp >/dev/null 2>&1; then
+        # --list-services braucht kein root (liest über D-Bus). rdp nur für krdp (Plasma-Fernzugriff)
+        firewall-cmd --list-services 2>/dev/null | tr ' ' '\n' | grep -qx rdp && ok "Firewall: rdp offen (krdp)" \
+            || run "sudo firewall-cmd --permanent --add-service=rdp && sudo firewall-cmd --reload"
+    fi
+    systemctl --user is-enabled podman.socket >/dev/null 2>&1 && ok "podman.socket (User)" || run "systemctl --user enable --now podman.socket"
+    info "Wake-on-LAN: nmcli connection modify \"<Kabel-Verbindung>\" 802-3-ethernet.wake-on-lan magic (Name je nach System, Schritt 11)"
+fi
+
+# ---------------------------------------------------------------- 4 Flatpak
+if want 4; then
+    step_title 4
+    if ! have flatpak; then warn "flatpak fehlt"; else
+        for scope in system user; do
+            flatpak remotes --"$scope" --columns=name 2>/dev/null | grep -qx flathub && ok "Remote flathub ($scope)" \
+                || run "flatpak remote-add --$scope --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo"
+        done
+        bundles=()
+        while IFS= read -r line; do
+            l="$(trim "$line")"; [ -z "$l" ] && continue
+            read -r a b c rest <<<"$l"
+            if [ "$a" = override ]; then
+                # override <scope> <app> --filesystem=<pfad>
+                if flatpak override --"$b" --show "$c" 2>/dev/null | grep -qF "${rest#--filesystem=}"; then ok "Override $c $rest"
+                else run "flatpak override --$b $rest $c"; fi
+                continue
+            fi
+            scope="$a"; remote="$b"; app="$c"
+            if [ "$remote" = bundle ]; then
+                flatpak info --"$scope" "$app" >/dev/null 2>&1 || bundles+=("$app")
+                continue
+            fi
+            if flatpak info --"$scope" "$app" >/dev/null 2>&1; then ok "$app"
+            else run "flatpak install --$scope -y --noninteractive $remote $app"; fi
+        done < "$PKG/flatpak.txt"
+        (( ${#bundles[@]} )) && warn "aus .flatpak-Dateien, von Hand (flatpak install --user <datei>.flatpak): ${bundles[*]}"
+        # Vor dem Umstieg auf RPM waren das Flatpaks – Daten umziehen, dann entfernen (nie automatisch)
+        old=(); for a in com.discordapp.Discord com.spotify.Client org.mozilla.thunderbird_esr; do
+            flatpak info "$a" >/dev/null 2>&1 && old+=("$a"); done
+        (( ${#old[@]} )) && info "alte Flatpaks noch da (jetzt RPM): ${old[*]} → Umzug: scripts/flatpak-to-native status"
+    fi
+fi
+
+# ---------------------------------------------------------------- 5 VS Code
+if want 5; then
+    step_title 5
+    if ! have code; then
+        n=$(grep -cvE '^\s*(#|$)' "$PKG/vscode-extensions.txt")
+        info "code noch nicht installiert (Schritt 2) – danach $n Erweiterungen"
+        run "while read -r e; do case \"\$e\" in ''|'#'*) continue;; esac; code --install-extension \"\$e\"; done < '$PKG/vscode-extensions.txt'"
+    else
+        have_ext="$(code --list-extensions 2>/dev/null | tr 'A-Z' 'a-z')"
+        miss=()
+        while IFS= read -r line; do
+            e="$(trim "$line")"; [ -z "$e" ] && continue
+            grep -qx "$(tr 'A-Z' 'a-z' <<<"$e")" <<<"$have_ext" || miss+=("$e")
+        done < "$PKG/vscode-extensions.txt"
+        if (( ${#miss[@]} )); then
+            for e in "${miss[@]}"; do run "code --install-extension $e"; done
+        else ok "alle Erweiterungen da"; fi
+    fi
+    info "Theme „Desktop“ + Projekt-Erweiterung kommen aus theme/gen/all.py (Schritt 9)"
+fi
+
+# ---------------------------------------------------------------- 6 User-Tools
+if want 6; then
+    step_title 6
+    [ -d "$HOME/.local/bin" ] || run "mkdir -p ~/.local/bin"
+
+    if [ -x "$HOME/.local/bin/bun" ]; then ok "bun $("$HOME/.local/bin/bun" --version 2>/dev/null)"
+    else run "t=\$(mktemp -d) && curl -fsSLo \"\$t/bun.zip\" https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64.zip && unzip -qj \"\$t/bun.zip\" '*/bun' -d ~/.local/bin && chmod +x ~/.local/bin/bun && ln -sf bun ~/.local/bin/bunx; rm -rf \"\$t\""; fi
+
+    if have claude || [ -x "$HOME/.local/bin/claude" ]; then ok "Claude CLI"
+    else run "curl -fsSL https://claude.ai/install.sh | bash"; fi
+
+    if [ -x "$HOME/.local/bin/starship" ]; then ok "starship"
+    else run "curl -fsSL https://starship.rs/install.sh | sh -s -- -y -b ~/.local/bin"; fi
+
+    if [ -x "$HOME/.local/bin/godot" ]; then ok "godot"
+    else run "t=\$(mktemp -d) && curl -fsSLo \"\$t/g.zip\" https://github.com/godotengine/godot/releases/download/${GODOT_VER}-stable/Godot_v${GODOT_VER}-stable_linux.x86_64.zip && mkdir -p ~/.local/opt/godot && unzip -qo \"\$t/g.zip\" -d ~/.local/opt/godot && ln -sf ~/.local/opt/godot/Godot_v${GODOT_VER}-stable_linux.x86_64 ~/.local/bin/godot; rm -rf \"\$t\""; fi
+
+    # pnpm user-lokal (nur für den Equicord-Build), npm kommt mit nodejs (Schritt 2)
+    if [ -x "$HOME/.local/bin/pnpm" ]; then ok "pnpm $("$HOME/.local/bin/pnpm" --version 2>/dev/null)"
+    else run "npm i -g pnpm@$PNPM_VER --prefix ~/.local"; fi
+
+    if fc-list 2>/dev/null | grep -q 'JetBrainsMono Nerd Font'; then ok "JetBrains Mono Nerd Font"
+    else run "t=\$(mktemp -d) && curl -fsSLo \"\$t/jb.zip\" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip && mkdir -p '$FONT_DIR' && unzip -qo \"\$t/jb.zip\" 'JetBrainsMonoNerdFont-*.ttf' -d '$FONT_DIR' && fc-cache -f; rm -rf \"\$t\""; fi
+    if fc-list 2>/dev/null | grep -q 'Material Symbols Rounded'; then ok "Material Symbols Rounded"
+    else run "mkdir -p '$FONT_DIR' && curl -fsSLo '$FONT_DIR/MaterialSymbolsRounded.ttf' 'https://github.com/google/material-design-icons/raw/master/variablefont/MaterialSymbolsRounded%5BFILL,GRAD,opsz,wght%5D.ttf' && fc-cache -f"; fi
+
+    if [ -x "$HOME/Apps/icp/.venv/bin/icp" ]; then ok "icp (iCloud-Passwörter)"
+    else run "git clone https://github.com/Sank6/iCloud-Keychain-for-Linux ~/Apps/icp && python3 -m venv ~/Apps/icp/.venv && ~/Apps/icp/.venv/bin/pip install -q -U pip && ~/Apps/icp/.venv/bin/pip install -q -e ~/Apps/icp && ln -sf ~/Apps/icp/.venv/bin/icp ~/.local/bin/icp"; fi
+    info "Anisette-Container für icp: Quadlet aus den Dotfiles (Schritt 8)"
+
+    # Fremd-Builds für Hyprland (cargo/gcc/gtk4-devel aus Schritt 2). Die Skripte klonen selbst und prüfen den festen Stand.
+    if (( HYPR )); then
+        have cargo || info "cargo fehlt noch (Schritt 2) – die Builds unten brauchen es"
+        if [ -x "$HOME/.local/bin/hyprflow" ]; then ok "hyprflow (Session-Restore)"
+        else run "'$REPO/scripts/session' build"; fi
+        if [ -x "$HOME/.local/bin/hyprland-preview-share-picker" ]; then ok "Share-Picker gebaut"
+        else run "'$REPO/scripts/share-picker' build"; fi
+        # Equicord (Discord-Mod mit Plugin desktopBridge aus equicord/): klonen + bauen, Einspielen in Schritt 10
+        if [ -d "$EQUICORD_DIR/.git" ]; then ok "Equicord-Klon ($EQUICORD_DIR)"
+        else run "git clone https://github.com/Equicord/Equicord '$EQUICORD_DIR'"; fi
+        if [ -f "$EQUICORD_DIR/dist/desktop/patcher.js" ]; then ok "Equicord gebaut"
+        else run "'$REPO/scripts/equicord' build"; fi
+    fi
+fi
+
+# ---------------------------------------------------------------- 7 distrobox
+if want 7; then
+    step_title 7
+    CD_MISSING=0
+    if ! have distrobox; then info "distrobox fehlt noch (Schritt 2)"; fi
+    if podman container exists ubuntu 2>/dev/null; then
+        ok "Container ubuntu"
+        if [ "$(podman container inspect ubuntu --format '{{.State.Running}}' 2>/dev/null)" = true ]; then
+            podman exec ubuntu dpkg -s claude-desktop >/dev/null 2>&1 && ok "claude-desktop im Container" || CD_MISSING=1
+            podman exec ubuntu dpkg -s breeze-icon-theme >/dev/null 2>&1 && ok "breeze-icon-theme im Container" || CD_MISSING=1
+        else
+            info "Container läuft nicht – Paketstand nicht geprüft (Installation unten ist idempotent)"
+            CD_MISSING=1
+        fi
+    else
+        run "distrobox create -Y -n ubuntu -i docker.io/library/ubuntu:24.04 --additional-flags '--group-add keep-groups --device /dev/kvm --device /dev/vhost-vsock'"
+        CD_MISSING=1
+    fi
+    if [ "${CD_MISSING:-0}" = 1 ]; then
+        run "distrobox enter ubuntu -- bash -c 'set -e; sudo curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc https://downloads.claude.ai/claude-desktop/key.asc; echo \"deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] https://downloads.claude.ai/claude-desktop/apt/stable stable main\" | sudo tee /etc/apt/sources.list.d/claude-desktop.list >/dev/null; sudo apt-get update -q; sudo apt-get install -y -q claude-desktop breeze-icon-theme'"
+        info "sudo oben läuft IM Container (distrobox, ohne Passwort) – nicht auf dem Host"
+    fi
+    if [ -f "$HOME/.local/share/applications/ubuntu-com.anthropic.Claude.desktop" ]; then ok "Starter exportiert"
+    else run "distrobox enter ubuntu -- distrobox-export --app claude-desktop"; fi
+    if grep -q '^Exec=.*distrobox-enter' "$HOME/.config/autostart/claude-desktop.desktop" 2>/dev/null; then ok "Autostart Claude Desktop"
+    else warn "Autostart ~/.config/autostart/claude-desktop.desktop fehlt oder zeigt auf den Container-Pfad – kommt richtig aus system/copies (Schritt 8). Nicht in Claude Desktop „Beim Anmelden starten“ umschalten: das schreibt wieder den Container-Pfad"; fi
+fi
+
+# ---------------------------------------------------------------- 8 Dotfiles
+if want 8; then
+    step_title 8
+    if [ ! -d "$DOT" ]; then
+        info "noch kein system/dotfiles/ (system/dotfiles.md)"
+    else
+        reload=0
+        # a) Symlinks: system/dotfiles/<pfad> → ~/<pfad>; ein vorhandenes Original wird vorher weggesichert.
+        #    Ein Link in einen anderen Checkout (CHECKOUTS) zählt als ok und bleibt.
+        [ -d "$HOME/.ssh" ] || run "mkdir -m 700 ~/.ssh"
+        while IFS= read -r -d '' src; do
+            rel="${src#"$DOT"/}"; dst="$HOME/$rel"
+            if c="$(link_owner "$dst" "system/dotfiles/$rel")"; then ok "$rel (Link)$(where_note "$c")"; continue; fi
+            if [ -e "$dst" ] || [ -L "$dst" ]; then
+                if [ -L "$dst" ]; then warn "$rel ist ein fremder Link → $(readlink "$dst")"
+                elif cmp -s "$src" "$dst"; then info "$rel: eigene Datei, gleich wie im Repo → wird Link"
+                else warn "$rel: eigene Datei WEICHT AB vom Repo – vorher prüfen: diff ~/$rel $src"; fi
+                b="$(backup_of "$rel")"
+                run "mkdir -p '$(dirname "$b")' && mv '$dst' '$b'"
+            fi
+            run "mkdir -p '$(dirname "$dst")' && ln -s '$src' '$dst'"
+            [[ "$rel" == .config/systemd/* || "$rel" == .config/containers/systemd/* ]] && reload=1
+        done < <(find "$DOT" -type f ! -name '*.example' -print0 | sort -z)   # *.example = Vorlage, nie verlinken
+        # Vorlagen ohne eigene Fassung (lokal, gitignored – z. B. .ssh/config): nur Hinweis, nichts anlegen
+        while IFS= read -r -d '' ex; do
+            [ -e "${ex%.example}" ] || info "${ex#"$DOT"/} ist nur eine Vorlage – eigene Fassung: cp '$ex' '${ex%.example}' (anpassen), dann nochmal Schritt 8"
+        done < <(find "$DOT" -type f -name '*.example' -print0 | sort -z)
+        # .bashrc bleibt Fedora-Standard: die alte DOCKER_HOST-Zeile steht jetzt in ~/.bashrc.d/desktop.sh
+        # (den Starship-Block verwaltet weiter `scripts/rice theme on|off`, Schritt 9)
+        if [ -f "$DOT/.bashrc.d/desktop.sh" ] && grep -qxF "$DOCKER_LINE" "$HOME/.bashrc" 2>/dev/null; then
+            b="$(backup_of .bashrc)"
+            run "cp -a ~/.bashrc '$b' && grep -vxF '$DOCKER_LINE' ~/.bashrc > ~/.bashrc.tmp-desktop; mv ~/.bashrc.tmp-desktop ~/.bashrc"
+        fi
+        grep -q 'bashrc.d' "$HOME/.bashrc" 2>/dev/null || warn "~/.bashrc lädt ~/.bashrc.d/ nicht (kein Fedora-Standard?) – desktop.sh greift so nicht"
+        (( reload )) && run "systemctl --user daemon-reload"
+
+        # b) Kopien: system/copies/<pfad> → ~/<pfad> (Liste copies.txt); Abgleich später mit system/sync
+        if [ -d "$COPIES" ]; then
+            while IFS= read -r rel; do
+                src="$COPIES/$rel"; dst="$HOME/$rel"
+                if [ ! -f "$src" ]; then
+                    # eigene Kopie fehlt (gitignored, frischer Klon): Vorlage <datei>.example nur, wenn auf dem PC noch nichts liegt
+                    [ -f "$src.example" ] && [ ! -e "$dst" ] && run "mkdir -p '$(dirname "$dst")' && cp '$src.example' '$dst'"
+                    continue
+                fi
+                if [ -f "$dst" ] && cmp -s "$src" "$dst"; then ok "$rel (Kopie aktuell)"; continue; fi
+                if [ -e "$dst" ]; then
+                    # PC-Fassung neuer: nie überschreiben (sonst ginge die neuere Einstellung verloren) – Bastian entscheidet
+                    if [ "$dst" -nt "$src" ]; then
+                        warn "$rel: PC-Fassung ist neuer als das Repo – bleibt. Übernehmen: system/sync pull · Repo erzwingen: system/sync push --apply"
+                        continue
+                    fi
+                    b="$(backup_of "$rel")"
+                    run "cp -a '$dst' '$b'"
+                fi
+                run "mkdir -p '$(dirname "$dst")' && cp '$src' '$dst'"
+            done < <("$SYS/sync" list)
+        fi
+        [ -d "$HOME/.local/share/chezmoi" ] && info "altes chezmoi-Repo liegt noch in ~/.local/share/chezmoi – nicht mehr \`chezmoi apply\` (überschreibt die Links); weg damit: rm -rf ~/.local/share/chezmoi ~/.config/chezmoi"
+        # User-Units aus den Dotfiles: nur die ohne Login aktivieren (iCloud erst nach rclone config, Schritt 11)
+        if [ -f "$DOT/.config/systemd/user/goxlr.service" ]; then
+            systemctl --user is-enabled goxlr.service >/dev/null 2>&1 && ok "goxlr.service aktiv" \
+                || run "systemctl --user daemon-reload && systemctl --user enable --now goxlr.service"
+        fi
+        [ -f "$DOT/.config/containers/systemd/anisette.container" ] && ! systemctl --user is-active anisette.service >/dev/null 2>&1 \
+            && run "systemctl --user daemon-reload && systemctl --user start anisette.service"
+    fi
+fi
+
+# ---------------------------------------------------------------- 9 Desktop gemeinsam (beide Sitzungen)
+if want 9; then
+    step_title 9
+    (( GUI )) || warn "keine grafische Sitzung – Theme-Aktivierung erst nach dem ersten Login: system/bootstrap --apply --only 9,10"
+
+    # a) Theme erzeugen + nach ~/.local installieren (KDE-Farben, Konsole, Starship, Kitty, GTK, Discord, VS Code,
+    #    Helium, Thunderbird, Hyprland-Look, Share-Picker, Cursor) – aktiviert nichts
+    if [ -f "$HOME/.local/share/color-schemes/DesktopHearth.colors" ] && [ -d "$HOME/.local/share/icons/Desktop" ] \
+       && [ -f "$REPO/theme/out/kitty/theme.conf" ] && ls -d "$HOME"/.vscode/extensions/desktop.desktop-theme-* >/dev/null 2>&1; then
+        ok "Theme erzeugt + installiert"
+    else run "python3 -I '$REPO/theme/gen/all.py'"; fi
+
+    # b) Theme an: KDE-Farbschema (Qt-Apps auch unter Hyprland), Cursor, Schriften, Ordner-Icons, Konsole, Thunderbird, Starship-Prompt
+    scheme="$(kreadconfig6 --group General --key ColorScheme 2>/dev/null)"
+    if [[ "$scheme" == Desktop* ]] && grep -q '>>> desktop starship' "$HOME/.bashrc" 2>/dev/null; then ok "rice theme on ($scheme)"
+    elif (( GUI )); then run "'$REPO/scripts/rice' theme on"
+    else info "rice theme on → nach dem Login"; fi
+
+    # c) Kitty (Super+Return): Links ~/.config/kitty/{kitty,theme}.conf
+    if c1="$(link_owner "$HOME/.config/kitty/kitty.conf" config/kitty/kitty.conf)" \
+       && link_owner "$HOME/.config/kitty/theme.conf" theme/out/kitty/theme.conf >/dev/null; then ok "Kitty im Desktop-Look$(where_note "$c1")"
+    else run "'$REPO/scripts/kitty-theme' install"; fi
+
+    # d) Wallpaper: die Hyprland-Shell liest ~/.local/share/wallpapers/desktop (bzw. den Ordner aus kscreenlockerrc).
+    #    Rückfall-Satz aus dem Repo; unter Plasma setzt `scripts/wallpaper set` (Schritt 10, --kwin) dieselben Bilder.
+    WP="$HOME/.local/share/wallpapers/desktop"
+    if [ -f "$WP/desktop-mitte-2560x1440.jpg" ]; then ok "Wallpaper-Bilder ($WP)"
+    else run "mkdir -p '$WP' && cp -n '$REPO/design/claude-design/wallpaper/_v1-glut/'desktop-{links,mitte,rechts}-*.jpg '$WP/'"; fi
+
+    # e) Claude-Code-Skills (claude/skills → ~/.claude/skills)
+    sk_miss=0
+    for d in "$REPO"/claude/skills/*/; do
+        [ -f "$d/SKILL.md" ] || continue
+        n="$(basename "$d")"
+        if c="$(link_owner "$HOME/.claude/skills/$n" "claude/skills/$n")"; then ok "Skill $n$(where_note "$c")"
+        elif [ -e "$HOME/.claude/skills/$n" ] && [ ! -L "$HOME/.claude/skills/$n" ]; then warn "~/.claude/skills/$n ist ein fremder Ordner – bleibt"
+        else sk_miss=1; fi
+    done
+    (( sk_miss )) && run "'$REPO/scripts/claude-skills' install"
+    "$REPO/scripts/claude-gate-hooks" status 2>/dev/null | grep -q ': an' && ok "Claude-Antwort-Karte (Hooks) an" \
+        || info "Claude-Antwort-Karte (Hooks) ist aus – an: scripts/claude-gate-hooks on (bootstrap schaltet sie nicht)"
+
+    # f) Helium: Native-Messaging-Host der Erweiterung „Desktop“ (Tabs, neue Tab-Seite, Passwörter)
+    if [ -f "$HOME/.config/net.imput.helium/NativeMessagingHosts/de.bastian.desktop.json" ]; then ok "Helium-Host"
+    elif have helium; then run "'$REPO/scripts/chrome-ext' install --browser helium"
+    else info "helium fehlt noch (helium-bin, Schritt 2) – danach: scripts/chrome-ext install --browser helium"; fi
+
+    # g) User-Dienste aus systemd/ (beide Sitzungen): Key Light aus + GoXLR-Profil beim Herunterfahren, GoXLR-Fader nach Entsperren
+    unit_on desktop-keylight-off.service
+    [ -L "$UNITS_DIR/desktop-goxlr-unlock.service" ] || [ -e "$UNITS_DIR/desktop-goxlr-unlock.service" ] \
+        || run "mkdir -p '$UNITS_DIR' && ln -s '$REPO/systemd/desktop-goxlr-unlock.service' '$UNITS_DIR/desktop-goxlr-unlock.service'"
+    unit_on desktop-goxlr-unlock.path
+    # Mail/Termine (Dashboard, Mail-Push): brauchen Konten in secrets.json → `rice feeds` (verlinkt + startet sie)
+    if systemctl --user is-enabled desktop-mail.timer >/dev/null 2>&1 && systemctl --user is-enabled desktop-mail-watch.service >/dev/null 2>&1; then
+        ok "Mail-/Termin-Dienste (rice feeds)"
+    elif [ -f "$REPO/secrets.json" ]; then run "'$REPO/scripts/rice' feeds"
+    else info "Mail/Termine: erst secrets.json anlegen (Schritt 11), dann scripts/rice feeds"; fi
+    # Units mit fest eingetragenem Repo-Pfad, der nicht zu diesem Checkout passt (AP 13 räumt das auf)
+    bad="$(grep -lE "Workspace/[A-Za-z0-9_-]+/" "$REPO"/systemd/*.service 2>/dev/null | while read -r f; do
+        grep -oE '%h/Workspace/[A-Za-z0-9_-]+' "$f" | sed "s|%h|$HOME|" | while read -r p; do [ "$p" = "$REPO" ] || echo "${f##*/}→${p##*/}"; done
+    done | sort -u | tr '\n' ' ')"
+    [ -n "$bad" ] && info "systemd/-Units mit festem Pfad auf einen anderen Checkout (AP 13 räumt auf): $bad"
+    for p in $(grep -ohE '%h/Workspace/[A-Za-z0-9_-]+' "$REPO"/systemd/*.service 2>/dev/null | sort -u | sed "s|%h|$HOME|"); do
+        [ -d "$p" ] || warn "Units brauchen $p – fehlt hier (Units schlagen fehl, bis AP 13 die Pfade vereinheitlicht oder der Ordner da ist)"
+    done
+fi
+
+# ---------------------------------------------------------------- 10 Sitzungen
+if want 10; then
+    step_title 10
+    if (( HYPR )); then
+        echo "  -- Hyprland"
+        [ -e /usr/share/wayland-sessions/hyprland-uwsm.desktop ] && ok "Login-Eintrag „Hyprland (uwsm-managed)“" \
+            || info "hyprland-uwsm fehlt noch (Schritt 2)"
+        # scripts/hypr install: ~/.config/hypr, uwsm-Umgebung, Portale, Shell-Dienst desktop-shell-hyprland (+ Plasma-Dienst-Sperre)
+        need_hypr=0
+        while read -r st f; do
+            case "$st" in
+                ok) ;;
+                # hypr status nennt Links in einen ANDEREN Checkout „fremd“ – die zählen hier als ok
+                fremd) if [ -L "$f" ] && c="$(checkout_of "$f")"; then info "${f/#$HOME/\~}$(where_note "$c")"
+                       else warn "fremd: $f (hypr install sichert es nach ~/.local/state/desktop/hypr-backup)"; need_hypr=1; fi ;;
+                fehlt) info "fehlt: ${f/#$HOME/\~}"; need_hypr=1 ;;
+            esac
+        done < <("$REPO/scripts/hypr" status 2>/dev/null | grep -E '^(ok|fremd|fehlt) ')
+        envrepo="$(sed -n 's/^DESKTOP=//p' "$HOME/.config/desktop/hyprland.env" 2>/dev/null)"
+        [ -n "$envrepo" ] && ! is_checkout "$envrepo" && { warn "hyprland.env zeigt auf $envrepo (kein bekannter Checkout)"; need_hypr=1; }
+        systemctl --user is-enabled desktop-shell-hyprland.service >/dev/null 2>&1 || need_hypr=1
+        if (( need_hypr )); then run "'$REPO/scripts/hypr' install"
+        else ok "Hyprland-Konfiguration + Shell-Dienst desktop-shell-hyprland$( [ -n "$envrepo" ] && where_note "$envrepo")"; fi
+
+        # Session-Restore (hyprflow): Config-Link + Autosave-Timer; Login-Restore kommt aus hypr/autostart.conf
+        if link_owner "$HOME/.config/hyprflow/config.toml" config/hyprflow/config.toml >/dev/null \
+           && systemctl --user is-enabled desktop-session-save.timer >/dev/null 2>&1; then ok "Session-Restore (hyprflow, Autosave-Timer)"
+        else run "'$REPO/scripts/session' install"; fi
+        [ -e "$STATE/session-off" ] && info "Session-Restore ist per Not-Aus aus (scripts/session on)"
+
+        # Share-Picker (Bildschirm teilen im Desktop-Look) – erst eintragen, wenn gebaut (Schritt 6)
+        if grep -qF '# >>> desktop share-picker' "$HOME/.config/hypr/xdph.conf" 2>/dev/null; then ok "Share-Picker in xdph.conf"
+        elif [ -x "$HOME/.local/bin/hyprland-preview-share-picker" ] || (( ! APPLY )); then
+            run "'$REPO/scripts/share-picker' install"
+            info "wirkt nach Portal-Neustart (nur ohne laufenden Stream): systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal"
+        else info "Share-Picker nicht gebaut – erst Schritt 6 (scripts/share-picker build)"; fi
+
+        # Equicord in Discord einspielen: geht erst, wenn Discord einmal lief (~/.config/discord/app-*) und wieder zu ist
+        if ls "$HOME"/.config/discord/app-*/resources/app/index.js >/dev/null 2>&1; then ok "Equicord in Discord eingespielt"
+        else info "Equicord: Discord einmal starten + beenden, dann scripts/equicord inject (Schritt 11)"; fi
+        (( IN_HYPR )) && ok "läuft gerade unter Hyprland" || info "danach: abmelden, im Login „Hyprland (uwsm-managed)“ wählen (Plasma bleibt wählbar)"
+    else
+        info "Hyprland ausgelassen (--no-hyprland oder Branch ohne hypr/)"
+    fi
+
+    if (( KWIN )); then
+        echo "  -- KWin-Rice (Plasma-Sitzung, --kwin)"
+        [ -d "$HOME/.local/share/plasma/shells/de.bastian.desktop" ] && ok "Shell-Paket installiert" \
+            || run "'$REPO/scripts/shellpkg' install"
+        if (( IN_PLASMA )); then
+            systemctl --user is-active desktop-shell >/dev/null 2>&1 && ok "Desktop-Shell läuft (rice on)" \
+                || run "'$REPO/scripts/rice' on"
+            [ -f "$STATE/wallpaper-backup.json" ] && ok "Wallpaper gesetzt" || run "'$REPO/scripts/wallpaper' set"
+        else
+            info "rice on · wallpaper set → in einer Plasma-Sitzung: system/bootstrap --apply --kwin --only 10"
+        fi
+    else
+        info "KWin-Rice nicht gewählt (--kwin). Plasma bleibt als normale Rückfall-Sitzung."
+    fi
+fi
+
+# ---------------------------------------------------------------- 11 Manuell
+if want 11; then
+    step_title 11
+    cat <<EOF
+  Bleibt von Hand (Reihenfolge egal, außer 1) – ausführlich als Checkliste in system/README.md:
+   1. Secure Boot + NVIDIA: sudo kmodgenca -a && sudo mokutil --import /etc/pki/akmods/certs/public_key.der
+      → Neustart, im MOK-Manager "Enroll MOK" + Passwort. Danach: nvidia-smi
+   2. ~/Data: verschlüsselte btrfs-Platte (/dev/mapper/data) in /etc/crypttab + /etc/fstab eintragen
+   3. SSH-Keys (Namen wie in system/dotfiles/.ssh/config, Vorlage: config.example): ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_<name> → GitHub · gh auth login · gh config set git_protocol ssh
+   4. Claude: \`claude\` (Login) · Claude Desktop starten (Login)
+   5. secrets.json: cp secrets.example.json secrets.json && chmod 600 secrets.json, dann laut docs/setup/README.md:
+      Hue (scripts/hue-pair), Spotify (scripts/spotify-auth), Discord, Mail + Kalender → danach scripts/rice feeds
+   6. Thunderbird-Konten: docs/setup/mail-calendar.md
+   7. iCloud: rclone config (Remotes icloud + icloud-photos) → icloud-login
+      → systemctl --user enable --now icloud-photos.service icloud-sync.timer
+   8. icp: Login mit Apple-ID (Anisette läuft auf 127.0.0.1:6969), Browser-Erweiterung aus ~/Apps/icp/extension laden
+   9. Wake-on-LAN: nmcli connection modify "<Kabel>" 802-3-ethernet.wake-on-lan magic
+  10. Helium: Erweiterung + Theme „Desktop“ laden (helium://extensions, Entwicklermodus, Ordner aus theme/out/)
+  11. VS Code: Theme „Desktop“ wählen · Settings Sync anmelden
+  12. Discord: einmal starten, anmelden, beenden → scripts/equicord inject (eigener Equicord-Build + Plugin desktopBridge)
+  13. Spotify: in spotify-client anmelden · Steam: Bibliothek ~/Data/Games/SteamLibrary hinzufügen
+  14. Login-Bildschirm: scripts/loginscreen install && scripts/loginscreen on (sudo, mit Backup)
+  15. Share-Picker aktiv machen: systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal (nur ohne Stream)
+  16. Flatpak-Bundles (…craft-Apps) aus ihren .flatpak-Dateien
+  17. Projekte: eigene Repos nach ~/Workspace per gh klonen (Liste: projects/projects.json), je Projekt bun install + services:up · danach scripts/vscode-colors refresh
+EOF
+fi
+
+# ---------------------------------------------------------------- Ende
+head_ "Fertig"
+if (( APPLY )); then
+    (( ${#FAILS[@]} )) && { warn "${#FAILS[@]} Befehl(e) fehlgeschlagen:"; printf '      %s\n' "${FAILS[@]}"; exit 1; }
+    echo "  Alles durch. Nochmal ohne --apply laufen lassen = Kontrolle (sollte nur noch 'ok' zeigen)."
+else
+    echo "  dry-run: $TODO Aktion(en) offen, davon $SUDO_TODO mit sudo. Ausführen: system/bootstrap --apply"
+fi

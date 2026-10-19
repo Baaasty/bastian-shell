@@ -1,0 +1,10 @@
+[Container]
+Image=docker.io/dadoum/anisette-v3-server:latest
+PublishPort=127.0.0.1:6969:6969
+Volume=anisette-data:/home/Alcoholic/.config/anisette-v3/lib/
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

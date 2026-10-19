@@ -1,0 +1,64 @@
+# Eingebettete Nudges (Fallback, wenn scripts/newtab-feed noch keine von Claude geholt hat).
+# Format: Thema | Titel | Text   ("#" = Kommentar). Wird von theme/gen/chrome.py eingebettet.
+Focus | Ein Tab, eine Aufgabe | Schreib die eine Sache, die du gerade machst, als Tab-Titel oder auf einen Zettel. Alles andere kommt auf die Liste, nicht in den Kopf.
+Focus | 2-Minuten-Start | Keine Lust anzufangen? Nimm dir nur 2 Minuten vor. Meist läuft es danach von allein.
+Focus | Pausen sind Arbeit | Nach 25–50 min aufstehen, Wasser holen, Fenster auf. Der Kopf sortiert in der Pause weiter.
+Focus | Hyperfokus-Wecker | Stell dir vor langen Sessions einen Timer für Essen/Trinken. Hyperfokus vergisst den Körper.
+Focus | Done-Liste | Schreib abends 3 Dinge auf, die du geschafft hast. Gegen das Gefühl „heute nichts gemacht“.
+Focus | Kleiner schneiden | Wenn eine Aufgabe sich zäh anfühlt, ist sie zu groß. Teil sie, bis der erste Schritt in 10 min geht.
+Focus | Tabs schließen | Offene Tabs sind offene Schleifen im Kopf. Was du später lesen willst: Lesezeichen-Ordner „Später“.
+Focus | Parkplatz für Ideen | Neue Idee mitten im Flow? Ein Satz in die Todo-Liste, dann zurück. Nicht sofort umsetzen.
+Focus | Body Doubling | Schwierige Aufgabe? Mit jemandem im Call (auch stumm) arbeiten hilft vielen mit ADHS beim Dranbleiben.
+Focus | Morgens das Schwerste | Die zäheste Aufgabe zuerst, solange der Akku voll ist. Mails und Kleinkram später.
+Git | git switch - | Springt zurück zum vorherigen Branch, wie `cd -`.
+Git | Kleine Commits | Ein Commit = eine Änderung. `git add -p` lässt dich Teile einer Datei einzeln stagen.
+Git | git stash -u | Nimmt auch neue, ungetrackte Dateien mit in den Stash. Zurück mit `git stash pop`.
+Git | Wer war das? | `git log -S "text"` findet den Commit, der einen String eingeführt oder entfernt hat.
+Git | Fixup statt „fix typo“ | `git commit --fixup <hash>` + `git rebase -i --autosquash` räumt Korrekturen in den richtigen Commit.
+Git | git reflog | Commit „verloren“? Der Reflog kennt jeden Stand von HEAD der letzten Wochen. Fast nichts ist wirklich weg.
+Git | Bisect | `git bisect start`, `bad`, `good <hash>` – Git halbiert die Historie, bis der Commit mit dem Bug gefunden ist.
+Git | Worktrees | `git worktree add ../x branch` gibt dir einen zweiten Arbeitsordner – ohne Stash, ohne Branch-Wechsel.
+Bun | bun --watch | `bun --watch index.ts` startet das Skript bei jeder Änderung neu – kein nodemon nötig.
+Bun | bunx | `bunx <tool>` führt ein Paket aus, ohne es zu installieren – wie npx, nur schneller.
+Bun | Bun.file | `await Bun.file("x.json").json()` liest und parst eine Datei in einer Zeile.
+Bun | Eingebaute Tests | `bun test` findet `*.test.ts` automatisch, mit Jest-kompatiblem `expect`.
+Bun | .env ohne Paket | Bun lädt `.env` automatisch – kein dotenv nötig.
+Bun | bun outdated | Zeigt, welche Abhängigkeiten neuere Versionen haben. Update gezielt mit `bun update <paket>`.
+Biome | biome check --write | Formatiert, lintet und sortiert Imports in einem Rutsch – und behebt, was sicher geht.
+Biome | Nur Geändertes | `biome check --changed` prüft nur Dateien, die sich gegenüber dem Haupt-Branch geändert haben.
+Biome | Regel stummschalten | `// biome-ignore lint/<gruppe>/<regel>: Grund` direkt über der Zeile – mit Begründung, für dein Zukunfts-Ich.
+TypeScript | satisfies | `const x = {...} satisfies Typ` prüft gegen den Typ, behält aber die genauen Literal-Typen.
+TypeScript | as const | Macht Arrays/Objekte schreibgeschützt mit Literal-Typen – ideal für Konfig und Enums ohne enum.
+TypeScript | Exhaustive switch | Im `default:` ein `const _: never = x;` – vergisst du einen Fall, meckert der Compiler.
+TypeScript | Unbekanntes prüfen | `unknown` statt `any` für fremde Daten: zwingt dich, vor dem Benutzen zu prüfen.
+Claude Code | Plan zuerst | Shift+Tab schaltet in den Plan-Modus: Claude plant erst, du sagst ja, dann wird geändert.
+Claude Code | CLAUDE.md pflegen | Was Claude immer wieder falsch macht, gehört als eine Zeile in die CLAUDE.md des Projekts.
+Claude Code | /clear zwischen Aufgaben | Neue Aufgabe, neuer Kontext: `/clear` hält Antworten fokussiert und spart Tokens.
+Claude Code | Escape ist dein Freund | Läuft Claude in die falsche Richtung: Esc unterbricht sofort, dann einfach korrigieren.
+Claude Code | Bilder einfügen | Screenshot in die Eingabe ziehen oder einfügen – Claude sieht ihn. Ideal für UI-Bugs.
+Claude Code | @-Dateien | Mit `@pfad/datei` gibst du Claude gezielt eine Datei in den Kontext, statt sie suchen zu lassen.
+Claude Code | Agents parallel | Unabhängige Aufgaben auf Hintergrund-Agents verteilen – du reviewst, statt zu warten.
+Claude Code | Erst Tests | Lass Claude zuerst einen fehlschlagenden Test schreiben, dann den Fix. Dann weißt du, dass es wirklich geht.
+Quickshell | Live-Reload | Quickshell lädt QML-Änderungen beim Speichern neu. `qs log -p …` zeigt Fehler sofort.
+Quickshell | Singletons laden faul | Ein `pragma Singleton` entsteht erst beim ersten Zugriff – Dienste früh anfassen, wenn sie vorher laufen sollen.
+Quickshell | execDetached | Apps nie direkt starten: per `kstart`/`systemd-run --scope`, sonst sterben sie mit der Shell.
+QML | Bindings statt Zuweisung | `x = 5` in JS bricht ein Binding für immer. Lieber `Qt.binding(() => …)` oder Zustand in Properties.
+QML | required property | `required property var modelData` in Delegates macht klar, was reinkommt, und ist schneller.
+Linux | journalctl -f | `journalctl --user -fu <dienst>` folgt dem Log eines User-Dienstes live.
+Linux | systemctl --failed | `systemctl --user --failed` zeigt sofort, welche deiner Dienste gerade kaputt sind.
+Linux | Strg+R | In der Shell: Strg+R sucht rückwärts in der History. Nochmal Strg+R = nächster Treffer.
+Linux | cd - | Springt in den vorherigen Ordner zurück. `pushd`/`popd` für mehrere.
+Linux | ss -tlnp | Zeigt, welcher Prozess auf welchem Port lauscht. Schneller als netstat.
+Linux | du einmal sauber | `du -sh * | sort -h` zeigt, was im aktuellen Ordner Platz frisst.
+KDE | KRunner kann rechnen | Alt+Leertaste, `=2^10` oder `10 EUR in USD` – Ergebnis direkt im Feld.
+KDE | Fenster-Regeln | Rechtsklick auf Titelleiste → Weitere Aktionen → Spezielle Einstellungen: Monitor, Größe, Desktop pro App festlegen.
+Chrome | Tab-Suche | Strg+Shift+A durchsucht alle offenen Tabs – oder im Launcher `@` tippen.
+Chrome | Zuletzt geschlossen | Strg+Shift+T öffnet den zuletzt geschlossenen Tab wieder, auch mehrfach hintereinander.
+Chrome | Adressleiste als Rechner | Tipp `17*23` in die Adressleiste – die Lösung steht schon im Vorschlag.
+Web | :has() | CSS `:has()` ist ein Eltern-Selektor: `.card:has(img)` stylt nur Karten mit Bild.
+Web | Container Queries | `@container (min-width: 400px)` reagiert auf die Breite des Elternteils, nicht des Fensters.
+Web | fetch mit Timeout | `fetch(url, { signal: AbortSignal.timeout(5000) })` – nie wieder ewig hängende Requests.
+Web | structuredClone | `structuredClone(obj)` kopiert tief, inkl. Date, Map und Set – kein JSON-Trick nötig.
+Habit | Feierabend-Notiz | Schreib vor Feierabend einen Satz: „Morgen als Erstes: …“. Der Einstieg morgen dauert dann Sekunden.
+Habit | Lesen statt Scrollen | 10 Minuten Doku eines Tools, das du täglich benutzt, bringen mehr als eine Stunde Feed.
+Habit | Einmal pro Woche aufräumen | Freitags 15 min: Branches löschen, Downloads leeren, Todo-Liste kürzen.

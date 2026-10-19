@@ -1,0 +1,24 @@
+{
+  "name": "desktop-projects",
+  "displayName": "Desktop Projekte",
+  "description": "Projektfarbe als Punkt + Name links in der Statusleiste, Dev-Terminal beim Projekt-Öffnen. ERZEUGT aus theme/palette.json.",
+  "version": "0.2.0",
+  "publisher": "desktop",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": false
+  }
+}

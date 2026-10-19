@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Desktop – Wallpaper vergleichen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=block" rel="stylesheet">
+<!-- Farben aus theme/palette.json (palette.js), Bilder + Liste von theme/gen/wallpaper.py (wallpapers/). Nur Ansicht, setzt nichts. -->
+<script src="palette.js"></script>
+<script src="wallpapers/list.js"></script>
+<style>
+:root { --ui: "Inter", system-ui, sans-serif; --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #2a2420; color: #efe6da; font: 14px/1.4 var(--ui); }
+
+/* Werkzeugleiste der Vorschau (nicht Teil des Rice, bewusst neutral) */
+.tools { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 24px; background: #221d1a; border-bottom: 1px solid #3a322d; font-size: 13px; color: #c9bcae; }
+.tools b { color: #f2e9de; margin-right: 8px; }
+.tools button { font: inherit; color: #f2e9de; background: #332b27; border: 1px solid #4a3f39; border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+.tools button.on { background: #5a463d; border-color: #b9897a; }
+.tools .note { margin-left: auto; opacity: .7; }
+.tools code, .cmd { font-family: var(--mono); font-size: 12px; }
+
+.grid { display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: 28px; padding: 28px; }
+.howto { align-self: start; padding: 18px 22px; border: 1px solid #3a322d; border-radius: 12px; background: #221d1a; color: #c9bcae; font-size: 13px; line-height: 1.6; }
+.howto h2 { font-size: 18px; color: #f2e9de; margin-bottom: 6px; }
+.howto code { font-family: var(--mono); font-size: 12px; color: #f2e9de; }
+.card.big { grid-column: 1 / -1; }
+.card h2 { font-size: 18px; font-weight: 600; display: flex; gap: 10px; align-items: baseline; margin: 0 4px 4px; }
+.card h2 .tag { font: 500 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; background: #4a3f39; color: #f2e9de; }
+.card .cmd { color: #a99b8c; margin-left: auto; user-select: all; }
+.card .desc { margin: 0 4px 10px; color: #c9bcae; font-size: 13px; }
+
+/* Mitte-Monitor in echten Pixeln (2560×1440), per JS auf Kartenbreite skaliert */
+.frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; cursor: zoom-in;
+  box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.card.big .frame { cursor: zoom-out; }
+.scene { position: absolute; top: 0; left: 0; width: 2560px; height: 1440px; transform-origin: 0 0; color: var(--text);
+  background: var(--wall) center / cover no-repeat; font-size: 14px; }
+.scene .dim { position: absolute; inset: 0; background: var(--dim); }
+body:not(.m-dash) .scene .dim, body:not(.m-dash) .scene .dash { display: none; }
+body.m-none .scene .bar { display: none; }
+
+.ms { font-family: "Material Symbols Rounded"; font-size: 18px; line-height: 1; display: inline-block; vertical-align: middle;
+  font-variation-settings: "FILL" 0, "wght" 400, "opsz" 24; user-select: none; }
+.ms.fill { font-variation-settings: "FILL" 1, "wght" 400, "opsz" 24; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lbl { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--textFaint); }
+.muted { color: var(--textMuted); } .faint { color: var(--textFaint); }
+
+.glass { background: var(--glassTint); border: 1px solid var(--border); border-radius: 16px;
+  backdrop-filter: blur(24px) saturate(1.15); box-shadow: 0 16px 48px rgba(0,0,0,.45), inset 0 1px 0 var(--innerHighlight); }
+.glass.strong { background: var(--glassStrong); }
+
+/* Bar (palette.layout: barMargin 10, barHeight 38, barRadius 12) */
+.bar { position: absolute; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px; font-weight: 600; font-size: 14px; }
+.bar .l, .bar .r { display: flex; gap: 4px; align-items: center; }
+.bar .r { justify-content: flex-end; }
+.chip { height: 28px; padding: 0 11px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; color: var(--textMuted); font-weight: 500; }
+.chip.cur { background: var(--raise); color: var(--text); }
+.chip.cur::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.bubble { height: 28px; padding: 0 10px; border-radius: 99px; display: inline-flex; align-items: center; gap: 5px; background: var(--raise); color: var(--textMuted); font-weight: 500; }
+.bubble .ms { font-size: 17px; }
+
+/* Dashboard (palette.layout: dashboardTop 110, Margin 80, 12 Spalten, Gap 20) */
+.dash { position: absolute; display: grid; }
+.tile { padding: 28px 30px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.clock { font: 600 96px/1 var(--mono); letter-spacing: -.03em; }
+.clock small { font-size: 44px; color: var(--textFaint); }
+.ringwrap { display: flex; gap: 26px; align-items: center; }
+.ring { width: 170px; height: 170px; flex: none; }
+.ring text { font-family: var(--mono); font-weight: 600; }
+.btn { height: 36px; padding: 0 15px; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 500;
+  background: var(--raise); border: 1px solid var(--border); color: var(--text); }
+.btn.pri { background: var(--accentSoft); border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accentText); }
+.media { display: flex; gap: 18px; align-items: center; }
+.cover { width: 96px; height: 96px; border-radius: 12px; background: linear-gradient(135deg, var(--wood), var(--woodLight)); flex: none; display: grid; place-items: center; color: var(--cream); }
+.cover .ms { font-size: 36px; }
+.prog { height: 5px; border-radius: 99px; background: var(--borderStrong); }
+.prog i { display: block; height: 100%; width: 38%; border-radius: 99px; background: var(--accent); }
+.meter { display: grid; grid-template-columns: 44px 1fr 48px; align-items: center; gap: 10px; font-size: 13px; }
+.meter .t { height: 7px; border-radius: 99px; background: var(--borderStrong); overflow: hidden; }
+.meter .t i { display: block; height: 100%; border-radius: 99px; background: var(--woodLight); }
+
+/* Panorama: drei Monitore wie auf dem Tisch (Seiten zeigen y 180–1260 des Panoramas) */
+.pano { display: flex; gap: 10px; align-items: center; margin: 10px 4px 0; }
+.pano div { background-repeat: no-repeat; border-radius: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.pano .s { flex: 1920 1 0; aspect-ratio: 1920 / 1080; }
+.pano .m { flex: 2560 1 0; aspect-ratio: 2560 / 1440; }
+.pano-note { margin: 4px 4px 0; font-size: 12px; color: #a99b8c; }
+</style>
+</head>
+<body class="m-dash">
+<div class="tools">
+  <b>Wallpaper</b>
+  <span>Ansicht:</span>
+  <button data-mode="m-dash" class="on">Dashboard offen</button>
+  <button data-mode="m-bar">Nur Bar</button>
+  <button data-mode="m-none">Ohne UI</button>
+  <span style="margin-left:12px">Varianten:</span>
+  <span id="vfilter"></span>
+  <span class="note">Klick aufs Bild = groß · Setzen: <code>scripts/wallpaper set --variant &lt;v&gt; --motif &lt;m&gt;</code></span>
+</div>
+<main class="grid" id="grid"></main>
+
+<script>
+const D = window.DESKTOP, L = D.layout;
+const LIST = window.WALLPAPERS || [];
+const MOTIF_NAMES = { licht: "Licht", huegel: "Hügel", holz: "Holz" };
+
+function ring(frac, label, sub) {
+  const r = 70, c = 2 * Math.PI * r;
+  return `<svg class="ring" viewBox="0 0 170 170">
+    <circle cx="85" cy="85" r="${r}" fill="none" stroke="var(--borderStrong)" stroke-width="12"/>
+    <circle cx="85" cy="85" r="${r}" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round"
+      stroke-dasharray="${c * frac} ${c}" transform="rotate(-90 85 85)"/>
+    <text x="85" y="92" text-anchor="middle" font-size="34" fill="var(--text)">${label}</text>
+    <text x="85" y="118" text-anchor="middle" font-size="14" fill="var(--textFaint)">${sub}</text></svg>`;
+}
+
+function scene() {
+  const m = L.barMargin, colW = `repeat(${L.dashboardColumns}, 1fr)`;
+  return `
+  <div class="dim"></div>
+  <div class="bar glass strong" style="top:${m}px;left:${m}px;right:${m}px;height:${L.barHeight}px;border-radius:${L.barRadius}px">
+    <div class="l"><span class="chip cur">Main</span><span class="chip">Code</span><span class="chip">Chat</span><span class="chip">Media</span></div>
+    <div class="c mono">20:47 <span class="faint" style="font-family:var(--ui);font-weight:500;margin-left:8px">So 18. Okt</span></div>
+    <div class="r"><span class="bubble"><span class="ms">volume_up</span>42</span><span class="bubble"><span class="ms">light</span>Cozy</span>
+      <span class="bubble" style="color:var(--accentText)"><span class="ms fill">timer</span>18:42</span></div>
+  </div>
+  <div class="dash" style="top:${L.dashboardTop}px;left:${L.dashboardMargin}px;right:${L.dashboardMargin}px;gap:${L.dashboardGap}px;
+       grid-template-columns:${colW};grid-template-rows:${L.dashboardRows.slice(0, 2).map(r => r + "px").join(" ")}">
+    <div class="tile glass" style="grid-column: span 4">
+      <span class="lbl">Sonntagabend</span>
+      <div class="clock">20:47<small>:13</small></div>
+      <div class="muted">12° leichter Regen · drinnen bleibt's gemütlich</div>
+    </div>
+    <div class="tile glass" style="grid-column: span 4">
+      <span class="lbl">Fokus</span>
+      <div class="ringwrap">${ring(0.62, "18:42", "von 25 min")}
+        <div><div style="font-weight:600;font-size:18px">Rice: Wallpaper</div><div class="muted">Block 3 · Ziel 2h 10m / 3h</div>
+        <div style="display:flex;gap:8px;margin-top:14px"><span class="btn pri"><span class="ms">pause</span>Pause</span><span class="btn">Weiter</span></div></div>
+      </div>
+    </div>
+    <div class="tile glass" style="grid-column: span 4">
+      <span class="lbl">Spotify</span>
+      <div class="media"><div class="cover"><span class="ms">music_note</span></div>
+        <div style="min-width:0"><div style="font-weight:600;font-size:18px">Holocene</div><div class="muted">Bon Iver</div></div></div>
+      <div class="prog"><i></i></div>
+    </div>
+    <div class="tile glass" style="grid-column: span 6">
+      <span class="lbl">System</span>
+      <div class="meter"><span class="muted">CPU</span><span class="t"><i style="width:34%"></i></span><span class="mono">34%</span></div>
+      <div class="meter"><span class="muted">RAM</span><span class="t"><i style="width:58%"></i></span><span class="mono">58%</span></div>
+      <div class="meter"><span class="muted">GPU</span><span class="t"><i style="width:21%"></i></span><span class="mono">21%</span></div>
+    </div>
+  </div>`;
+}
+
+function vars(name) {
+  const t = D.themes[name];
+  return Object.entries(t).map(([k, v]) => `--${k}:${v}`).join(";")
+    + `;--raise:color-mix(in srgb, ${t.text} 6%, transparent);--innerHighlight:${D.glass.innerHighlight}`;
+}
+
+function pano(img) {
+  // Panorama-Vorschau 1600×360 = 6400×1440 / 4; Seiten: x 0/1920 und 4480, y 180–1260
+  const side = (x) => `background-image:url('${img}');background-size:${6400 / 1920 * 100}% ${1440 / 1080 * 100}%;background-position:${x}% 50%`;
+  return `<div class="pano"><div class="s" style="${side(0)}"></div>
+    <div class="m" style="background-image:url('${img}');background-size:250% 100%;background-position:50% 0"></div>
+    <div class="s" style="${side(100)}"></div></div>`;
+}
+
+function card(item) {
+  const { variant, motif, info } = item;
+  const name = variant === "bisher" ? "bisher" : `${variant}-${motif}`;
+  const ui = variant === "bisher" ? D.default : variant;
+  const title = variant === "bisher" ? `Bisher <span class="tag">Claude Design</span>`
+    : `${MOTIF_NAMES[motif] || motif} <span class="tag">${variant}</span>${variant === D.default ? '<span class="tag">aktiv</span>' : ""}`;
+  const cmd = variant === "bisher" ? "scripts/wallpaper set" : `scripts/wallpaper set --variant ${variant} --motif ${motif}`;
+  const full = variant === "bisher" ? "claude-design/wallpaper/desktop-mitte-2560x1440.jpg"
+    : `../theme/out/wallpaper/${variant}/${motif}/desktop-mitte-2560x1440.jpg`;
+  return `<section class="card" data-variant="${variant}">
+    <h2>${title}<span class="cmd">${cmd}</span></h2>
+    <p class="desc">${info || ""}${variant === "bisher" ? " – UI in " + ui : ""}</p>
+    <div class="frame" data-full="${full}" data-small="wallpapers/${name}-mitte.jpg">
+      <div class="scene" style="${vars(ui)};--wall:url('wallpapers/${name}-mitte.jpg')">${scene()}</div>
+    </div>
+    ${pano(`wallpapers/${name}-panorama.jpg`)}
+    <p class="pano-note">links 1920×1080 · Mitte 2560×1440 · rechts 1920×1080</p>
+  </section>`;
+}
+
+const order = Object.keys(MOTIF_NAMES);
+const variants = [...new Set(LIST.map(i => i.variant))].sort((a, b) => (b === D.default) - (a === D.default) || a.localeCompare(b));
+const shown = new Set(["bisher", ...variants]);
+const items = [...LIST].sort((a, b) => order.indexOf(a.motif) - order.indexOf(b.motif) || variants.indexOf(a.variant) - variants.indexOf(b.variant));
+items.unshift({ variant: "bisher", motif: "", info: "Das aktuelle Wallpaper (dunkel, Glutschein) zum Vergleich" });
+const howto = `<section class="howto" data-variant="bisher"><h2>So geht's</h2>
+  Pro Zeile ein Motiv, links ${variants[0] || ""}, rechts ${variants[1] || ""} – UI-Mock jeweils in den Farben der Variante.<br>
+  Klick aufs Bild = groß (lädt die Vollgröße). Oben umschalten: Dashboard offen / nur Bar / ohne UI.<br>
+  Setzen (sichert vorher den alten Stand): <code>scripts/wallpaper set --variant dusk --motif huegel</code><br>
+  Zurück: <code>scripts/wallpaper restore</code> · Bisheriges wieder: <code>scripts/wallpaper set</code><br>
+  Neu erzeugen: <code>python3 -I theme/gen/wallpaper.py dusk</code> (andere Varianten genauso)</section>`;
+const grid = document.getElementById("grid");
+grid.innerHTML = card(items[0]) + howto + items.slice(1).map(card).join("");
+const setCols = () => grid.style.setProperty("--cols", Math.max(1, variants.filter(v => shown.has(v)).length));
+
+// Skalierung der 2560er-Szene auf die Kartenbreite
+function fit() { document.querySelectorAll(".frame").forEach(f => f.firstElementChild.style.transform = `scale(${f.clientWidth / 2560})`); }
+setCols(); new ResizeObserver(fit).observe(document.body); fit();
+
+// Groß/klein; groß lädt die Vollgröße (falls erzeugt), sonst bleibt die Vorschau
+document.querySelectorAll(".frame").forEach(f => f.addEventListener("click", () => {
+  const card = f.closest(".card"), big = card.classList.toggle("big"), sc = f.firstElementChild;
+  const src = big ? f.dataset.full : f.dataset.small, img = new Image();
+  img.onload = () => sc.style.setProperty("--wall", `url('${src}')`);
+  img.src = src;
+  requestAnimationFrame(fit);
+  if (big) card.scrollIntoView({ behavior: "smooth", block: "start" });
+}));
+
+// Ansicht
+document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("[data-mode]").forEach(x => x.classList.toggle("on", x === b));
+  document.body.className = b.dataset.mode;
+}));
+
+// Variantenfilter
+const vf = document.getElementById("vfilter");
+vf.innerHTML = ["bisher", ...variants].map(v => `<button class="on" data-v="${v}">${v}</button>`).join(" ");
+vf.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+  const v = b.dataset.v; shown.has(v) ? shown.delete(v) : shown.add(v); b.classList.toggle("on", shown.has(v));
+  document.querySelectorAll(".card, .howto").forEach(c => c.style.display = shown.has(c.dataset.variant) ? "" : "none");
+  setCols(); fit();
+}));
+</script>
+</body>
+</html>

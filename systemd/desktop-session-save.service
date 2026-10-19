@@ -1,0 +1,15 @@
+# Fenster-Sitzung sichern (hyprflow autosave über scripts/session autosave). Läuft über desktop-session-save.timer.
+# Sichert nur in der Hyprland-Sitzung, nur mit installiertem hyprflow und nur wenn scripts/session guard zustimmt
+# (nicht während des Login-Restores, nicht bei 0 Fenstern, nicht nach plötzlichem Einbruch der Fensterzahl).
+# Installiert/entfernt über scripts/session install|uninstall (Link nach ~/.config/systemd/user).
+# Aus: scripts/session off
+[Unit]
+Description=Desktop: Fenster-Sitzung sichern (hyprflow)
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/desktop/hyprland.env
+ExecCondition=/bin/sh -c 'case ":$${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) exit 0 ;; esac; exit 1'
+ExecStart=/bin/sh -c 'exec "$${DESKTOP}/scripts/session" autosave'
+TimeoutStartSec=60
+Nice=10

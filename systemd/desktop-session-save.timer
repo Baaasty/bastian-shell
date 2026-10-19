@@ -1,0 +1,11 @@
+# Autosave der Fenster-Sitzung alle 5 min (der erste Lauf 4 min nach dem Login, damit der Login-Restore Vorrang hat).
+[Unit]
+Description=Desktop: Fenster-Sitzung alle 5 min sichern
+
+[Timer]
+OnStartupSec=4min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

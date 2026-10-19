@@ -1,0 +1,11 @@
+# Mail-Status alle 2 min (erster Lauf kurz nach dem Login)
+[Unit]
+Description=Desktop: Mail-Status alle 2 min
+
+[Timer]
+OnActiveSec=20s
+OnUnitActiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

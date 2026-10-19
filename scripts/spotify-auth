@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Spotify koppeln (Authorization Code + PKCE, kein Client-Secret).
+
+  scripts/spotify-auth               Browser öffnet sich, bei Spotify zustimmen, fertig
+  scripts/spotify-auth --no-browser  Link nur anzeigen (z. B. anderer Browser)
+  scripts/spotify-auth --dry-run     nichts öffnen, nichts schreiben
+
+Liest spotify.client_id aus secrets.json, schreibt access_token/refresh_token/expires_at dazu.
+Tokens werden nie ausgegeben. secrets.json bekommt Rechte 600, andere Einträge bleiben erhalten.
+Anleitung: docs/setup/spotify.md
+Test-Optionen: --secrets (andere Datei), --auth-url/--token-url (Fake-Server), --timeout.
+"""
+import argparse
+import base64
+import hashlib
+import http.server
+import json
+import os
+import pathlib
+import secrets as rnd
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SECRETS = REPO / "secrets.json"
+HOST, PORT, PATH = "127.0.0.1", 8888, "/callback"
+REDIRECT_URI = f"http://{HOST}:{PORT}{PATH}"
+AUTH_URL = "https://accounts.spotify.com/authorize"
+TOKEN_URL = "https://accounts.spotify.com/api/token"
+SCOPES = ("user-read-playback-state user-modify-playback-state user-read-currently-playing "
+          "playlist-read-private playlist-read-collaborative user-library-read user-read-recently-played")
+
+
+def load(path: pathlib.Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text() or "{}")
+    except json.JSONDecodeError:
+        sys.exit(f"{path} ist kein gültiges JSON – bitte erst reparieren (wird nicht überschrieben).")
+    if not isinstance(data, dict):
+        sys.exit(f"{path}: Wurzel muss ein Objekt sein.")
+    return data
+
+
+def save(path: pathlib.Path, data: dict) -> None:
+    """Atomar schreiben, Rechte 600 schon beim Anlegen."""
+    fd, tmp = tempfile.mkstemp(prefix=".secrets-", dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp, path)
+    except BaseException:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
+    os.chmod(path, 0o600)
+
+
+def pkce_pair() -> tuple[str, str]:
+    """code_verifier (43–128 Zeichen) und S256-Challenge."""
+    verifier = rnd.token_urlsafe(64)[:128]
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return verifier, challenge
+
+
+def authorize_url(base: str, client_id: str, challenge: str, state: str) -> str:
+    q = {
+        "client_id": client_id,
+        "response_type": "code",
+        "redirect_uri": REDIRECT_URI,
+        "code_challenge_method": "S256",
+        "code_challenge": challenge,
+        "state": state,
+        "scope": SCOPES,
+    }
+    return base + "?" + urllib.parse.urlencode(q)
+
+
+def apply_token(spotify: dict, tok: dict, now: float | None = None) -> dict:
+    """Token-Antwort in den spotify-Block übernehmen (refresh_token nur, wenn mitgeliefert)."""
+    now = time.time() if now is None else now
+    if not tok.get("access_token"):
+        raise ValueError("Antwort ohne access_token")
+    spotify["access_token"] = tok["access_token"]
+    spotify["expires_at"] = int(now + int(tok.get("expires_in", 3600)))
+    if tok.get("refresh_token"):
+        spotify["refresh_token"] = tok["refresh_token"]
+    if tok.get("scope"):
+        spotify["scope"] = tok["scope"]
+    return spotify
+
+
+def exchange(token_url: str, client_id: str, code: str, verifier: str) -> dict:
+    body = urllib.parse.urlencode({
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+        "client_id": client_id,
+        "code_verifier": verifier,
+    }).encode()
+    req = urllib.request.Request(token_url, data=body, method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode())
+        except Exception:
+            err = {}
+        sys.exit(f"Token-Tausch fehlgeschlagen (HTTP {e.code}): {err.get('error_description') or err.get('error') or 'unbekannt'}")
+    except (urllib.error.URLError, OSError) as e:
+        sys.exit(f"Spotify nicht erreichbar ({type(e).__name__}).")
+
+
+PAGE = """<!doctype html><meta charset="utf-8"><title>Desktop</title>
+<body style="background:#120D0B;color:#F2E7D8;font-family:Inter,sans-serif;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center"><h2 style="font-weight:600">{title}</h2><p style="color:#BCAB98">{text}</p></div>"""
+
+
+def wait_for_code(state: str, timeout: float) -> dict:
+    """Lokaler Redirect-Server: wartet auf genau einen /callback."""
+    result: dict = {}
+    done = threading.Event()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            u = urllib.parse.urlparse(self.path)
+            if u.path != PATH:
+                self.send_response(404)
+                self.end_headers()
+                return
+            q = urllib.parse.parse_qs(u.query)
+            if q.get("state", [""])[0] != state:
+                result["error"] = "state passt nicht (anderer Tab?)"
+            elif "error" in q:
+                result["error"] = q["error"][0]
+            elif "code" in q:
+                result["code"] = q["code"][0]
+            else:
+                result["error"] = "kein code in der Antwort"
+            ok = "code" in result
+            html = PAGE.format(title="Connected" if ok else "That didn’t work",
+                               text="You can close this tab." if ok else "See the terminal.")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(html.encode())
+            done.set()
+
+        def log_message(self, *a):  # kein Log (URL enthält den Code)
+            pass
+
+    try:
+        srv = http.server.HTTPServer((HOST, PORT), Handler)
+    except OSError:
+        sys.exit(f"Port {PORT} ist belegt – läuft spotify-auth schon?")
+    srv.timeout = 0.5
+    deadline = time.monotonic() + timeout
+    try:
+        while not done.is_set() and time.monotonic() < deadline:
+            srv.handle_request()
+    finally:
+        srv.server_close()
+    if not done.is_set():
+        result["error"] = "Zeit abgelaufen"
+    return result
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Spotify koppeln (PKCE → secrets.json)")
+    ap.add_argument("--dry-run", action="store_true", help="nichts öffnen, nichts schreiben")
+    ap.add_argument("--no-browser", action="store_true", help="Link nur anzeigen")
+    ap.add_argument("--secrets", type=pathlib.Path, default=SECRETS, help="Ziel-Datei (Test)")
+    ap.add_argument("--auth-url", default=AUTH_URL, help=argparse.SUPPRESS)
+    ap.add_argument("--token-url", default=TOKEN_URL, help=argparse.SUPPRESS)
+    ap.add_argument("--timeout", type=float, default=300, help="Sekunden warten (Standard 300)")
+    args = ap.parse_args()
+
+    data = load(args.secrets)
+    sp = data.get("spotify") if isinstance(data.get("spotify"), dict) else {}
+    client_id = (sp.get("client_id") or "").strip()
+    if not client_id:
+        sys.exit(f'Keine client_id: in {args.secrets} eintragen: {{"spotify": {{"client_id": "…"}}}} '
+                 "– Anleitung: docs/setup/spotify.md")
+
+    verifier, challenge = pkce_pair()
+    state = rnd.token_urlsafe(16)
+    url = authorize_url(args.auth_url, client_id, challenge, state)
+
+    if args.dry_run:
+        print(f"Trockenlauf: würde den Browser öffnen, auf {REDIRECT_URI} auf die Zustimmung warten")
+        print(f"und spotify.access_token/refresh_token/expires_at nach {args.secrets} schreiben (600).")
+        print(f"Scopes: {SCOPES}")
+        return
+
+    print("Im Browser bei Spotify anmelden und zustimmen. Falls sich nichts öffnet, diesen Link nehmen:")
+    print(url, flush=True)
+    if not args.no_browser:
+        subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    res = wait_for_code(state, args.timeout)
+    if "code" not in res:
+        sys.exit(f"Abgebrochen: {res.get('error')}")
+
+    tok = exchange(args.token_url, client_id, res["code"], verifier)
+    data = load(args.secrets)  # frisch lesen
+    sp = data.get("spotify") if isinstance(data.get("spotify"), dict) else {}
+    sp["client_id"] = client_id
+    try:
+        apply_token(sp, tok)
+    except ValueError as e:
+        sys.exit(f"{e} – nichts geschrieben.")
+    sp["authorized_at"] = int(time.time())  # Refresh-Token gilt ab hier ca. 6 Monate
+    data["spotify"] = sp
+    save(args.secrets, data)
+    print(f"Gekoppelt. Tokens liegen in {args.secrets} (Rechte 600). Die Shell merkt das von selbst.")
+
+
+if __name__ == "__main__":
+    main()

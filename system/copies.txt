@@ -1,0 +1,16 @@
+# Dateien, die Apps selbst (atomar) neu schreiben → im Repo als KOPIE unter system/copies/<pfad ab ~>.
+# Ein Symlink würde beim ersten Speichern durch eine Datei ersetzt und das Repo hinge still hinterher.
+#   system/bootstrap (Schritt 8)   Repo → PC beim Neuaufsetzen (mit Backup)
+#   system/sync pull | push        Stand abgleichen (siehe system/README.md)
+#
+# Zeile = Datei, oder "Ordner/ Muster" = alle passenden Dateien darin (nichts wird gelöscht).
+# Was hier nicht steht, ist in system/dotfiles/ (Symlinks) oder gehört gar nicht ins Repo (Secrets!).
+
+.config/Code/User/settings.json
+.config/Code/User/keybindings.json
+.claude/settings.json                       # Hooks/Env/Modell – nie Tokens (~/.claude/.credentials.json bleibt draußen)
+.config/mimeapps.list
+.config/autostart/ *.desktop
+.config/kwinoutputconfig.json               # Monitor-Anordnung (3 Monitore, 360 Hz) – greift erst nach Ab-/Anmelden
+.local/share/goxlr-utility/profiles/ *.goxlr
+.local/share/goxlr-utility/mic-profiles/ *.goxlrMicProfile

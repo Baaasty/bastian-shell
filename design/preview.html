@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Desktop – Vorschau</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=block" rel="stylesheet">
+<!-- Alle Farben + Maße kommen aus theme/palette.json (→ palette.js via theme/gen/preview_palette.py) -->
+<script src="palette.js"></script>
+<style>
+:root {
+  --ui: "Inter", system-ui, sans-serif;
+  --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace;
+  --ease: cubic-bezier(0.33, 1, 0.68, 1); /* OutCubic */
+  --raise: color-mix(in srgb, var(--text) 6%, transparent);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { min-height: 100%; background: #070504; color: var(--text); font-family: var(--ui); }
+
+/* ---------- Werkzeugleiste der Vorschau (nicht Teil des Rice) ---------- */
+.tools { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 24px; background: #0c0907; border-bottom: 1px solid #221a15; font-size: 13px; color: #bcab98; }
+.tools b { color: #f2e7d8; font-weight: 600; margin-right: 8px; }
+.tools button, .tools select { font: inherit; color: #f2e7d8; background: #1a1310; border: 1px solid #2c221c; border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+.tools button.on { background: #6e2f1b; border-color: #d15a32; }
+.tools kbd { font-family: var(--mono); font-size: 11px; opacity: .55; margin-left: 5px; }
+.tools .note { margin-left: auto; opacity: .65; }
+
+.stage { padding: 24px; display: flex; justify-content: center; }
+.frame { width: calc(2560px * var(--s, .5)); height: calc(1440px * var(--s, .5)); }
+.screen { width: 2560px; height: 1440px; position: relative; overflow: hidden; transform: scale(var(--s, .5)); transform-origin: top left;
+  border-radius: 6px; box-shadow: 0 30px 80px rgba(0,0,0,.6); font-size: 14px; }
+
+/* ---------- Basis ---------- */
+.ms { font-family: "Material Symbols Rounded"; font-weight: 400; font-style: normal; font-size: 18px; line-height: 1;
+  display: inline-block; vertical-align: middle; user-select: none; font-variation-settings: "FILL" 0, "wght" 400, "opsz" 24; }
+.ms.fill { font-variation-settings: "FILL" 1, "wght" 400, "opsz" 24; }
+.glyph { width: 18px; height: 18px; display: inline-block; vertical-align: middle; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lbl { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--textFaint); }
+.cap { font-size: 12px; color: var(--textFaint); }
+.muted { color: var(--textMuted); } .faint { color: var(--textFaint); } .acc { color: var(--accentText); }
+.ok { color: var(--success); } .warn { color: var(--warning); } .err { color: var(--error); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; background: var(--success); }
+.dot.w { background: var(--warning); } .dot.e { background: var(--error); } .dot.off { background: var(--borderStrong); }
+
+.glass { background: var(--glassTint); border: 1px solid var(--border); border-radius: var(--r-lg);
+  backdrop-filter: blur(calc(var(--blurTile) * 1px)) saturate(var(--satTile));
+  box-shadow: 0 16px 48px rgba(0,0,0,.45), inset 0 1px 0 var(--innerHighlight); }
+.glass.strong { background: var(--glassStrong); }
+
+.btn { height: 36px; padding: 0 16px; border-radius: var(--r-md); display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 500; background: var(--raise); border: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+.btn.pri { background: var(--accentSoft); border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accentText); }
+.btn .ms { font-size: 18px; }
+
+/* ---------- Wallpaper ---------- */
+.wall { position: absolute; inset: 0;
+  background: url("claude-design/wallpaper/desktop-mitte-2560x1440.jpg") center / cover no-repeat,
+    radial-gradient(ellipse 30% 30% at 34% 96%, var(--glow), transparent 70%),
+    linear-gradient(180deg, var(--bg), var(--bgBottom)); }
+
+/* ---------- VS Code als Inhalt hinter dem Glas (Farben = editorSyntax) ---------- */
+.win { position: absolute; top: calc(var(--barM) + var(--barH) + var(--winGap)); left: var(--winGap); right: var(--winGap); bottom: var(--winGap);
+  border-radius: var(--r-window); overflow: hidden; background: var(--ed-background); color: var(--ed-text);
+  box-shadow: 0 24px 64px rgba(0,0,0,.5); display: grid; grid-template-rows: 34px 1fr; font-family: var(--mono); font-size: 15px;
+  transition: opacity 200ms var(--ease); }
+.win .tb { display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--ed-sidebar); color: var(--textFaint); font: 12px var(--ui); }
+.win .tb .t { flex: 1; text-align: center; }
+.win .body { display: grid; grid-template-columns: 50px 290px 1fr; min-height: 0; }
+.win .act { background: var(--ed-sidebar); display: flex; flex-direction: column; align-items: center; gap: 22px; padding-top: 16px; color: var(--ed-lineNumber); }
+.win .act .ms { font-size: 22px; }
+.win .tree { background: var(--ed-sidebar); border-left: 1px solid rgba(255,255,255,.03); padding: 12px 14px; font: 13px/1.95 var(--ui); color: var(--ed-punctuation); }
+.win .tree .h { font-size: 11px; letter-spacing: .08em; color: var(--ed-lineNumber); }
+.win .tree .i1 { padding-left: 14px; } .win .tree .i2 { padding-left: 28px; } .win .tree .i3 { padding-left: 42px; }
+.win .tree .sel { background: rgba(255,230,200,.06); color: var(--ed-text); margin: 0 -14px; padding-left: 56px; }
+.win .main { display: grid; grid-template-rows: 36px 1fr 330px; min-width: 0; }
+.win .tabs { display: flex; background: var(--ed-sidebar); font: 12px var(--ui); }
+.win .tabs div { padding: 11px 18px; color: var(--ed-lineNumber); } .win .tabs .on { background: var(--ed-background); color: var(--ed-text); }
+.code { padding-top: 16px; line-height: 1.7; counter-reset: ln; white-space: pre; overflow: hidden; }
+.code span.ln { display: block; padding-left: 70px; position: relative; }
+.code span.ln::before { counter-increment: ln; content: counter(ln); position: absolute; left: 0; width: 46px; text-align: right; color: var(--ed-lineNumber); }
+.code span.ln.cur { background: var(--ed-activeLine); }
+.tk-k { color: var(--ed-keyword); } .tk-t { color: var(--ed-type); } .tk-s { color: var(--ed-string); }
+.tk-n { color: var(--ed-number); } .tk-c { color: var(--ed-comment); font-style: italic; } .tk-p { color: var(--ed-punctuation); }
+.vterm { background: color-mix(in srgb, var(--ansi-background) 92%, transparent); border-top: 1px solid rgba(255,255,255,.05); padding: 14px 22px; font-size: 14px; line-height: 1.7; }
+
+/* ---------- Top-Bar ---------- */
+.bar { position: absolute; z-index: 50; top: var(--barM); left: var(--barM); right: var(--barM); height: var(--barH);
+  border-radius: var(--barR); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 6px;
+  transition: opacity 200ms var(--ease); }
+.screen[data-bar="edge"] .bar { top: 0; left: 0; right: 0; border-radius: 0; border-width: 0 0 1px 0; }
+.screen[data-bar="edge"] .win { top: calc(var(--barH) + var(--winGap)); }
+.bar .l, .bar .r { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.bar .r { justify-content: flex-end; }
+.bar .c { display: flex; align-items: baseline; gap: 10px; }
+.clk { font: 600 14px var(--mono); letter-spacing: .02em; }
+.chip { height: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 0 11px; border-radius: var(--r-sm);
+  font-size: 13px; font-weight: 500; color: var(--textMuted); white-space: nowrap; }
+.chip.on { background: var(--raise); color: var(--text); }
+.chip .ember { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.chip .ms { font-size: 16px; }
+.vsep { width: 1px; height: 16px; background: var(--borderStrong); margin: 0 8px; }
+.task { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); font-weight: 500; white-space: nowrap; }
+.task .ms { font-size: 15px; color: var(--textFaint); }
+.np .t { color: var(--text); } .np .a { color: var(--textMuted); }
+.call { color: var(--textMuted); } .call .ms { color: var(--success); }
+.tbtn { width: 32px; height: 32px; border-radius: var(--r-sm); display: grid; place-items: center; color: var(--textMuted); }
+.tbtn .ms { font-size: 18px; }
+.timer { color: var(--accentText); font: 600 13px var(--mono); }
+.tmp { font: 500 12px var(--mono); color: var(--textFaint); padding: 0 6px; }
+.tmp.hot { color: var(--warning); }
+.fline { position: absolute; left: 12px; bottom: 0; height: 2px; width: 0; background: var(--accent); border-radius: 2px; box-shadow: 0 0 6px var(--accent); transition: width 250ms var(--ease); }
+/* Fokus-Modus: nur Aufgabe, Uhr, Restzeit (+ Fortschrittslinie) */
+.screen[data-state="focus"] .bar .loud { display: none; }
+.screen[data-state="focus"] .fline { width: calc(62% - 12px); }
+
+/* ---------- Overlays ---------- */
+.dim { position: absolute; inset: 0; z-index: 20; background: rgba(10,6,4,var(--dimA,0)); pointer-events: none; transition: background 180ms var(--ease), backdrop-filter 180ms var(--ease); }
+.screen[data-state="dashboard"] .dim { --dimA: var(--dimDash); }
+.screen[data-state="launcher"] .dim { --dimA: var(--dimLaunch); }
+.screen[data-state="power"] .dim { --dimA: var(--dimPower); backdrop-filter: blur(calc(var(--blurPower) * 1px)); }
+.ov { position: absolute; z-index: 30; opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity 180ms var(--ease), transform 200ms var(--ease); }
+.screen[data-state="dashboard"] .dash, .screen[data-state="launcher"] .launch, .screen[data-state="notify"] .pops,
+.screen[data-state="notify"] .osd, .screen[data-state="power"] .power, .screen[data-state="focus"] .breakb,
+.screen[data-state="hyper"] .hyper, .screen[data-state="lock"] .lock, .screen[data-state="term"] .konsole { opacity: 1; transform: none; pointer-events: auto; }
+.screen[data-state="lock"] .bar, .screen[data-state="lock"] .win { opacity: 0; }
+.screen[data-state="term"] .win { opacity: 0; }
+
+/* ---------- Dashboard ---------- */
+.dash { top: var(--dashTop); left: var(--dashMargin); right: var(--dashMargin); display: grid; gap: var(--tileGap);
+  grid-template-columns: repeat(12, 1fr); grid-template-rows: var(--dashRows); }
+.tile { padding: 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; overflow: hidden; }
+.tile .hd { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s5 { grid-column: span 5; } .s8 { grid-column: span 8; }
+
+.oclock { font: 700 210px/0.86 var(--mono); letter-spacing: -.05em; color: transparent; -webkit-text-stroke: 2px var(--text); margin: 6px 0 0 -8px; }
+.today .date { font-size: 18px; color: var(--textMuted); margin-top: auto; }
+
+.player { flex-direction: row; gap: 24px; }
+.cover { width: 272px; height: 272px; flex: none; border-radius: var(--r-md); background-size: cover; background-position: center;
+  background-image: url("https://i.scdn.co/image/ab67616d0000b273b62d808f3620b8f358befd5d"), linear-gradient(135deg, var(--wood), var(--bgBottom));
+  box-shadow: 0 12px 32px rgba(0,0,0,.45); }
+.player .info { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+.player .ttl { font-size: 24px; font-weight: 600; line-height: 1.2; }
+.player .art { font-size: 18px; color: var(--textMuted); }
+.prog { height: 4px; border-radius: 2px; background: var(--borderStrong); position: relative; margin-top: auto; }
+.prog i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--text); }
+.times { display: flex; justify-content: space-between; font: 12px var(--mono); color: var(--textFaint); }
+.ctl { display: flex; align-items: center; gap: 16px; }
+.ctl .ms { font-size: 26px; color: var(--textMuted); }
+.ctl .pp { width: 52px; height: 52px; border-radius: 50%; background: var(--text); display: grid; place-items: center; }
+.ctl .pp .ms { color: var(--bg); font-size: 30px; }
+.listen { display: flex; gap: 16px; font-size: 12px; color: var(--textFaint); white-space: nowrap; overflow: hidden; }
+.listen b { color: var(--textMuted); font-weight: 500; } .listen span:last-child { overflow: hidden; text-overflow: ellipsis; }
+
+.ring { position: relative; display: grid; place-items: center; flex: none; }
+.ring svg { transform: rotate(-90deg); display: block; }
+.ring .in { position: absolute; text-align: center; }
+.focus { align-items: center; }
+.focus .hd { width: 100%; }
+.focus .big { font: 600 48px var(--mono); letter-spacing: -.02em; }
+.goal { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--textFaint); margin-top: auto; }
+.goal b { color: var(--textMuted); font: 500 12px var(--mono); }
+
+.sys .rings { display: flex; gap: 30px; }
+.sys .rv { font: 600 22px var(--mono); } .sys .ru { font-size: 11px; color: var(--textFaint); }
+.sys .rc { text-align: center; font-size: 12px; color: var(--textMuted); margin-top: 8px; }
+.net { margin-top: auto; }
+.net .nums { display: flex; gap: 18px; font: 12px var(--mono); color: var(--textFaint); margin-bottom: 6px; align-items: center; }
+.net svg { width: 100%; height: 60px; display: block; }
+
+.wx .now { display: flex; align-items: center; gap: 14px; }
+.wx .now .ms { font-size: 44px; color: var(--warning); }
+.wx .deg { font: 600 30px var(--mono); letter-spacing: -.01em; }
+.days { display: flex; gap: 14px; margin-left: auto; font-size: 12px; color: var(--textFaint); text-align: center; }
+.days .ms { display: block; margin: 3px auto; font-size: 20px; color: var(--textMuted); }
+.hr { height: 1px; background: var(--border); }
+.verdict { display: flex; align-items: center; gap: 12px; font-size: 18px; font-weight: 600; }
+.verdict .ms { font-size: 26px; }
+
+.ctrl .row { display: flex; align-items: center; gap: 12px; min-height: 30px; }
+.ctrl .nm { width: 96px; font-size: 13px; color: var(--textMuted); }
+.tgl { width: 40px; height: 24px; border-radius: 12px; background: var(--accent); position: relative; flex: none; }
+.tgl::after { content: ""; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.sld { flex: 1; height: 4px; border-radius: 2px; background: var(--borderStrong); position: relative; }
+.sld i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--woodLight); }
+.sld i::after { content: ""; position: absolute; right: -8px; top: -6px; width: 16px; height: 16px; border-radius: 50%; background: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.vs { font: 12px var(--mono); color: var(--textFaint); white-space: nowrap; min-width: 44px; text-align: right; }
+.scenes { display: flex; gap: 6px; }
+.scene { height: 30px; padding: 0 12px; border-radius: var(--r-sm); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; color: var(--textMuted); background: var(--raise); }
+.scene.on { background: var(--accentSoft); color: var(--accentText); }
+.sel { flex: 1; height: 32px; border-radius: var(--r-sm); background: var(--raise); border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 13px; }
+
+.kv { display: grid; grid-template-columns: auto 1fr auto; gap: 11px 14px; align-items: center; font-size: 14px; }
+.kv .k { display: flex; align-items: center; gap: 9px; color: var(--textMuted); white-space: nowrap; }
+.kv .k .ms { font-size: 16px; color: var(--textFaint); }
+.kv .v { font: 13px var(--mono); text-align: right; white-space: nowrap; }
+.bar5 { height: 4px; border-radius: 2px; background: var(--borderStrong); position: relative; }
+.bar5 i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--woodLight); }
+.badge { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--accentSoft); color: var(--accentText); font: 600 12px var(--mono); display: inline-grid; place-items: center; }
+
+.nlist { display: flex; flex-direction: column; gap: 8px; }
+.dc .chan { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.dc .chan .ms { font-size: 16px; color: var(--success); }
+.people { display: flex; flex-direction: column; gap: 8px; }
+.pp2 { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--textMuted); }
+.pp2 .av { width: 28px; height: 28px; border-radius: 50%; background: var(--wood); color: var(--text); display: grid; place-items: center; font: 600 10px var(--ui); }
+.pp2.talk .av { box-shadow: 0 0 0 2px var(--success); } .pp2.talk { color: var(--text); }
+.pp2 .ms { font-size: 15px; margin-left: auto; }
+.nrow { display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: center; padding: 7px 10px; border-radius: var(--r-md); background: var(--raise); }
+.icotile { width: 32px; height: 32px; border-radius: 9px; background: var(--wood); display: grid; place-items: center; color: var(--text); flex: none; }
+.icotile .ms { font-size: 17px; }
+.nrow .t1 { font-size: 13px; font-weight: 500; } .nrow .t2 { font-size: 12px; color: var(--textMuted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nrow .tm { font: 11px var(--mono); color: var(--textFaint); }
+
+.slim { flex-direction: row; align-items: center; padding: 12px 20px; gap: 10px; }
+.slim .lbl { margin-right: 6px; }
+.pbtn { height: 56px; padding: 0 18px 0 12px; border-radius: var(--r-md); background: var(--raise); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; }
+.pbtn .icotile { width: 34px; height: 34px; }
+.pbtn.new { background: var(--accentSoft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text); }
+.pbtn.new .icotile { background: transparent; color: var(--accentText); }
+.addd { padding: 0 6px 0 8px; gap: 0; color: var(--textMuted); } .addd .caret2 { font-size: 14px; color: var(--textFaint); }
+.hl { height: 40px; padding: 0 14px; border-radius: var(--r-sm); display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--textMuted); background: var(--raise); }
+
+/* ---------- Launcher ---------- */
+.launch { top: var(--launchTop); left: 50%; width: var(--launchW); margin-left: calc(var(--launchW) / -2); padding: 16px; border-radius: var(--r-xl); }
+.search { height: 56px; border-radius: var(--r-md); background: var(--raise); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  display: flex; align-items: center; gap: 12px; padding: 0 16px; font-size: 20px; }
+.search .ms { font-size: 22px; color: var(--textFaint); }
+.caret { width: 2px; height: 24px; background: var(--accent); margin-left: -8px; }
+.modes { display: flex; gap: 6px; margin: 12px 2px; }
+.modes .chip { height: 28px; font-size: 12px; border: 1px solid var(--border); }
+.modes .chip.on { background: var(--accentSoft); color: var(--accentText); border-color: transparent; }
+.res { display: grid; grid-template-columns: 40px 1fr auto; gap: 14px; align-items: center; height: 60px; padding: 0 12px; border-radius: var(--r-md); }
+.res.on { background: var(--accentSoft); }
+.res .icotile { width: 40px; height: 40px; border-radius: 11px; }
+.res .icotile .glyph, .res .icotile .ms { width: 22px; height: 22px; font-size: 22px; }
+.res .t1 { font-size: 16px; font-weight: 500; } .res .t1 em { font-style: normal; color: var(--accentText); }
+.res .t2 { font-size: 12px; color: var(--textMuted); margin-top: 2px; }
+.res .kind { font-size: 12px; color: var(--textFaint); }
+.res.on .kind::after { content: "  ↵"; color: var(--accentText); }
+.hints { display: flex; gap: 18px; padding: 12px 6px 2px; font-size: 12px; color: var(--textFaint); }
+.hints .mono { color: var(--textMuted); }
+
+/* ---------- Popups + OSD ---------- */
+.pops { top: calc(var(--barM) + var(--barH) + var(--winGap)); right: var(--barM); width: var(--notifW); display: flex; flex-direction: column; gap: 10px; }
+.pop { padding: 14px 16px; display: grid; grid-template-columns: 36px 1fr; gap: 12px; }
+.pop .icotile { width: 36px; height: 36px; }
+.pop .top { display: flex; justify-content: space-between; font-size: 12px; color: var(--textFaint); }
+.pop .t1 { font-size: 14px; font-weight: 600; margin-top: 2px; } .pop .t2 { font-size: 14px; line-height: 1.45; color: var(--textMuted); margin-top: 2px; }
+.pop .acts { display: flex; gap: 8px; margin-top: 12px; }
+.pop.urg { border-color: color-mix(in srgb, var(--accent) 65%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 0 24px var(--glow), 0 16px 48px rgba(0,0,0,.45); }
+.pop.urg .icotile { background: var(--accentSoft); color: var(--accentText); }
+.osd { left: 50%; bottom: 96px; width: var(--osdW); height: var(--osdH); margin-left: calc(var(--osdW) / -2); border-radius: 999px;
+  display: flex; align-items: center; gap: 14px; padding: 0 22px; }
+.osd .ms { font-size: 20px; } .osd .sld i { background: var(--text); } .osd .sld i::after { display: none; }
+
+/* ---------- Power ---------- */
+.power { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; }
+.power .greet { font-size: 24px; font-weight: 600; }
+.power .row { display: flex; gap: 20px; }
+.pw { width: var(--powerTile); height: var(--powerTile); border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; font-size: 14px; font-weight: 500; position: relative; }
+.pw .ms { font-size: 34px; }
+.pw .key { position: absolute; top: 12px; right: 14px; font: 12px var(--mono); color: var(--textFaint); padding: 2px 6px; border: 1px solid var(--borderStrong); border-radius: 6px; }
+.pw.on { box-shadow: 0 0 0 2px var(--accent), 0 16px 48px rgba(0,0,0,.45); }
+.pw.on .ms { color: var(--accentText); }
+.pwarn { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--warning); background: var(--warningSoft); padding: 10px 16px; border-radius: var(--r-md); }
+
+/* ---------- Fokus: Pausen-Banner + Hyperfokus-Karte ---------- */
+.breakb { top: calc(var(--barM) + var(--barH) + 8px); left: 50%; width: 640px; margin-left: -320px; height: 52px; border-radius: var(--r-md);
+  display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px; font-size: 14px; }
+.breakb .ms { color: var(--success); font-size: 20px; } .breakb .sp { flex: 1; }
+.breakb .btn { height: 34px; }
+.hyper { top: 50%; left: 50%; width: 560px; margin: -200px 0 0 -280px; padding: 28px; border-radius: var(--r-xl); display: flex; flex-direction: column; gap: 14px; }
+.hyper .t1 { font-size: 24px; font-weight: 600; }
+.hyper ul { list-style: none; display: flex; flex-direction: column; gap: 10px; margin: 4px 0 8px; }
+.hyper li { display: flex; align-items: center; gap: 12px; font-size: 16px; color: var(--textMuted); }
+.hyper li .ms { color: var(--textFaint); font-size: 20px; }
+.hyper .acts { display: flex; gap: 10px; }
+
+/* ---------- Lockscreen ---------- */
+.lock { inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: rgba(10,6,4,.35); }
+.lock .lc { font: 600 260px/0.9 var(--mono); letter-spacing: -.05em; }
+.lock .ld { font-size: 22px; color: var(--textMuted); }
+.lock .back { font-size: 16px; color: var(--textFaint); margin-top: 6px; } .lock .back b { color: var(--text); font-weight: 500; }
+.lock .pwd { margin-top: 40px; width: 360px; height: 52px; border-radius: 999px; display: flex; align-items: center; gap: 12px; padding: 0 20px; color: var(--textFaint); font-size: 14px; }
+.lock .pwd .ms { font-size: 18px; }
+
+/* ---------- Terminal (Konsole + Starship + fastfetch) ---------- */
+.konsole { top: 220px; left: 50%; width: 1500px; height: 900px; margin-left: -750px; border-radius: var(--r-window); overflow: hidden;
+  background: color-mix(in srgb, var(--ansi-background) calc(var(--termOp) * 100%), transparent);
+  backdrop-filter: blur(calc(var(--blurTerm) * 1px)) saturate(1.1); border: 1px solid var(--border);
+  box-shadow: 0 24px 64px rgba(0,0,0,.5); font: 15px/1.6 var(--mono); color: var(--ansi-foreground); }
+.konsole .tb { height: 34px; display: flex; align-items: center; justify-content: center; font: 12px var(--ui); color: var(--textFaint); border-bottom: 1px solid var(--border); }
+.konsole .tx { padding: 22px 28px; white-space: pre; }
+.a-red { color: var(--ansi-red); } .a-green { color: var(--ansi-green); } .a-yellow { color: var(--ansi-yellow); } .a-blue { color: var(--ansi-blue); }
+.a-bblack { color: var(--ansi-brightBlack); } .a-bred { color: var(--ansi-brightRed); }
+.ff { display: grid; grid-template-columns: 300px 1fr; gap: 34px; margin: 6px 0 22px; }
+.ff .logo { color: var(--ansi-red); line-height: 1.25; }
+.ff .k { color: var(--ansi-brightRed); }
+.blocks { display: flex; margin-top: 10px; } .blocks i { width: 34px; height: 20px; }
+.pl { display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<div class="tools">
+  <b>Desktop · DP-2 2560×1440</b>
+  <button data-go="desktop">Desktop<kbd>Esc</kbd></button>
+  <button data-go="dashboard">Dashboard<kbd>D</kbd></button>
+  <button data-go="launcher">Launcher<kbd>L</kbd></button>
+  <button data-go="notify">Notification + OSD<kbd>N</kbd></button>
+  <button data-go="power">Power<kbd>P</kbd></button>
+  <button data-go="focus">Fokus-Modus<kbd>F</kbd></button>
+  <button data-go="hyper">Hyperfokus<kbd>H</kbd></button>
+  <button data-go="lock">Lockscreen<kbd>K</kbd></button>
+  <button data-go="term">Terminal<kbd>T</kbd></button>
+  <select id="variant" title="Stil"></select>
+  <select id="barstyle" title="Bar"><option value="float">Bar schwebend</option><option value="edge">Bar randlos</option></select>
+  <span class="note">Dummy-Daten · Werte aus theme/palette.json</span>
+</div>
+
+<div class="stage"><div class="frame"><div class="screen" id="screen" data-state="desktop" data-bar="float">
+
+  <div class="wall"></div>
+
+  <!-- ===== VS Code (Inhalt hinter dem Glas) ===== -->
+  <div class="win">
+    <div class="tb"><span class="ms">code</span><span class="t">hero.ts — habit-tracker — Visual Studio Code</span><span class="ms">remove</span><span class="ms">crop_square</span><span class="ms">close</span></div>
+    <div class="body">
+      <div class="act"><span class="ms">description</span><span class="ms">search</span><span class="ms">account_tree</span><span class="ms">extension</span></div>
+      <div class="tree">
+        <div class="h">HABIT-TRACKER</div>
+        <div class="i1">▸ apps/api</div><div class="i1">▾ apps/web</div><div class="i2">▾ src/components</div>
+        <div class="sel">hero.ts</div><div class="i3">challenge-card.ts</div><div class="i3">crew-list.ts</div>
+        <div class="i1">▸ packages/db</div><div class="i1">▸ packages/shared</div><div class="i1">package.json</div><div class="i1">turbo.json</div>
+      </div>
+      <div class="main">
+        <div class="tabs"><div class="on">hero.ts</div><div>streak.ts</div><div>schema.prisma</div></div>
+<div class="code"><span class="ln"><span class="tk-k">import</span> <span class="tk-p">{</span> Elysia <span class="tk-p">}</span> <span class="tk-k">from</span> <span class="tk-s">"elysia"</span><span class="tk-p">;</span></span><span class="ln"><span class="tk-k">import</span> <span class="tk-p">{</span> auth <span class="tk-p">}</span> <span class="tk-k">from</span> <span class="tk-s">"./auth"</span><span class="tk-p">;</span></span><span class="ln"><span class="tk-k">import</span> <span class="tk-p">{</span> computeStreak <span class="tk-p">}</span> <span class="tk-k">from</span> <span class="tk-s">"@habit-tracker/shared"</span><span class="tk-p">;</span></span><span class="ln"> </span><span class="ln"><span class="tk-k">export const</span> app <span class="tk-p">=</span> <span class="tk-k">new</span> <span class="tk-t">Elysia</span><span class="tk-p">()</span></span><span class="ln">  <span class="tk-p">.</span>use<span class="tk-p">(</span>auth<span class="tk-p">)</span></span><span class="ln">  <span class="tk-p">.</span>get<span class="tk-p">(</span><span class="tk-s">"/challenges"</span><span class="tk-p">,</span> <span class="tk-k">async</span> <span class="tk-p">({</span> db <span class="tk-p">}) =&gt; {</span></span><span class="ln">    <span class="tk-k">return</span> db<span class="tk-p">.</span>challenge<span class="tk-p">.</span>findMany<span class="tk-p">({</span> where<span class="tk-p">: {</span> public<span class="tk-p">:</span> <span class="tk-k">true</span> <span class="tk-p">} });</span></span><span class="ln">  <span class="tk-p">})</span></span><span class="ln cur">  <span class="tk-p">.</span>post<span class="tk-p">(</span><span class="tk-s">"/checkin/:id"</span><span class="tk-p">,</span> <span class="tk-k">async</span> <span class="tk-p">({</span> params<span class="tk-p">,</span> user<span class="tk-p">,</span> db <span class="tk-p">}) =&gt; {</span></span><span class="ln">    <span class="tk-c">// Streak hält nur, wenn alle in der Crew liefern</span></span><span class="ln">    <span class="tk-k">const</span> crew <span class="tk-p">=</span> <span class="tk-k">await</span> db<span class="tk-p">.</span>crew<span class="tk-p">.</span>findUnique<span class="tk-p">({</span> where<span class="tk-p">: {</span> id<span class="tk-p">:</span> params<span class="tk-p">.</span>id <span class="tk-p">} });</span></span><span class="ln">    <span class="tk-k">const</span> streak <span class="tk-p">=</span> computeStreak<span class="tk-p">(</span>crew<span class="tk-p">.</span>checkins<span class="tk-p">, {</span> mode<span class="tk-p">:</span> <span class="tk-s">"all-for-one"</span> <span class="tk-p">});</span></span><span class="ln">    <span class="tk-k">return</span> <span class="tk-p">{</span> ok<span class="tk-p">:</span> <span class="tk-k">true</span><span class="tk-p">,</span> streak<span class="tk-p">,</span> limit<span class="tk-p">:</span> <span class="tk-n">30</span> <span class="tk-p">};</span></span><span class="ln">  <span class="tk-p">})</span></span><span class="ln">  <span class="tk-p">.</span>listen<span class="tk-p">(</span><span class="tk-t">Number</span><span class="tk-p">(</span>process<span class="tk-p">.</span>env<span class="tk-p">.</span>PORT <span class="tk-p">??</span> <span class="tk-n">3000</span><span class="tk-p">));</span></span><span class="ln"> </span><span class="ln"><span class="tk-c">// TODO: Daps-Endpunkt + Rate-Limit</span></span></div>
+        <div class="vterm">
+          <div><span class="a-bred">~/Workspace/labs/habit-tracker</span> <span class="a-bblack">main</span></div>
+          <div><span class="a-red">❯</span> claude</div>
+          <div class="a-bblack">✻ Welcome to Claude Code</div>
+          <div><span class="a-red">&gt;</span> Fix den Hero-Bug in apps/web und schreib einen Test dazu</div>
+          <div>● Editing hero.ts <span class="a-green">(+12</span> <span class="a-red">−3)</span></div>
+          <div>● Running bun test … <span class="a-green">14 passed</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Top-Bar ===== -->
+  <div class="bar glass strong">
+    <div class="l">
+      <span class="chip on loud"><svg class="glyph" data-glyph="code"></svg>Code: habit-tracker<span class="ember"></span></span>
+      <span class="chip loud">Office</span>
+      <span class="chip loud">Fun</span>
+      <span class="chip addd loud" title="Klick: neuer leerer Desktop · Pfeil: aus Vorlage"><span class="ms">add</span><span class="ms caret2">expand_more</span></span>
+      <span class="vsep loud"></span>
+      <span class="task"><span class="ms">flag</span>Hero-Bug fixen + Test</span>
+    </div>
+    <div class="c"><span class="clk">17:42</span><span class="cap loud">Sa 17. Okt</span></div>
+    <div class="r">
+      <span class="chip call loud" title="Discord-Call · Klick öffnet Fun-Desktop"><span class="ms">headset_mic</span>Lounge<span class="faint">· 4 · 32 min</span></span>
+      <span class="vsep loud"></span>
+      <span class="chip np loud"><span class="ms">music_note</span><span class="t">RED CUPS</span><span class="a">Ufo361</span></span>
+      <span class="tbtn loud"><span class="ms fill">pause</span></span>
+      <span class="vsep loud"></span>
+      <span class="chip timer"><span class="ms">timer</span>18:20</span>
+      <span class="tmp loud">CPU 62°</span><span class="tmp loud">GPU 55°</span>
+      <span class="vsep loud"></span>
+      <span class="tbtn loud"><span class="ms">cloud_done</span></span><span class="tbtn loud"><span class="ms">forum</span></span><span class="tbtn loud"><span class="ms">volume_up</span></span>
+    </div>
+    <span class="fline"></span>
+  </div>
+
+  <div class="dim"></div>
+
+  <!-- ===== Dashboard ===== -->
+  <section class="dash ov">
+
+    <div class="tile glass s4 today">
+      <div class="hd"><span class="lbl">Heute</span><span class="cap">KW 42</span></div>
+      <div class="oclock">17:42</div>
+      <div class="date">Samstag, 17. Oktober</div>
+    </div>
+
+    <div class="tile glass s5 player">
+      <div class="cover"></div>
+      <div class="info">
+        <span class="lbl">Spotify</span>
+        <div class="ttl">RED CUPS (feat. Paula Hartmann)</div>
+        <div class="art">Ufo361</div>
+        <div class="prog"><i style="width:42%"></i></div>
+        <div class="times"><span>1:27</span><span>3:26</span></div>
+        <div class="ctl"><span class="ms">shuffle</span><span class="ms">skip_previous</span><span class="pp"><span class="ms fill">pause</span></span><span class="ms">skip_next</span><span class="ms">repeat</span></div>
+        <div class="listen"><span>Heute <b>2 h 14 min</b></span><span>Top der Woche <b>Paula Hartmann – Kein Liebeslied</b></span></div>
+      </div>
+    </div>
+
+    <div class="tile glass s3 focus">
+      <div class="hd"><span class="lbl">Fokus</span><span class="cap">Block 2 / 4</span></div>
+      <div class="ring" data-size="170" data-stroke="10" data-v="0.6" data-tone="accent"><div class="in"><div class="big">18:20</div><div class="cap">noch</div></div></div>
+      <div style="display:flex;gap:8px"><span class="btn"><span class="ms">pause</span>Pause</span><span class="btn"><span class="ms">stop</span>Stopp</span></div>
+      <div class="goal"><div class="ring" data-size="30" data-stroke="4" data-v="0.58" data-tone="wood"></div><span>Tagesziel <b>105 / 180 min</b></span><span>·</span><span>Bildschirm <b>5 h 12</b></span></div>
+    </div>
+
+    <div class="tile glass s5 sys">
+      <div class="hd"><span class="lbl">System</span><span class="cap">Uptime 2 h 41 min</span></div>
+      <div class="rings">
+        <div><div class="ring" data-size="104" data-stroke="8" data-v="0.34" data-tone="wood"><div class="in"><div class="rv">34%</div><div class="ru">62°</div></div></div><div class="rc">CPU</div></div>
+        <div><div class="ring" data-size="104" data-stroke="8" data-v="0.34" data-tone="wood"><div class="in"><div class="rv">11</div><div class="ru">/ 32 GB</div></div></div><div class="rc">RAM</div></div>
+        <div><div class="ring" data-size="104" data-stroke="8" data-v="0.15" data-tone="wood"><div class="in"><div class="rv">15%</div><div class="ru">55°</div></div></div><div class="rc">GPU · 1,9 / 8 GB</div></div>
+      </div>
+      <div class="net">
+        <div class="nums"><span>↓ 12,4 MB/s</span><span>↑ 0,8 MB/s</span><span>Ping 14 ms</span><span style="margin-left:auto;display:flex;gap:8px;align-items:center"><span class="dot"></span>Tailscale</span></div>
+        <svg viewBox="0 0 600 60" preserveAspectRatio="none">
+          <polyline fill="color-mix(in srgb, var(--woodLight) 16%, transparent)" stroke="var(--woodLight)" stroke-width="1.5" points="0,60 0,52 30,50 60,45 90,48 120,34 150,38 180,26 210,31 240,19 270,29 300,24 330,40 360,33 390,43 420,26 450,15 480,22 510,34 540,31 570,41 600,38 600,60"/>
+          <polyline fill="none" stroke="var(--textFaint)" stroke-width="1.2" stroke-dasharray="3 4" points="0,57 60,55 120,54 180,56 240,52 300,55 360,53 420,55 480,54 540,56 600,54"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="tile glass s3 wx">
+      <div class="hd"><span class="lbl">Wetter · Berlin</span></div>
+      <div class="now"><span class="ms">partly_cloudy_day</span><div><div class="deg">12°</div><div class="cap">leicht bewölkt</div></div>
+        <div class="days"><div>So<span class="ms">rainy</span>11°</div><div>Mo<span class="ms">cloud</span>12°</div><div>Di<span class="ms">sunny</span>14°</div></div></div>
+      <div class="hr"></div>
+      <div class="lbl">Morgen früh · 7–9 Uhr</div>
+      <div class="verdict"><span class="ms ok">two_wheeler</span>Motorrad passt</div>
+      <div class="cap mono">6–9° · Regen 10 % · Wind 12 km/h</div>
+    </div>
+
+    <div class="tile glass s4 ctrl">
+      <div class="hd"><span class="lbl">Licht & Ton</span></div>
+      <div class="row"><span class="nm">Key Light</span><span class="tgl"></span><div class="sld"><i style="width:20%"></i></div><span class="vs">20 % · 3300 K</span></div>
+      <div class="row"><span class="nm">Hue</span><div class="scenes"><span class="scene on"><span class="ms" style="font-size:15px">fireplace</span>Abend</span><span class="scene">Hell</span><span class="scene">Lesen</span><span class="scene">Aus</span></div></div>
+      <div class="row"><span class="nm">Ausgang</span><div class="sel"><span>GoXLR · System</span><span class="ms">expand_more</span></div></div>
+      <div class="row"><span class="nm">Spotify</span><div class="sld"><i style="width:100%"></i></div><span class="vs">100</span></div>
+      <div class="row"><span class="nm">Discord</span><div class="sld"><i style="width:80%"></i></div><span class="vs">80</span></div>
+    </div>
+
+    <div class="tile glass s3">
+      <div class="hd"><span class="lbl">Dev heute</span></div>
+      <div class="kv">
+        <span class="k"><span class="ms">auto_awesome</span>Claude Code</span><span></span><span class="v">412k Tokens · 86 Req.</span>
+        <span class="k"><span class="ms">hourglass_bottom</span>5-h-Fenster</span><div class="bar5"><i style="width:38%"></i></div><span class="v faint">Reset 2 h 10</span>
+        <span class="k"><span class="ms">commit</span>Code</span><span></span><span class="v"><span class="ok">+312</span> <span class="acc">−88</span> · 5 Commits</span>
+        <span class="k"><span class="ms">notifications</span>GitHub</span><span></span><span class="v"><span class="badge">2</span></span>
+      </div>
+    </div>
+
+    <div class="tile glass s3">
+      <div class="hd"><span class="lbl">Status</span></div>
+      <div class="kv">
+        <span class="k"><span class="dot"></span>Tailscale</span><span></span><span class="v muted">online</span>
+        <span class="k"><span class="dot"></span>iCloud-Sync</span><span></span><span class="v muted">ok · 15:04</span>
+        <span class="k"><span class="dot"></span>Platten</span><span></span><span class="v muted">439 GB · 1,9 TB frei</span>
+        <span class="k"><span class="dot w"></span>Updates</span><span></span><span class="v muted">3 dnf · 1 Flatpak</span>
+        <span class="k"><span class="dot off"></span>Backup</span><span></span><span class="v faint">nicht eingerichtet</span>
+      </div>
+    </div>
+
+    <div class="tile glass s3 dc">
+      <div class="hd"><span class="lbl">Discord · Call</span><span class="cap mono">32 min</span></div>
+      <div class="chan"><span class="ms">volume_up</span>Team · Lounge</div>
+      <div class="people">
+        <div class="pp2 talk"><span class="av">AL</span><span>Alex</span></div>
+        <div class="pp2"><span class="av">SA</span><span>Sam</span></div>
+        <div class="pp2"><span class="av">KI</span><span>Kim</span><span class="ms faint">mic_off</span></div>
+        <div class="pp2 me"><span class="av">BM</span><span>Du</span><span class="ms faint">videocam_off</span></div>
+      </div>
+    </div>
+
+    <div class="tile glass s3">
+      <div class="hd"><span class="lbl">Benachrichtigungen</span><span class="cap">Alle löschen</span></div>
+      <div class="nlist">
+        <div class="nrow"><div class="icotile"><span class="ms">forum</span></div><div style="min-width:0"><div class="t1">Alex</div><div class="t2">Bist du heute Abend online?</div></div><span class="tm">17:38</span></div>
+        <div class="nrow"><div class="icotile"><span class="ms">cloud_done</span></div><div style="min-width:0"><div class="t1">iCloud-Sync</div><div class="t2">Sync fertig, 14 Dateien</div></div><span class="tm">15:04</span></div>
+        <div class="nrow"><div class="icotile"><span class="ms">merge</span></div><div style="min-width:0"><div class="t1">GitHub · example-org/website</div><div class="t2">Review angefragt: fix(hero) companyUrl</div></div><span class="tm">14:20</span></div>
+      </div>
+    </div>
+
+    <div class="tile glass s8 slim">
+      <span class="lbl">Desktops</span>
+      <span class="pbtn new"><span class="icotile"><span class="ms">add</span></span>Neuer Desktop</span>
+      <span class="cap" style="margin:0 6px 0 10px">oder Vorlage</span>
+      <span class="pbtn"><span class="icotile"><svg class="glyph" data-glyph="code"></svg></span>Code</span>
+      <span class="pbtn"><span class="icotile"><svg class="glyph" data-glyph="office"></svg></span>Office</span>
+      <span class="pbtn"><span class="icotile"><svg class="glyph" data-glyph="fun"></svg></span>Fun</span>
+      <span class="pbtn"><span class="icotile"><svg class="glyph" data-glyph="projekt"></svg></span>Projekt …</span>
+    </div>
+
+    <div class="tile glass s4 slim">
+      <span class="lbl">Links</span>
+      <span class="hl"><span class="ms" style="font-size:16px">receipt_long</span>Accounting</span>
+      <span class="hl">CRM</span><span class="hl">Bank</span><span class="hl">Kunden</span>
+    </div>
+  </section>
+
+  <!-- ===== Launcher ===== -->
+  <section class="launch ov glass">
+    <div class="search"><span class="ms">search</span><span>my</span><span class="caret"></span></div>
+    <div class="modes">
+      <span class="chip on">Alles</span><span class="chip">Apps</span><span class="chip"><span class="mono faint">#</span>Projekte</span>
+      <span class="chip"><span class="mono faint">=</span>Rechner</span><span class="chip"><span class="mono faint">:</span>Emoji</span><span class="chip"><span class="mono faint">;</span>Zwischenablage</span>
+    </div>
+    <div class="res on"><span class="icotile"><svg class="glyph" data-glyph="projekt"></svg></span><div><div class="t1"><em>my</em>-app</div><div class="t2">Projekt-Desktop starten · VS Code + Chrome localhost:3000</div></div><span class="kind">Projekt</span></div>
+    <div class="res"><span class="icotile"><svg class="glyph" data-glyph="code"></svg></span><div><div class="t1"><em>my</em>-app nur in VS Code</div><div class="t2">ohne neuen Desktop</div></div><span class="kind">Projekt</span></div>
+    <div class="res"><span class="icotile"><span class="ms">folder</span></span><div><div class="t1"><em>D</em>ateien</div><div class="t2">Dolphin · Dateimanager</div></div><span class="kind">App</span></div>
+    <div class="res"><span class="icotile"><span class="ms">add</span></span><div><div class="t1">Neuer <em>D</em>esktop</div><div class="t2">leer, ohne Apps · oder mit Vorlage: Code, Office, Fun</div></div><span class="kind">Aktion</span></div>
+    <div class="hints"><span><span class="mono">↵</span> öffnen</span><span><span class="mono">↑↓</span> wählen</span><span><span class="mono">Tab</span> Modus</span><span><span class="mono">Esc</span> schließen</span></div>
+  </section>
+
+  <!-- ===== Popups + OSD ===== -->
+  <aside class="pops ov">
+    <div class="pop glass"><span class="icotile"><span class="ms">forum</span></span><div><div class="top"><span>Discord</span><span class="mono">jetzt</span></div><div class="t1">Alex</div><div class="t2">Bist du heute Abend online? Wir wollten noch die Landing-Page durchgehen.</div></div></div>
+    <div class="pop glass strong urg"><span class="icotile"><span class="ms">cloud_off</span></span><div><div class="top"><span>iCloud-Sync · bleibt bis Klick</span><span class="mono">2 min</span></div><div class="t1">Sync fehlgeschlagen</div><div class="t2">Anmeldung abgelaufen. Einmal neu anmelden, dann läuft es wieder.</div><div class="acts"><span class="btn pri">Jetzt anmelden</span><span class="btn">Später</span></div></div></div>
+  </aside>
+  <div class="osd ov glass strong"><span class="ms">volume_up</span><div class="sld"><i style="width:64%"></i></div><span class="mono">64</span></div>
+
+  <!-- ===== Power ===== -->
+  <section class="power ov">
+    <div class="greet">Bis später, Bastian</div>
+    <div class="row">
+      <div class="pw glass on"><span class="key">L</span><span class="ms">lock</span>Sperren</div>
+      <div class="pw glass"><span class="key">A</span><span class="ms">logout</span>Abmelden</div>
+      <div class="pw glass"><span class="key">S</span><span class="ms">bedtime</span>Standby</div>
+      <div class="pw glass"><span class="key">R</span><span class="ms">restart_alt</span>Neustart</div>
+      <div class="pw glass"><span class="key">P</span><span class="ms">power_settings_new</span>Ausschalten</div>
+    </div>
+    <div class="pwarn"><span class="ms">timer</span>Fokus-Block läuft noch 18 min</div>
+    <div class="cap">Esc schließen · Pfeiltasten + Enter</div>
+  </section>
+
+  <!-- ===== Fokus: Pausen-Banner ===== -->
+  <div class="breakb ov glass strong"><span class="ms">check_circle</span><span class="sp">Block 2 geschafft. 5 Minuten Pause?</span><span class="btn pri">Pause starten</span><span class="btn">Weiter</span></div>
+
+  <!-- ===== Hyperfokus-Karte ===== -->
+  <section class="hyper ov glass strong">
+    <span class="lbl acc">Hyperfokus</span>
+    <div class="t1">90 Minuten am Stück</div>
+    <ul>
+      <li><span class="ms">accessibility_new</span>Aufstehen und strecken</li>
+      <li><span class="ms">water_full</span>Ein Glas Wasser holen</li>
+      <li><span class="ms">visibility</span>20 Sekunden aus dem Fenster schauen</li>
+    </ul>
+    <div class="acts"><span class="btn pri">5 min Pause</span><span class="btn">Noch 15 min</span></div>
+  </section>
+
+  <!-- ===== Lockscreen ===== -->
+  <section class="lock ov">
+    <div class="lc">17:42</div>
+    <div class="ld">Samstag, 17. Oktober</div>
+    <div class="back">Wenn du zurück bist: <b>Hero-Bug fixen + Test</b></div>
+    <div class="pwd glass strong"><span class="ms">lock</span>Passwort</div>
+  </section>
+
+  <!-- ===== Terminal ===== -->
+  <section class="konsole ov">
+    <div class="tb">~/Workspace/labs/habit-tracker — Konsole</div>
+<div class="tx"><div class="pl"><span><span class="a-bred">~/W/l/habit-tracker</span> <span class="a-bblack"> main</span> <span class="a-yellow">!2</span></span><span class="a-bblack">17:42</span></div><span class="a-red">❯</span> fastfetch
+<div class="ff"><div class="logo">        ▄▄▄▄
+     ▄████████▄    ░
+   ▄████████████▄ ░░
+  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   █ ▄▄▄    ▄▄▄ █
+   █ █▒█    ▀▀▀ █
+   █ ▀▀▀  ▄▄    █
+   █▄▄▄▄▄▄██▄▄▄▄█</div><div><span class="k">bastian</span>@<span class="k">desktop</span>
+<span class="a-bblack">──────────────────────</span>
+<span class="k">OS</span>      Fedora Linux 44 (KDE Plasma)
+<span class="k">Kernel</span>  7.2.11-200.fc44
+<span class="k">WM</span>      KWin 6.7.5 (Wayland) · Quickshell 0.3.2
+<span class="k">Theme</span>   Desktop · Ember
+<span class="k">CPU</span>     AMD Ryzen 7 5800X (16) · 62°C
+<span class="k">GPU</span>     NVIDIA GeForce RTX 3070 Ti · 55°C
+<span class="k">Memory</span>  11,2 GiB / 31,3 GiB
+<span class="k">Uptime</span>  2 hours, 41 mins
+<div class="blocks"><i style="background:var(--ansi-black)"></i><i style="background:var(--ansi-red)"></i><i style="background:var(--ansi-green)"></i><i style="background:var(--ansi-yellow)"></i><i style="background:var(--ansi-blue)"></i><i style="background:var(--ansi-magenta)"></i><i style="background:var(--ansi-cyan)"></i><i style="background:var(--ansi-white)"></i></div><div class="blocks" style="margin-top:0"><i style="background:var(--ansi-brightBlack)"></i><i style="background:var(--ansi-brightRed)"></i><i style="background:var(--ansi-brightGreen)"></i><i style="background:var(--ansi-brightYellow)"></i><i style="background:var(--ansi-brightBlue)"></i><i style="background:var(--ansi-brightMagenta)"></i><i style="background:var(--ansi-brightCyan)"></i><i style="background:var(--ansi-brightWhite)"></i></div></div></div><div class="pl"><span><span class="a-bred">~/W/l/habit-tracker</span> <span class="a-bblack"> main</span> <span class="a-yellow">!2</span></span><span class="a-bblack">17:42</span></div><span class="a-red">❯</span> git status -s
+ <span class="a-yellow">M</span> apps/web/src/components/hero.ts
+<span class="a-green">??</span> apps/web/test/hero.test.ts
+<div class="pl"><span><span class="a-bred">~/W/l/habit-tracker</span> <span class="a-bblack"> main</span> <span class="a-yellow">!2</span></span><span class="a-bblack">17:43</span></div><span class="a-red">❯</span> ls
+<span class="a-blue">apps</span>  <span class="a-blue">docs</span>  <span class="a-blue">infra</span>  <span class="a-blue">packages</span>  biome.jsonc  bun.lock  package.json  turbo.json
+<div class="pl"><span><span class="a-bred">~/W/l/habit-tracker</span> <span class="a-bblack"> main</span> <span class="a-yellow">!2</span></span><span class="a-bblack">17:43</span></div><span class="a-red">❯</span> <span style="background:var(--ansi-cursor)"> </span></div>
+  </section>
+
+</div></div></div>
+
+<script>
+const H = window.DESKTOP;
+const root = document.documentElement.style;
+const set = (k, v) => root.setProperty(k, v);
+
+// Layout-, Radius-, Glas-Tokens → CSS-Variablen (gelten für alle Varianten)
+const L = H.layout, R = H.radius, G = H.glass;
+set("--barH", L.barHeight + "px"); set("--barM", L.barMargin + "px"); set("--barR", L.barRadius + "px");
+set("--winGap", L.windowGap + "px");
+set("--dashTop", L.dashboardTop + "px"); set("--dashMargin", L.dashboardMargin + "px"); set("--tileGap", L.dashboardGap + "px");
+set("--dashRows", L.dashboardRows.map(r => r + "px").join(" "));
+set("--launchW", L.launcherWidth + "px"); set("--launchTop", L.launcherTop + "px");
+set("--notifW", L.notificationWidth + "px"); set("--osdW", L.osdSize[0] + "px"); set("--osdH", L.osdSize[1] + "px");
+set("--powerTile", L.powerTile + "px");
+for (const [k, v] of Object.entries(R)) set("--r-" + k, v + "px");
+set("--blurTile", G.tile.blur); set("--satTile", G.tile.saturate); set("--blurTerm", G.terminal.blur); set("--termOp", G.terminal.opacity);
+set("--blurPower", G.dimPower.blur); set("--innerHighlight", G.innerHighlight);
+set("--dimDash", G.dimDashboard); set("--dimLaunch", G.dimLauncher); set("--dimPower", G.dimPower.opacity);
+for (const [k, v] of Object.entries(H.editor)) set("--ed-" + k, v);
+for (const [k, v] of Object.entries(H.ansi)) if (typeof v === "string") set("--ansi-" + k, v);
+
+// Variante (Farben)
+const vsel = document.getElementById("variant");
+for (const name of Object.keys(H.themes)) vsel.add(new Option(name[0].toUpperCase() + name.slice(1), name));
+function applyTheme(name) {
+  for (const [k, v] of Object.entries(H.themes[name])) set("--" + k, v);
+  localStorage.setItem("desktop-variant", name);
+}
+const savedV = localStorage.getItem("desktop-variant");
+vsel.value = savedV && H.themes[savedV] ? savedV : H.default;
+vsel.onchange = () => applyTheme(vsel.value);
+applyTheme(vsel.value);
+
+const screen = document.getElementById("screen");
+const bsel = document.getElementById("barstyle");
+bsel.value = localStorage.getItem("desktop-bar") || "float";
+bsel.onchange = () => { screen.dataset.bar = bsel.value; localStorage.setItem("desktop-bar", bsel.value); };
+screen.dataset.bar = bsel.value;
+
+// Profil-Glyphen (aus design/claude-design/icons/*-glyph.svg)
+const GLYPH = {
+  code: "M19 9.5l6 6.5-6 6.5M13 9.5l-6 6.5 6 6.5",
+  office: "M6 11.5h20a2 2 0 0 1 2 2V24a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V13.5a2 2 0 0 1 2-2zM12 11.5V9a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2.5M4 17.5h24",
+  chill: "M7 12h14v8a5 5 0 0 1-5 5h-4a5 5 0 0 1-5-5zM21 14h2a3 3 0 0 1 0 6h-2M11 5.5c0 1.5-1.5 2-1.5 3.5M15 5.5c0 1.5-1.5 2-1.5 3.5",
+  gaming: "M11 16h4M13 14v4M20 17h.01M23 15h.01M22.2 9H9.8a4 4 0 0 0-4 3.6L5 20.5a3 3 0 0 0 5.3 2.2L12 20.5h8l1.7 2.2A3 3 0 0 0 27 20.5l-.8-7.9a4 4 0 0 0-4-3.6z",
+  projekt: "M5 10a2 2 0 0 1 2-2h5l2.5 2.5H25a2 2 0 0 1 2 2V24a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z",
+  fun: "M16 4.5c3 3.2 5.5 6 5.5 9.5a5.5 5.5 0 0 1-11 0c0-2.2 1.1-3.9 2.3-5 .2 2.1 1.1 3.3 2.4 3.3-.4-2.9.1-5.4.8-7.8zM7 27.5l18-4.5M25 27.5L7 23",
+};
+document.querySelectorAll("svg[data-glyph]").forEach(s => {
+  s.setAttribute("viewBox", "0 0 32 32");
+  s.innerHTML = `<path d="${GLYPH[s.dataset.glyph]}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+});
+
+// Ringe aus data-Attributen
+document.querySelectorAll(".ring[data-size]").forEach(el => {
+  const size = +el.dataset.size, sw = +el.dataset.stroke, v = +el.dataset.v;
+  const r = (size - sw) / 2, c = 2 * Math.PI * r, col = el.dataset.tone === "accent" ? "var(--accent)" : "var(--woodLight)";
+  el.insertAdjacentHTML("afterbegin", `<svg width="${size}" height="${size}">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--borderStrong)" stroke-width="${sw}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
+      stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - v)).toFixed(1)}"/></svg>`);
+});
+
+// Zustände (auch per URL-Hash, z. B. preview.html#dashboard)
+function go(state) {
+  screen.dataset.state = state;
+  document.querySelectorAll("[data-go]").forEach(b => b.classList.toggle("on", b.dataset.go === state));
+  history.replaceState(null, "", "#" + state);
+}
+document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+const KEYS = { d: "dashboard", l: "launcher", n: "notify", p: "power", f: "focus", h: "hyper", k: "lock", t: "term", escape: "desktop" };
+addEventListener("keydown", e => { const s = KEYS[e.key.toLowerCase()]; if (s) go(screen.dataset.state === s ? "desktop" : s); });
+go(location.hash.slice(1) || "desktop");
+
+function fit() { set("--s", Math.max(Math.min((innerWidth - 48) / 2560, (innerHeight - 110) / 1440, 1), .2)); }
+addEventListener("resize", fit); fit();
+</script>
+</body>
+</html>

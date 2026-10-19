@@ -1,0 +1,42 @@
+# Referenz-Repos (nur lesen) – auch als Symlink (ohne Schrägstrich)
+refs
+projects/refs
+
+# Secrets (Hue-Key, Tokens, Passwörter, Heimnetz-Adressen) – Vorlage: secrets.example.json
+secrets.json
+
+# Eigene Projekte (Kunden, Pfade, Ports) nur lokal – Vorlage: projects/projects.example.json
+projects/projects.json
+# daraus erzeugt (projects/store.py)
+theme/projects.json
+# Desktop-Vorlagen (eigene Ordner/URLs) nur lokal – Vorlage: profiles/profiles.example.json
+profiles/profiles.json
+# Persönliche Dotfiles/Kopien (Key-Namen, Firmen-URLs, Git-Identität, Home-Pfade) nur lokal – Vorlagen daneben als <datei>.example
+system/dotfiles/.ssh/config
+system/copies/.config/Code/User/settings.json
+system/dotfiles/.gitconfig
+system/copies/.claude/settings.json
+# Monitor-Anordnung enthält EDID-Kennungen/Seriennummern der Monitore – nur lokal (system/sync pull holt sie)
+system/copies/.config/kwinoutputconfig.json
+
+# Laufzeit-Zustand (Fokus-Statistik, Spotify-Log, Caches)
+state/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Inspo-Screenshots fremder Setups: nur lokal
+design/inspo/*
+!design/inspo/.gitkeep
+# Wallpaper-Vorschauen mit Mockup-Inhalten (Projekt, Ort) – nur lokal
+design/claude-design/wallpaper/*/preview.jpg
+
+# Generierte Wallpaper in voller Größe (~2 MB je Set, neu erzeugen: theme/gen/wallpaper.py) – Vorschauen liegen in design/wallpapers/
+theme/out/wallpaper/
+
+# Chrome-Tab-Seite: Wallpaper wird beim Erzeugen hineinkopiert (theme/gen/chrome.py)
+theme/out/chrome-desktop-ext/wallpaper.jpg
+# Chrome legt beim Laden der entpackten Theme-Erweiterung einen Cache daneben
+theme/out/chrome-desktop/Cached Theme.pak

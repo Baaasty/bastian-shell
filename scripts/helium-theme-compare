@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Vergleich: Helium mit Theme-Erweiterung (heute) vs. GTK-Modus (Menüs in Desktop-Farben).
+# Zwei Test-Fenster mit Wegwerf-Profilen in $XDG_RUNTIME_DIR – dein echtes Helium-Profil bleibt unberührt.
+# Rechtsklick in beide Fenster, Menüs vergleichen, Fenster schließen. Aufräumen: scripts/helium-theme-compare clean
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+base="${XDG_RUNTIME_DIR:-/tmp}/helium-compare"
+theme="$repo/theme/out/chrome-desktop"
+
+if [[ "${1:-}" == "clean" ]]; then
+    rm -rf "$base"
+    echo "aufgeräumt: $base"
+    exit 0
+fi
+
+page() {
+    local title="$1" note="$2"
+    printf 'data:text/html;charset=utf-8,<title>%s</title><body style="font:20px sans-serif;padding:40px"><h1>%s</h1><p>%s</p><p>Rechtsklick hier, auf einen Link oder in das Feld:</p><p><a href="https://example.org">Beispiel-Link</a></p><input placeholder="Text" style="font-size:18px"></body>' \
+        "$title" "$title" "$note"
+}
+
+start() {
+    local name="$1" url="$2"; shift 2
+    systemd-run --user --scope --quiet --unit="helium-compare-$name-$$" \
+        helium --user-data-dir="$base/$name" --no-first-run --no-default-browser-check --new-window "$@" "$url" \
+        >/dev/null 2>&1 &
+}
+
+mkdir -p "$base/theme/Default" "$base/gtk/Default"
+# GTK-Modus: Chromium liest das Systemthema (extensions.theme.system_theme 1 = GTK)
+cat >"$base/gtk/Default/Preferences" <<'EOF'
+{"extensions":{"theme":{"system_theme":1,"use_system":true}},"browser":{"has_seen_welcome_page":true}}
+EOF
+echo '{"browser":{"has_seen_welcome_page":true}}' >"$base/theme/Default/Preferences"
+
+start theme "$(page "A: Theme-Erweiterung (heute)" "Tabs und Rahmen in Desktop-Farben, Menüs Chromium-Standard")" \
+    --disable-features=DisableLoadExtensionCommandLineSwitch --load-extension="$theme"
+start gtk "$(page "B: GTK-Modus" "Menüs in Desktop-Farben (aus gtk.css), keine Theme-Erweiterung")"
+echo "zwei Test-Fenster gestartet (A: Theme, B: GTK) – danach schließen und: $0 clean"

@@ -1,0 +1,245 @@
+#!/usr/bin/python3 -I
+"""Bildschirm-teilen-Auswahl im Desktop-Look: Picker-Programm für xdg-desktop-portal-hyprland (xdph).
+
+Eingetragen in ~/.config/hypr/xdph.conf (scripts/share-picker install):
+    screencopy { custom_picker_binary = <Repo>/scripts/share-pick }
+
+Ablauf (Protokoll aus xdph 1.4.1, src/shared/ScreencopyShared.cpp – Details: docs/SHARING.md):
+  - xdph startet uns pro Teilen-Anfrage, optional mit --allow-token (screencopy:allow_token_by_default),
+    Fensterliste in XDPH_WINDOW_SHARING_LIST: <id>[HC>]<Klasse>[HT>]<Titel>[HE>]<Fensteradresse dezimal>[HA>]…
+  - wir öffnen das Shell-Overlay (qs ipc … call sharepicker open '<json>') und warten auf die Ergebnisdatei
+    $XDG_RUNTIME_DIR/desktop-share-pick/<token>.result („ok <flags>/<auswahl>“ oder „cancel“)
+  - Ausgabe auf stdout, genau eine Zeile mit \\n am Ende (xdph schneidet bei screen: das letzte Zeichen ab):
+        [SELECTION]<flags>/screen:<Monitor>      z. B. [SELECTION]/screen:DP-2
+        [SELECTION]<flags>/window:<id>           id = erste Zahl aus der Fensterliste
+        [SELECTION]<flags>/region:<Monitor>@<x>,<y>,<w>,<h>   x/y relativ zum Monitor
+    flags: „r“ = Wiederherstellen erlaubt (Restore-Token), sonst leer
+  - Abbruch = keine [SELECTION]-Zeile (Exit 1) → xdph bricht das Teilen ab.
+
+Rückfall: läuft die Shell nicht (oder startet sie während der Auswahl neu), übernimmt der Standard-Picker
+hyprland-share-picker (gleiche Argumente und Umgebung, seine Ausgabe geht direkt an xdph).
+
+Log (Rückfälle, Abbrüche): ~/.local/state/desktop/share-pick.log
+
+Testen ohne Portal (Fenster aus hyprctl, Auswahl wird nur angezeigt, nichts geteilt):
+    share-pick --demo
+Formatprüfung ohne Shell und ohne UI (simuliertes Ergebnis):
+    share-pick --format 'ok r/screen:DP-2'
+"""
+import json
+import os
+import re
+import secrets
+import shutil
+import subprocess
+import sys
+import time
+
+SELF = os.path.realpath(__file__)
+REPO = os.path.dirname(os.path.dirname(SELF))
+SHELL_DIR = os.path.join(REPO, "shell")
+RUN = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+DIR = os.path.join(RUN, "desktop-share-pick")
+STOCK = "hyprland-share-picker"
+TIMEOUT = float(os.environ.get("SHARE_PICK_TIMEOUT", "60"))   # Sekunden bis Abbruch
+ALIVE_EVERY = 3.0                                              # so oft prüfen, ob die Shell noch dieselbe Auswahl zeigt
+
+NAME = r"[A-Za-z0-9._-]+"
+SEL_RE = re.compile(rf"^(screen:{NAME}|window:\d+|region:{NAME}@-?\d+,-?\d+,\d+,\d+)$")
+
+
+LOG = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop", "share-pick.log")
+
+
+def log(msg):
+    # xdph liest stderr nur mit und verwirft es → zusätzlich in eine kleine Logdatei (nie Fenstertitel)
+    print(f"share-pick: {msg}", file=sys.stderr)
+    try:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        if os.path.exists(LOG) and os.path.getsize(LOG) > 64 * 1024:
+            os.replace(LOG, LOG + ".old")
+        with open(LOG, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+    except OSError:
+        pass
+
+
+def parse_list(raw):
+    """XDPH_WINDOW_SHARING_LIST → [{id, cls, title, addr}] (addr hex, "" wenn xdph keine Zuordnung kennt)."""
+    out = []
+    rest = raw or ""
+    while rest:
+        try:
+            i_hc = rest.index("[HC>]")
+            i_ht = rest.index("[HT>]", i_hc)
+            i_he = rest.index("[HE>]", i_ht)
+            i_ha = rest.index("[HA>]", i_he)
+        except ValueError:
+            break
+        wid, cls, title, addr = rest[:i_hc], rest[i_hc + 5:i_ht], rest[i_ht + 5:i_he], rest[i_he + 5:i_ha]
+        rest = rest[i_ha + 5:]
+        if not wid.isdigit():
+            break
+        a = int(addr) if addr.isdigit() else 0
+        out.append({"id": int(wid), "cls": cls, "title": title, "addr": f"{a:x}" if a else ""})
+    return out
+
+
+def demo_list():
+    """Fensterliste wie von xdph, aber aus hyprctl (id = untere 32 Bit der Adresse – nur für --demo)."""
+    try:
+        clients = json.loads(subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=5).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+    out = []
+    for c in clients:
+        if not c.get("mapped", True):
+            continue
+        a = int(c["address"], 16)
+        out.append({"id": a & 0xFFFFFFFF, "cls": c.get("class", ""), "title": c.get("title", ""), "addr": f"{a:x}"})
+    return out
+
+
+def ipc(*args, timeout=4):
+    try:
+        r = subprocess.run(["qs", "ipc", "--any-display", "-p", SHELL_DIR, "call", "sharepicker", *args],
+                           capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def format_result(text, windows):
+    """Ergebnis der Shell → xdph-Zeile (oder None = Abbruch / ungültig)."""
+    text = (text or "").strip()
+    if not text.startswith("ok "):
+        return None
+    body = text[3:].strip()
+    flags, _, sel = body.partition("/")
+    if flags not in ("", "r") or not SEL_RE.match(sel):
+        log("ungültige Auswahl von der Shell, abgebrochen")
+        return None
+    if sel.startswith("window:") and windows is not None and int(sel[7:]) not in {w["id"] for w in windows}:
+        log("Fenster nicht in der Liste von xdph, abgebrochen")
+        return None
+    return f"[SELECTION]{flags}/{sel}\n"
+
+
+def fallback(reason):
+    log(f"{reason} → Standard-Picker")
+    if not shutil.which(STOCK):
+        log(f"{STOCK} fehlt, abgebrochen")
+        sys.exit(1)
+    sys.stdout.flush()
+    os.execvp(STOCK, [STOCK, *sys.argv[1:]])
+
+
+def reopen(req, tries=10):
+    """Anfrage nach einem Shell-Neustart erneut öffnen; True, sobald die Shell sie wieder zeigt."""
+    for _ in range(tries):
+        if ipc("open", json.dumps(req, ensure_ascii=False)) == "ok":
+            return True
+        time.sleep(1)
+    return False
+
+
+def instance(wait=8):
+    """Kennung der laufenden Shell-Instanz; wartet kurz, falls die Shell gerade neu lädt."""
+    for _ in range(int(wait / 0.5)):
+        cur = ipc("instance")
+        if cur and not cur.startswith("Not ready"):
+            return cur
+        time.sleep(0.5)
+    return None
+
+
+def pick(windows, allow_token, demo=False):
+    os.makedirs(DIR, mode=0o700, exist_ok=True)
+    token = secrets.token_hex(8)
+    result = os.path.join(DIR, token + ".result")
+    req = {"token": token, "allowToken": allow_token, "windows": windows, "demo": demo}
+
+    answer = ipc("open", json.dumps(req, ensure_ascii=False))
+    if (answer is None or answer.startswith("Not ready")) and reopen(req, tries=6):
+        answer = "ok"   # Shell lud gerade neu – kurz warten statt gleich Standard-Picker
+    if answer != "ok":
+        return "fallback", "Shell nicht erreichbar" if answer is None else f"Shell antwortet „{answer}“"
+
+    inst = instance()
+    start = last_alive = time.monotonic()
+    try:
+        while True:
+            if os.path.exists(result):
+                with open(result, encoding="utf-8") as f:
+                    text = f.read()
+                # „cancel“ beim Neuladen kommt von der sterbenden alten Instanz → in der neuen Shell nochmal zeigen
+                if text.strip() == "cancel" and inst is not None and instance() not in (inst, None) and reopen(req):
+                    os.unlink(result)
+                    inst = instance()
+                    log("Shell neu geladen (Abbruch der alten Instanz ignoriert), Auswahl erneut gezeigt")
+                    start = last_alive = time.monotonic()
+                    continue
+                return "done", text
+            now = time.monotonic()
+            if now - start > TIMEOUT:
+                ipc("close", token)
+                log(f"keine Auswahl nach {TIMEOUT:.0f} s, abgebrochen")
+                return "done", "cancel"
+            if now - last_alive > ALIVE_EVERY:
+                last_alive = now
+                if ipc("alive", token) != "yes" and not os.path.exists(result):
+                    # Shell neu geladen (Datei geändert, rice restart): dieselbe Anfrage nochmal zeigen statt Rückfall.
+                    # Erst wenn die Shell auch nach ~10 s nicht wieder antwortet, kommt der Standard-Picker.
+                    if not reopen(req):
+                        return "fallback", "Shell hat die Auswahl verloren und kommt nicht wieder"
+                    log("Shell neu geladen, Auswahl erneut gezeigt")
+                    inst = instance()
+                    start = last_alive = time.monotonic()
+            time.sleep(0.05)
+    finally:
+        try:
+            os.unlink(result)
+        except OSError:
+            pass
+
+
+def main():
+    args = sys.argv[1:]
+    if args[:1] in (["-h"], ["--help"]):
+        print(__doc__.strip())
+        return 0
+
+    if args[:1] == ["--format"]:   # nur Ausgabe prüfen: share-pick --format 'ok /window:12' [Fensterliste]
+        line = format_result(args[1] if len(args) > 1 else "", parse_list(args[2]) if len(args) > 2 else None)
+        if line is None:
+            return 1
+        sys.stdout.write(line)
+        return 0
+
+    if args[:1] == ["--parse"]:    # nur Fensterliste prüfen: share-pick --parse '<XDPH_WINDOW_SHARING_LIST>'
+        print(json.dumps(parse_list(args[1] if len(args) > 1 else ""), ensure_ascii=False, indent=1))
+        return 0
+
+    demo = args[:1] == ["--demo"]
+    allow_token = "--allow-token" in args
+    windows = demo_list() if demo else parse_list(os.environ.get("XDPH_WINDOW_SHARING_LIST", ""))
+
+    state, text = pick(windows, allow_token, demo)
+    if state == "fallback":
+        if demo:
+            log(text)
+            return 1
+        fallback(text)
+    line = format_result(text, windows)
+    if line is None:
+        return 1
+    if demo:
+        print("Auswahl (würde an xdph gehen): " + line, end="")
+        return 0
+    sys.stdout.write(line)
+    sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

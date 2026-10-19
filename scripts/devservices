@@ -1,0 +1,513 @@
+#!/usr/bin/env -S python3 -I
+"""devservices – Dev-Dienste fürs Bar-Popout (Dev-Server, belegte Ports, Container), nur Standardbibliothek.
+
+  devservices scan                       eine Messung als JSON (Ports aus `ss -ltnpH`, Container aus podman/docker)
+  devservices show                       dasselbe, lesbar – zum Testen
+  devservices stop <pid>:<st>            Dev-Server beenden (SIGTERM): eigene Unit devserver-* → systemctl stop,
+                                         sonst die Prozessgruppe (wenn sicher), sonst nur der Prozess. st = Startzeit (gegen PID-Wiederverwendung)
+  devservices start <projekt>            dev.services && dev.command aus projects/projects.json im Haupt-Repo starten,
+                                         als eigene User-Unit devserver-<projekt>.service (Log: journalctl --user -u devserver-<projekt>)
+  devservices container <engine> start|stop|restart <id>    Container (podman oder docker) schalten
+
+Zuordnung zum Projekt: Arbeitsordner des Prozesses (/proc/<pid>/cwd) bzw. compose-Ordner des Containers liegt in
+`paths` (längster Treffer) – sonst ein Port, der genau einem Projekt gehört (dev.ports/dev.infra). Sonst „Other“.
+Nur eigene Prozesse (ss zeigt fremde ohne PID). Apps (Discord, VS Code …) zählen nicht als Dev-Server (kind "app").
+Doku: docs/DEVSERVICES.md
+"""
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+# projects.json ist lokal (gitignored); ohne sie gilt die Beispiel-Datei
+PROJECTS = os.path.join(ROOT, "projects", "projects.json")
+if not os.path.exists(PROJECTS):
+    PROJECTS = os.path.join(ROOT, "projects", "projects.example.json")
+HOME = os.path.expanduser("~")
+WORKSPACE = os.path.join(HOME, "Workspace")
+MYUID = os.getuid()
+CMD_MAX = 240
+UNIT_PREFIX = "devserver-"
+
+INTERP = re.compile(r"^(python[\d.]*|node|bun|deno|ruby|perl|php[\d.]*)$")
+# Laufzeiten/Werkzeuge, die auch ohne Projektordner als Dev-Server zählen
+RUNTIME = re.compile(r"^(node|bun|deno|python[\d.]*|ruby|php[\d.-]*|php-fpm|java|go|dotnet|cargo|uvicorn|gunicorn|hugo|caddy|"
+                     r"nginx|httpd|godot.*|vite|next-server.*|esbuild|air|puma|rails|flask|beam\.smp|jekyll|zola|mkdocs|"
+                     r"wrangler|workerd|astro|turbo|webpack.*|parcel|storybook|expo|metro)$")
+# Ports dieser Prozesse sind Container-Weiterleitungen (rootless podman) – die zeigt der Container selbst
+CONTAINER_HELPERS = re.compile(r"^(pasta.*|rootlessport.*|slirp4netns|conmon|docker-proxy|containerd.*)$")
+# Apps, die zwar lauschen, aber keine Dev-Server sind (auch wenn sie im Projektordner gestartet wurden)
+APPS = re.compile(r"^(code|code-.*|electron|Discord.*|discord.*|spotify|helium.*|chrome.*|chromium.*|firefox.*|steam.*|"
+                  r"kdeconnectd|goxlr-.*|arrpc|equibop|vesktop|obs.*|thunderbird.*|qs|quickshell|Hyprland|kitty|konsole)$", re.I)
+# Gruppenführer, deren Gruppe nie als Ganzes beendet wird
+PROTECT = re.compile(r"^(systemd|bash|sh|zsh|fish|dash|tmux.*|screen|code|qs|quickshell|Hyprland|uwsm|sshd|login|kitty|konsole|sudo)$")
+
+
+def read(path):
+    try:
+        with open(path, "r", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def home_rel(p):
+    return "~" + p[len(HOME):] if p == HOME or p.startswith(HOME + "/") else p
+
+
+# ---------- Prozesse ----------
+def stat(pid):
+    """(comm, pgid, sid, starttime) aus /proc/<pid>/stat oder None"""
+    s = read(f"/proc/{pid}/stat")
+    if not s:
+        return None
+    i, j = s.find("("), s.rfind(")")
+    f = s[j + 2:].split()
+    return s[i + 1:j], int(f[2]), int(f[3]), int(f[19])
+
+
+def owner(pid):
+    try:
+        return os.stat(f"/proc/{pid}").st_uid
+    except OSError:
+        return -1
+
+
+def argv(pid):
+    raw = read(f"/proc/{pid}/cmdline") or ""
+    return [a for a in raw.split("\0") if a]
+
+
+def cwd(pid):
+    try:
+        return os.readlink(f"/proc/{pid}/cwd")
+    except OSError:
+        return ""
+
+
+def unit_of(pid):
+    cg = (read(f"/proc/{pid}/cgroup") or "").strip().splitlines()
+    for line in cg:
+        if line.startswith("0::"):
+            return line[3:].rstrip("/").split("/")[-1]
+    return ""
+
+
+def label(comm, args):
+    """kurzer Name: next-server, vite, python3 -m http.server …"""
+    if comm.startswith("next-server"):
+        return "next-server"
+    if len(args) == 1 and " " in args[0]:
+        args = args[0].split(" ")       # Electron & Co. schreiben die ganze Befehlszeile in argv[0]
+    b = os.path.basename(args[0]) if args else comm
+    if not INTERP.match(comm) and not INTERP.match(b):
+        return comm or b
+    if INTERP.match(b) and len(args) > 1:
+        rest = args[1:]
+        if rest[0] == "-m" and len(rest) > 1:
+            return f"{b} -m {rest[1]}"
+        for a in rest:
+            if a.startswith("-"):
+                continue
+            m = re.search(r"node_modules/(?:\.bin/)?([^/]+)", a)
+            if m:
+                return m.group(1)
+            return f"{b} {os.path.basename(a)}"
+    return b or comm
+
+
+def groups():
+    """pgid -> Anzahl Prozesse (nur eigene) + ob fremde dabei sind"""
+    out = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        st = stat(int(d))
+        if not st:
+            continue
+        g = out.setdefault(st[1], {"n": 0, "foreign": False})
+        g["n"] += 1
+        if owner(int(d)) != MYUID:
+            g["foreign"] = True
+    return out
+
+
+def stop_plan(pid, grp=None):
+    """Wie beenden? {mode: unit|group|pid, unit?, pgid, leader, size}"""
+    unit = unit_of(pid)
+    st = stat(pid)
+    if not st:
+        return None
+    pgid, sid = st[1], st[2]
+    if re.match(rf"^{UNIT_PREFIX}[A-Za-z0-9_.-]+\.service$", unit):
+        return {"mode": "unit", "unit": unit, "pgid": pgid, "leader": "", "size": 0}
+    lst = stat(pgid)
+    leader = lst[0] if lst else ""
+    grp = grp if grp is not None else groups()
+    g = grp.get(pgid, {"n": 1, "foreign": True})
+    safe = (pgid > 1 and pgid != sid and pgid != os.getpgrp() and not g["foreign"] and g["n"] <= 64
+            and owner(pgid) in (MYUID, -1) and not PROTECT.match(leader))
+    if safe:
+        return {"mode": "group", "pgid": pgid, "leader": leader, "size": g["n"]}
+    return {"mode": "pid", "pgid": pgid, "leader": leader, "size": 1}
+
+
+# ---------- Projekte ----------
+def load_projects():
+    try:
+        with open(PROJECTS) as f:
+            return json.load(f).get("projects", {})
+    except (OSError, ValueError):
+        return {}
+
+
+def project_index(projects):
+    paths, ports = [], {}
+    for pid, e in projects.items():
+        for p in ([e["workspace"]] if e.get("workspace") else []) + list(e.get("paths") or []):
+            a = os.path.expanduser(str(p)).rstrip("/")
+            if a.endswith(".code-workspace"):
+                continue
+            paths.append((a, pid))
+        dev = e.get("dev") or {}
+        for kind in ("ports", "infra"):
+            for role, port in (dev.get(kind) or {}).items():
+                ports.setdefault(int(port), set()).add(pid)
+    paths.sort(key=lambda t: -len(t[0]))
+    return paths, {p: next(iter(s)) for p, s in ports.items() if len(s) == 1}
+
+
+def match_dir(paths, d):
+    d = (d or "").rstrip("/")
+    for a, pid in paths:
+        if d == a or d.startswith(a + "/"):
+            return pid
+    return None
+
+
+# ---------- Ports ----------
+ADDR = re.compile(r"^(.*):(\d+)$")
+USER = re.compile(r'\("([^"]*)",pid=(\d+),fd=\d+\)')
+
+
+def listeners():
+    try:
+        out = subprocess.run(["ss", "-ltnpH"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    res = []
+    for line in out.splitlines():
+        f = line.split()
+        if len(f) < 6:
+            continue
+        m = ADDR.match(f[3])
+        users = USER.findall(line)
+        if not m or not users:
+            continue                     # fremde Prozesse: ss zeigt ohne root keine PID
+        addr = m.group(1).strip("[]").split("%")[0]
+        res.append((int(m.group(2)), addr, [(c, int(p)) for c, p in users]))
+    return res
+
+
+def scan_servers(paths, uports):
+    seen = {}
+    for port, addr, users in listeners():
+        for comm, pid in users:
+            if owner(pid) != MYUID:
+                continue
+            key = (pid, port)
+            if key in seen:
+                if addr not in seen[key]["addrs"]:
+                    seen[key]["addrs"].append(addr)
+                break
+            st = stat(pid)
+            if not st:
+                break
+            comm = st[0]
+            if CONTAINER_HELPERS.match(comm):
+                break
+            args = argv(pid)
+            wd = cwd(pid)
+            proj, how = match_dir(paths, wd), "dir"
+            if not proj and port in uports:
+                proj, how = uports[port], "port"
+            base = os.path.basename(args[0]) if args else comm
+            app = bool(APPS.match(comm) or APPS.match(base))
+            dev = not app and (bool(proj) or bool(RUNTIME.match(comm) or RUNTIME.match(base))
+                               or wd == WORKSPACE or wd.startswith(WORKSPACE + "/"))
+            cmd = " ".join(args).replace(HOME, "~")
+            seen[key] = {
+                "port": port, "addrs": [addr], "pid": pid, "st": st[3], "comm": comm, "label": label(comm, args),
+                "cmd": cmd[:CMD_MAX] + ("…" if len(cmd) > CMD_MAX else ""), "cwd": home_rel(wd),
+                "project": proj if dev else None, "how": how if proj and dev else "",
+                "kind": "dev" if dev else "app", "unit": unit_of(pid),
+            }
+            break
+    servers = sorted(seen.values(), key=lambda s: (s["kind"] != "dev", s["port"]))
+    if any(s["kind"] == "dev" for s in servers):
+        grp = groups()
+        for s in servers:
+            if s["kind"] == "dev":
+                s["stop"] = stop_plan(s["pid"], grp)
+    for s in servers:
+        # öffentlich = nicht nur loopback (0.0.0.0, ::, * oder eine echte Adresse)
+        s["lan"] = any(a not in ("127.0.0.1", "::1", "localhost") and not a.startswith("127.") for a in s["addrs"])
+    return servers
+
+
+# ---------- Container ----------
+DPORT = re.compile(r"(?:([\d.]+|\[[^\]]*\]|::):)?(\d+)(?:-(\d+))?->(\d+)(?:-\d+)?/(\w+)")
+
+
+def engines():
+    out = []
+    if shutil.which("podman"):
+        out.append("podman")
+    d = shutil.which("docker")
+    if d:
+        # Fedora: /usr/bin/docker ist oft nur ein Wrapper für podman (podman-docker) – dann nicht doppelt
+        head = ""
+        try:
+            with open(d, "rb") as f:
+                head = f.read(4096).decode("utf-8", "replace")
+        except OSError:
+            pass
+        if "podman" not in head:
+            out.append("docker")
+    return out
+
+
+def labels_of(c):
+    lb = c.get("Labels") or {}
+    if isinstance(lb, str):
+        d = {}
+        for part in lb.split(","):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                d[k] = v
+        return d
+    return lb
+
+
+def ports_of(c):
+    p = c.get("Ports")
+    res = []
+    if isinstance(p, list):
+        for x in p:
+            hp = int(x.get("host_port") or 0)
+            if not hp:
+                continue
+            for i in range(int(x.get("range") or 1)):
+                res.append({"host": hp + i, "container": int(x.get("container_port") or 0) + i, "proto": x.get("protocol") or "tcp",
+                            "ip": x.get("host_ip") or ""})
+    elif isinstance(p, str):
+        for m in DPORT.finditer(p):
+            a, b = int(m.group(2)), int(m.group(3) or m.group(2))
+            for i in range(b - a + 1):
+                res.append({"host": a + i, "container": int(m.group(4)) + i, "proto": m.group(5), "ip": (m.group(1) or "").strip("[]")})
+    seen, out = set(), []
+    for r in res:
+        if (r["host"], r["proto"]) not in seen:
+            seen.add((r["host"], r["proto"]))
+            out.append(r)
+    return out
+
+
+def scan_containers(paths, uports):
+    out = []
+    for eng in engines():
+        cmd = [eng, "ps", "-a", "--format", "json"] if eng == "podman" else [eng, "ps", "-a", "--no-trunc", "--format", "{{json .}}"]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if r.returncode != 0:
+            continue
+        txt = r.stdout.strip()
+        try:
+            items = json.loads(txt) if txt.startswith("[") else [json.loads(l) for l in txt.splitlines() if l.strip()]
+        except ValueError:
+            continue
+        for c in items or []:
+            lb = labels_of(c)
+            if lb.get("manager") == "distrobox" or "com.github.containers.toolbox" in lb:
+                continue                    # Distrobox/Toolbox: Arbeitsumgebungen, keine Dienste
+            names = c.get("Names")
+            name = names[0] if isinstance(names, list) and names else str(names or "").lstrip("/")
+            state = str(c.get("State") or "").lower()
+            ports = ports_of(c)
+            wd = lb.get("com.docker.compose.project.working_dir") or ""
+            proj, how = match_dir(paths, wd), "dir"
+            if not proj:
+                hits = {uports[p["host"]] for p in ports if p["host"] in uports}
+                if len(hits) == 1:
+                    proj, how = hits.pop(), "port"
+            compose = lb.get("com.docker.compose.project") or lb.get("io.podman.compose.project") or ""
+            sysunit = lb.get("PODMAN_SYSTEMD_UNIT") or ""
+            out.append({
+                "engine": eng, "id": str(c.get("Id") or c.get("ID") or "")[:64], "name": name,
+                "image": str(c.get("Image") or ""), "state": state, "running": state == "running",
+                "status": str(c.get("Status") or c.get("State") or ""), "ports": ports,
+                "project": proj, "how": how if proj else "", "compose": compose,
+                "service": lb.get("com.docker.compose.service") or "", "systemd": sysunit,
+                # vom System verwaltet (Quadlet/systemd) und keinem Projekt zugeordnet: Hintergrund, zählt nicht im Chip
+                "background": bool(sysunit and not compose and not proj),
+            })
+    out.sort(key=lambda c: (not c["running"], c["project"] or "~", c["name"]))
+    return out
+
+
+def scan():
+    projects = load_projects()
+    paths, uports = project_index(projects)
+    return {"ts": int(time.time()), "uid": MYUID, "engines": engines(),
+            "servers": scan_servers(paths, uports), "containers": scan_containers(paths, uports),
+            "units": units()}
+
+
+def units():
+    """laufende devserver-*-Units (auch ohne lauschenden Port, z. B. beim Hochfahren)"""
+    try:
+        r = subprocess.run(["systemctl", "--user", "list-units", "--plain", "--no-legend", "--state=active,activating,failed",
+                            UNIT_PREFIX + "*.service"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    res = []
+    for line in r.stdout.splitlines():
+        f = line.split()
+        if len(f) >= 4 and f[0].startswith(UNIT_PREFIX):
+            res.append({"unit": f[0], "project": f[0][len(UNIT_PREFIX):-len(".service")], "active": f[2], "sub": f[3]})
+    return res
+
+
+# ---------- Aktionen ----------
+def say(ok, msg):
+    print(json.dumps({"ok": ok, "msg": msg}, ensure_ascii=False))
+    sys.exit(0 if ok else 1)
+
+
+def cmd_stop(target):
+    m = re.match(r"^(\d+):(\d+)$", target)
+    if not m:
+        say(False, "Expected <pid>:<starttime>")
+    pid, st0 = int(m.group(1)), int(m.group(2))
+    st = stat(pid)
+    if not st or st[3] != st0:
+        say(False, f"PID {pid} is gone")
+    if owner(pid) != MYUID:
+        say(False, f"PID {pid} is not yours")
+    plan = stop_plan(pid)
+    name = label(st[0], argv(pid))
+    try:
+        if plan["mode"] == "unit":
+            r = subprocess.run(["systemctl", "--user", "stop", plan["unit"]], capture_output=True, text=True, timeout=20)
+            if r.returncode != 0:
+                say(False, f"systemctl stop {plan['unit']} failed")
+            say(True, f"Stopped {plan['unit']}")
+        if plan["mode"] == "group":
+            os.killpg(plan["pgid"], signal.SIGTERM)
+            say(True, f"Sent SIGTERM to {name} (group {plan['pgid']}, {plan['size']} process{'es' if plan['size'] != 1 else ''})")
+        os.kill(pid, signal.SIGTERM)
+        say(True, f"Sent SIGTERM to {name} (PID {pid})")
+    except ProcessLookupError:
+        say(False, f"{name} is already gone")
+    except PermissionError:
+        say(False, f"Not allowed to stop {name}")
+
+
+def unit_name(pid):
+    return UNIT_PREFIX + (re.sub(r"[^A-Za-z0-9_.-]", "_", pid).lstrip(".") or "project") + ".service"
+
+
+def cmd_start(q):
+    projects = load_projects()
+    e = projects.get(q)
+    if e is None:
+        e = next((v for k, v in projects.items() if k.lower() == q.lower() or str(v.get("name", "")).lower() == q.lower()), None)
+        q = next((k for k, v in projects.items() if v is e), q)
+    if e is None:
+        say(False, f"Unknown project {q}")
+    dev = e.get("dev") or {}
+    if not dev.get("command"):
+        say(False, f"{q} has no dev command (scripts/project set {q} dev.command …)")
+    paths = e.get("paths") or []
+    if not paths:
+        say(False, f"{q} has no path")
+    d = os.path.expanduser(paths[0])
+    if not os.path.isdir(d):
+        say(False, f"Folder missing: {home_rel(d)}")
+    unit = unit_name(q)
+    r = subprocess.run(["systemctl", "--user", "is-active", "--quiet", unit])
+    if r.returncode == 0:
+        say(False, f"{q} is already running ({unit})")
+    # erster App-Port belegt? Dann nicht starten (Next & Co. wichen sonst still auf einen anderen Port aus)
+    first = next(iter((dev.get("ports") or {}).values()), None)
+    if first:
+        for port, addr, users in listeners():
+            if port == int(first):
+                say(False, f"Port {first} is busy ({users[0][0] if users else 'another user'}) – stop that first")
+    cmd = (dev["services"] + " && " if dev.get("services") else "") + dev["command"]
+    subprocess.run(["systemctl", "--user", "reset-failed", unit], capture_output=True)
+    r = subprocess.run(["systemd-run", "--user", "--unit=" + unit, "--collect", "--quiet",
+                        "--description=Dev server " + q, "-p", "WorkingDirectory=" + d,
+                        "--setenv=BROWSER=none", "--", "bash", "-lc", cmd], capture_output=True, text=True, timeout=15)
+    if r.returncode != 0:
+        say(False, f"Start failed: {(r.stderr or '').strip()[:160]}")
+    say(True, f"Started {q} ({unit})")
+
+
+def cmd_container(eng, action, cid):
+    if eng not in engines():
+        say(False, f"{eng} not available")
+    if action not in ("start", "stop", "restart"):
+        say(False, "start|stop|restart")
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$", cid):
+        say(False, "Bad container id")
+    try:
+        r = subprocess.run([eng, action, cid], capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        say(False, f"{eng} {action} timed out")
+    if r.returncode != 0:
+        say(False, f"{eng} {action} failed: {(r.stderr or '').strip()[:160]}")
+    say(True, {"start": "Started", "stop": "Stopped", "restart": "Restarted"}[action] + " " + cid[:12])
+
+
+def show():
+    d = scan()
+    for s in d["servers"]:
+        print(f"{s['kind']:4} :{s['port']:<5} {s['label']:<22} pid {s['pid']:<7} {s['project'] or '-':<20} {s['cwd']}"
+              + (f"  [{s['stop']['mode']}]" if s.get("stop") else ""))
+    for c in d["containers"]:
+        ports = ",".join(str(p["host"]) for p in c["ports"])
+        print(f"ctr  {c['engine']:<6} {c['name']:<24} {c['state']:<8} {c['project'] or '-':<20} {ports}"
+              + (" (background)" if c["background"] else ""))
+    for u in d["units"]:
+        print(f"unit {u['unit']} {u['active']}/{u['sub']}")
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help", "help", "hilfe"):
+        print(__doc__.strip())
+    elif a[0] == "scan":
+        print(json.dumps(scan(), ensure_ascii=False))
+    elif a[0] == "show":
+        show()
+    elif a[0] == "stop" and len(a) == 2:
+        cmd_stop(a[1])
+    elif a[0] == "start" and len(a) == 2:
+        cmd_start(a[1])
+    elif a[0] == "container" and len(a) == 4:
+        cmd_container(a[1], a[2], a[3])
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

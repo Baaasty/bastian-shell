@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""procs – Prozessliste für das Ressourcen-Popout der Shell (nur Standardbibliothek, liest /proc).
+
+  procs watch [Sekunden]          Dauerlauf: pro Takt eine JSON-Zeile (Standard 2 s), endet mit der Shell
+  procs once                      eine Messung (≈0,5 s), schön formatiert – zum Testen
+  procs kill TERM|KILL pid:st …   Signal senden, NUR an eigene Prozesse (st = Startzeit aus der Liste, gegen PID-Wiederverwendung)
+
+Speicher: RSS; bei eigenen Prozessen ab 64 MB PSS (geteilte Seiten anteilig, Gruppensummen stimmen dann besser), reihum aufgefrischt.
+Die Prozesse sind nach (Nutzer, Name) zu Zeilen zusammengefasst (Helium/VS Code/Electron: viele Prozesse → eine Gruppe).
+CPU in % eines Kerns (100 = ein Kern voll, wie top), Speicher = RSS in Byte.
+"""
+import json
+import os
+import pwd
+import re
+import signal
+import socket
+import sys
+import time
+
+CLK = os.sysconf("SC_CLK_TCK")
+PAGE = os.sysconf("SC_PAGE_SIZE")
+NCPU = os.cpu_count() or 1
+MYUID = os.getuid()
+PSS_MIN = 64 << 20      # PSS (geteilte Seiten anteilig) nur für eigene Prozesse ab 64 MB RSS – kleine zählt RSS genug
+PSS_PER_TICK = 10       # smaps_rollup kostet ~4 ms je großem Prozess: neue sofort, sonst die ältesten, höchstens so viele pro Takt
+PSS_MAX_AGE = 4
+CMD_MAX = 300
+KIDS_MAX = 300
+INTERP = re.compile(r"^(python[\d.]*|node|bun|deno|bash|sh|zsh|fish|dash|perl|ruby)$")
+STATES = {"R": "Running", "S": "Sleeping", "D": "Disk wait", "Z": "Zombie", "T": "Stopped", "t": "Traced", "I": "Idle", "X": "Dead"}
+
+
+def read(path, binary=False):
+    try:
+        if binary:
+            with open(path, "rb") as f:
+                return f.read()
+        with open(path, "r", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def os_name():
+    for line in (read("/etc/os-release") or "").splitlines():
+        if line.startswith("PRETTY_NAME="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return "Linux"
+
+
+_users = {}
+
+
+def user_name(uid):
+    if uid not in _users:
+        try:
+            _users[uid] = pwd.getpwuid(uid).pw_name
+        except KeyError:
+            _users[uid] = str(uid)
+    return _users[uid]
+
+
+def nice_name(comm, exe, argv, kernel):
+    """Anzeigename: Kernel-Threads ohne Nummer, Interpreter mit Skriptname, sonst Programmname."""
+    if kernel:
+        return re.split(r"[/:]", comm)[0] or comm
+    name = comm
+    if exe:
+        base = os.path.basename(exe.replace(" (deleted)", ""))
+        if base and (base.startswith(comm) or comm.startswith(base[:15])):
+            name = base
+    if argv and name == comm and len(comm) >= 15:
+        base = os.path.basename(argv[0].split(" ")[0])
+        if base.startswith(comm):
+            name = base
+    if INTERP.match(name) and len(argv) > 1:
+        args = argv[1:]
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if a == "-m" and i + 1 < len(args):
+                return args[i + 1].split(".")[0]
+            if a == "-c":
+                break
+            if a.startswith("-"):
+                i += 1
+                continue
+            return os.path.basename(a) or name
+    return name
+
+
+class Sampler:
+    def __init__(self):
+        self.prev = {}          # pid -> (starttime, ticks)
+        self.prev_t = None
+        self.prev_cpu = None    # (idle, total)
+        self.info = {}          # (pid, starttime) -> (name, cmd)
+        self.pss = {}           # (pid, starttime) -> [Byte, Takt]
+        self.tick = 0
+        self.host = socket.gethostname().split(".")[0]
+        self.os = os_name()
+        self.btime = 0
+        for line in (read("/proc/stat") or "").splitlines():
+            if line.startswith("btime"):
+                self.btime = int(line.split()[1])
+
+    def total_cpu(self):
+        f = (read("/proc/stat") or "cpu 0 0 0 0 0").splitlines()[0].split()[1:]
+        v = [int(x) for x in f]
+        idle = v[3] + (v[4] if len(v) > 4 else 0)
+        total = sum(v[:8])
+        pct = 0.0
+        if self.prev_cpu and total > self.prev_cpu[1]:
+            pct = 100.0 * (1 - (idle - self.prev_cpu[0]) / (total - self.prev_cpu[1]))
+        self.prev_cpu = (idle, total)
+        return max(0.0, min(100.0, pct))
+
+    def refresh_pss(self, procs):
+        self.tick += 1
+        due = []
+        for p in procs:
+            if p["uid"] != MYUID or p["rss"] < PSS_MIN:
+                continue
+            c = self.pss.get((p["pid"], p["st"]))
+            due.append((-1 if c is None else c[1], p))
+        due.sort(key=lambda x: x[0])
+        done = 0
+        for age, p in due:
+            if age != -1 and (done >= PSS_PER_TICK or self.tick - age < PSS_MAX_AGE):
+                break
+            raw = read("/proc/%d/smaps_rollup" % p["pid"])
+            m = re.search(r"^Pss:\s+(\d+) kB", raw or "", re.M)
+            if m:
+                self.pss[(p["pid"], p["st"])] = [int(m.group(1)) * 1024, self.tick]
+            if age != -1:
+                done += 1
+        alive = {(p["pid"], p["st"]) for p in procs}
+        self.pss = {k: v for k, v in self.pss.items() if k in alive}
+        for p in procs:
+            c = self.pss.get((p["pid"], p["st"]))
+            if c:
+                p["rss"] = c[0]
+
+    def sample(self):
+        now = time.monotonic()
+        dt = (now - self.prev_t) if self.prev_t else 0
+        cpu_total = self.total_cpu()
+        procs = []
+        seen = {}
+        threads = 0
+        try:
+            names = os.listdir("/proc")
+        except OSError:
+            names = []
+        for n in names:
+            if not n.isdigit():
+                continue
+            pid = int(n)
+            raw = read("/proc/%d/stat" % pid)
+            if not raw:
+                continue
+            i = raw.rfind(")")
+            comm = raw[raw.index("(") + 1:i]
+            r = raw[i + 2:].split()
+            try:
+                state, ppid = r[0], int(r[1])
+                ticks = int(r[11]) + int(r[12])
+                nthr = int(r[17])
+                st = int(r[19])
+                rss = int(r[21]) * PAGE
+                uid = os.stat("/proc/%d" % pid).st_uid
+            except (IndexError, ValueError, OSError):
+                continue
+            threads += nthr
+            seen[pid] = (st, ticks)
+            cpu = 0.0
+            p = self.prev.get(pid)
+            if p and p[0] == st and dt > 0:
+                cpu = max(0.0, (ticks - p[1]) / CLK / dt * 100.0)
+            key = (pid, st)
+            meta = self.info.get(key)
+            if meta is None:
+                cmdraw = read("/proc/%d/cmdline" % pid, True) or b""
+                argv = [a.decode("utf-8", "replace") for a in cmdraw.split(b"\0") if a]
+                kernel = not argv and (ppid == 2 or pid == 2)
+                try:
+                    exe = os.readlink("/proc/%d/exe" % pid)
+                except OSError:
+                    exe = None
+                meta = (nice_name(comm, exe, argv, kernel), " ".join(argv)[:CMD_MAX])
+                self.info[key] = meta
+            procs.append({
+                "pid": pid, "ppid": ppid, "uid": uid, "name": meta[0], "cmd": meta[1], "cpu": cpu, "rss": rss,
+                "threads": nthr, "state": STATES.get(state, state), "start": int(self.btime + st / CLK), "st": st,
+            })
+        self.refresh_pss(procs)
+        # Aufräumen: nur noch lebende Prozesse merken
+        self.info = {k: v for k, v in self.info.items() if seen.get(k[0], (None,))[0] == k[1]}
+        self.prev = seen
+        self.prev_t = now
+        self.procs = procs
+        self.threads = threads
+        self.cpu_total = cpu_total
+
+    def report(self):
+        groups = {}
+        for p in self.procs:
+            groups.setdefault((p["uid"], p["name"]), []).append(p)
+        rows = []
+        for (uid, name), ms in groups.items():
+            pids = {m["pid"] for m in ms}
+            roots = [m for m in ms if m["ppid"] not in pids] or ms
+            lead = min(roots, key=lambda m: m["pid"])
+            row = {
+                "key": "g:%d:%s" % (uid, name), "name": name, "user": user_name(uid), "uid": uid, "own": uid == MYUID,
+                "pid": lead["pid"], "ppid": lead["ppid"], "n": len(ms), "cpu": round(sum(m["cpu"] for m in ms), 1),
+                "rss": sum(m["rss"] for m in ms), "threads": sum(m["threads"] for m in ms), "state": lead["state"],
+                "start": lead["start"], "st": lead["st"], "cmd": lead["cmd"],
+            }
+            if len(ms) > 1:
+                ms.sort(key=lambda m: (-m["cpu"], -m["rss"]))
+                row["kids"] = [{k: (round(m[k], 1) if k == "cpu" else m[k]) for k in
+                                ("pid", "ppid", "name", "cmd", "cpu", "rss", "threads", "state", "start", "st")}
+                               for m in ms[:KIDS_MAX]]
+            rows.append(row)
+        mi = {}
+        for line in (read("/proc/meminfo") or "").splitlines():
+            k, _, v = line.partition(":")
+            mi[k] = int(v.split()[0]) * 1024 if v.split() else 0
+        total = mi.get("MemTotal", 0)
+        used = total - mi.get("MemAvailable", 0)
+        swap = mi.get("SwapTotal", 0) - mi.get("SwapFree", 0)
+        up = float((read("/proc/uptime") or "0").split()[0])
+        return {
+            "t": int(time.time()), "host": self.host, "os": self.os, "uptime": int(up), "uid": MYUID, "ncpu": NCPU,
+            "cpu": round(self.cpu_total, 1), "memTotal": total, "memUsed": used,
+            "memCache": mi.get("Cached", 0) + mi.get("Buffers", 0), "swapUsed": swap, "swapTotal": mi.get("SwapTotal", 0),
+            "procs": len(self.procs), "threads": self.threads, "rows": rows,
+        }
+
+
+def watch(interval):
+    s = Sampler()
+    s.sample()
+    time.sleep(0.4)
+    parent = os.getppid()
+    while True:
+        s.sample()
+        try:
+            sys.stdout.write(json.dumps(s.report(), separators=(",", ":")) + "\n")
+            sys.stdout.flush()
+        except (BrokenPipeError, OSError):
+            return
+        time.sleep(interval)
+        if os.getppid() != parent:   # Shell weg -> mitgehen
+            return
+
+
+def kill(sig_name, targets):
+    sig = {"TERM": signal.SIGTERM, "KILL": signal.SIGKILL}.get(sig_name)
+    if sig is None:
+        print(json.dumps({"ok": 0, "failed": [{"pid": 0, "error": "bad signal"}]}))
+        return
+    ok, failed = 0, []
+    for t in targets:
+        try:
+            pid_s, st_s = t.split(":")
+            pid, st = int(pid_s), int(st_s)
+        except ValueError:
+            failed.append({"pid": 0, "error": "bad target"})
+            continue
+        if pid <= 1 or pid == os.getpid():
+            failed.append({"pid": pid, "error": "refused"})
+            continue
+        raw = read("/proc/%d/stat" % pid)
+        if not raw:
+            failed.append({"pid": pid, "error": "gone"})
+            continue
+        try:
+            same = int(raw[raw.rfind(")") + 2:].split()[19]) == st
+            mine = os.stat("/proc/%d" % pid).st_uid == MYUID
+        except (IndexError, ValueError, OSError):
+            failed.append({"pid": pid, "error": "gone"})
+            continue
+        if not same:
+            failed.append({"pid": pid, "error": "changed"})
+        elif not mine:
+            failed.append({"pid": pid, "error": "not yours"})
+        else:
+            try:
+                os.kill(pid, sig)
+                ok += 1
+            except OSError as e:
+                failed.append({"pid": pid, "error": e.strerror or "error"})
+    print(json.dumps({"ok": ok, "failed": failed}))
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] == "once":
+        s = Sampler()
+        s.sample()
+        time.sleep(0.5)
+        s.sample()
+        r = s.report()
+        r["rows"].sort(key=lambda x: -x["cpu"])
+        print(json.dumps(r, indent=1)[:6000])
+    elif a[0] == "watch":
+        watch(float(a[1]) if len(a) > 1 else 2.0)
+    elif a[0] == "kill" and len(a) >= 3:
+        kill(a[1], a[2:])
+    else:
+        print(__doc__)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

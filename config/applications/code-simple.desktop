@@ -1,0 +1,12 @@
+[Desktop Entry]
+# Textdateien per Doppelklick: eigenes, schlichtes VS-Code-Fenster (nicht in ein offenes Projekt). Rückweg: docs/THEMING.md „Bedienung & Verhalten“
+Type=Application
+Name=VS Code (Text)
+Comment=Datei in einem eigenen VS-Code-Fenster öffnen
+Exec=/usr/share/code/code --new-window %F
+Icon=vscode
+Terminal=false
+NoDisplay=true
+StartupWMClass=Code
+Categories=Utility;TextEditor;
+MimeType=text/plain;text/markdown;text/x-log;text/x-shellscript;application/x-shellscript;application/json;application/x-yaml;application/yaml;text/x-python;application/toml;text/x-csrc;text/x-c++src;text/x-chdr;text/css;text/csv;text/x-ini;application/x-desktop;application/xml;text/xml;text/x-readme;application/javascript;text/javascript;application/x-typescript;text/x-qml;text/x-patch;text/x-diff;

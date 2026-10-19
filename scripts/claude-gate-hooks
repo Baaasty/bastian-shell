@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""Antwort-Karte (scripts/claude-gate) in ~/.claude/settings.json an- oder abschalten.
+
+  scripts/claude-gate-hooks on      Hooks eintragen (vorher Sicherung settings.json.vor-gate-<zeit>)
+  scripts/claude-gate-hooks off     nur unsere Einträge wieder entfernen
+  scripts/claude-gate-hooks status
+
+Wirkt ab der nächsten neuen Claude-Sitzung. Der VS-Code-Dialog bleibt immer parallel bedienbar:
+wer zuerst antwortet (Karte oder VS Code), gewinnt.
+"""
+import json
+import os
+import shutil
+import sys
+import time
+
+SETTINGS = os.path.expanduser("~/.claude/settings.json")
+GATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "claude-gate")
+
+
+def cmd(c: str, t: int) -> dict:
+    return {"type": "command", "command": c, "timeout": t}
+
+
+HOOKS = {
+    "PermissionRequest": [
+        {"matcher": "AskUserQuestion", "hooks": [cmd(GATE + " question --wait 590", 600)]},
+        {"matcher": "*", "hooks": [cmd(GATE + " permission --wait 590", 600)]},
+    ],
+    "PostToolUse": [{"matcher": "*", "hooks": [cmd(GATE + " clear", 5)]}],
+    "PostToolUseFailure": [{"matcher": "*", "hooks": [cmd(GATE + " clear", 5)]}],
+    "UserPromptSubmit": [{"hooks": [cmd(GATE + " clear", 5)]}],
+    "Stop": [{"hooks": [cmd(GATE + " clear", 5)]}],
+    "StopFailure": [{"hooks": [cmd(GATE + " clear", 5)]}],
+    "SessionEnd": [{"hooks": [cmd(GATE + " clear", 5)]}],
+}
+
+
+def ours(entry: dict) -> bool:
+    return any(h.get("command", "").startswith(GATE + " ") for h in entry.get("hooks", []))
+
+
+def load() -> dict:
+    with open(SETTINGS, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save(d: dict) -> None:
+    tmp = SETTINGS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, SETTINGS)
+
+
+def main() -> None:
+    mode = sys.argv[1] if len(sys.argv) > 1 else "status"
+    d = load()
+    hooks = d.setdefault("hooks", {})
+    if mode == "status":
+        n = sum(1 for ev in hooks.values() for e in ev if ours(e))
+        print("Antwort-Karte:", "an" if n else "aus", f"({n} Einträge)")
+        return
+    if mode not in ("on", "off"):
+        sys.exit(__doc__)
+    shutil.copy2(SETTINGS, SETTINGS + ".vor-gate-" + time.strftime("%Y%m%d-%H%M%S"))
+    # erst unsere alten Einträge raus (macht "on" wiederholbar), fremde bleiben unberührt
+    for ev in list(hooks):
+        hooks[ev] = [e for e in hooks[ev] if not ours(e)]
+        if not hooks[ev]:
+            del hooks[ev]
+    if mode == "on":
+        for ev, entries in HOOKS.items():
+            hooks.setdefault(ev, []).extend(entries)
+    save(d)
+    print("Antwort-Karte", "an – wirkt ab der nächsten neuen Claude-Sitzung." if mode == "on" else "aus.")
+
+
+if __name__ == "__main__":
+    main()

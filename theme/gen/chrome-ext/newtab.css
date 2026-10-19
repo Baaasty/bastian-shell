@@ -1,0 +1,315 @@
+/* Desktop – neue Tab-Seite. Platzhalter in doppelten geschweiften Klammern = Wert aus theme/palette.json (eingesetzt von theme/gen/chrome.py) */
+:root {
+  --bg: {{bg}};
+  --bg-bottom: {{bgBottom}};
+  --surface: {{surface}};
+  --card: {{chipBg}};
+  --field: {{surfaceRaised}};
+  --blur: {{blurFilter}};
+  --edge: {{highlight}};
+  --active: {{activeBg}};
+  --border: {{border}};
+  --border-strong: {{borderStrong}};
+  --text: {{text}};
+  --text-muted: {{textMuted}};
+  --text-faint: {{textFaint}};
+  --accent: {{accent}};
+  --accent-text: {{accentText}};
+  --accent-soft: {{accentSoft}};
+  --wood: {{wood}};
+  --wood-light: {{woodLight}};
+  --glow: {{glow}};
+  --shadow: {{shadowTile}};
+  --scrim: {{scrim}};
+  --wallpaper: {{wallpaper}};
+  --font-ui: {{fontUi}};
+  --font-mono: {{fontMono}};
+  --r-md: {{radiusMd}};
+  --r-lg: {{radiusLg}};
+  --r-xl: {{radiusXl}};
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+/* Hintergrund: Desktop-Wallpaper (Kopie, siehe chrome.py), nur hinter Uhr/Suche leicht abgedunkelt */
+body {
+  background:
+    radial-gradient(ellipse 50% 50% at 50% 45%, var(--scrim), transparent 80%),
+    var(--wallpaper) center / cover no-repeat,
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-bottom) 100%);
+  color: var(--text);
+  font: 400 14px/1.45 var(--font-ui);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Kaminfeuer: leiser warmer Schein von unten – nur bei Glas-Varianten ohne Wallpaper (hearth: aus) */
+.glow {
+  position: fixed;
+  left: 50%;
+  bottom: -55vh;
+  width: 120vw;
+  height: 90vh;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, var(--glow), transparent);
+  opacity: 0.55;
+  pointer-events: none;
+  display: {{glowDisplay}};   /* mit Wallpaper aus, das hat seinen eigenen Schein */
+}
+
+main {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px 6vh;
+  animation: in 220ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+@keyframes in {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+.sym {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  white-space: nowrap;
+  font-feature-settings: "liga";
+  font-variation-settings: "FILL" 0, "wght" 400, "opsz" 24;
+  user-select: none;
+}
+
+/* Uhr: groß, Mono, Sekunden klein und leise daneben */
+.clock {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: clamp(96px, 13vw, 176px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  user-select: none;
+}
+
+.clock .sec {
+  font-size: 0.26em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-faint);
+  margin-left: 0.5em;
+  min-width: 2ch;
+}
+
+.date {
+  margin-top: 14px;
+  font-size: 18px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+/* Suche: deckende Pille (bei Glas-Varianten Glas mit Blur) */
+.search {
+  margin-top: 56px;
+  width: min(600px, 100%);
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--edge), var(--shadow);
+  transition: border-color 150ms, box-shadow 150ms;
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--edge), 0 0 0 2px var(--accent-soft), var(--shadow);
+}
+
+.search .sym { color: var(--text-faint); }
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: 500 16px var(--font-ui);
+  caret-color: var(--accent);
+}
+
+.search input::placeholder { color: var(--text-faint); font-weight: 400; }
+
+kbd {
+  font: 500 12px var(--font-mono);
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 7px;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+
+.search:focus-within kbd { opacity: 1; }
+
+/* Platz unter der Suche, feste Mindesthöhe: Uhr + Suche springen nicht, wenn der Inhalt wechselt */
+.slot {
+  margin-top: 28px;
+  width: min(600px, 100%);
+  min-height: 156px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+[hidden] { display: none !important; }
+
+/* Wissenshäppchen / Tipp: kleine Karte */
+.bite {
+  width: 100%;
+  padding: 14px 20px 16px;
+  background: var(--card);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--edge);
+  cursor: pointer;
+  transition: opacity 150ms, border-color 150ms;
+}
+
+.bite:hover { border-color: var(--border-strong); }
+
+.bite-kind {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.bite-kind .sym { font-size: 15px; color: var(--wood-light); }
+
+.bite-title {
+  margin-top: 8px;
+  font: 600 15px/1.35 var(--font-ui);
+  color: var(--text);
+}
+
+.bite-title:empty { display: none; }
+
+.bite-text {
+  margin-top: 4px;
+  font: 400 13.5px/1.5 var(--font-ui);
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bite-text code {
+  font: 500 12.5px var(--font-mono);
+  color: var(--text);
+  background: var(--border);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+.bite-more {
+  display: inline-block;
+  margin-top: 8px;
+  font: 500 12px var(--font-ui);
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+.bite-more:hover { color: var(--text); }
+
+.bite.swap { opacity: 0; }
+
+/* Spruch: leise, kursiv */
+.quote {
+  margin: 4px 0 0;
+  max-width: min(560px, 100%);
+  min-height: 2.9em;
+  text-align: center;
+  font: italic 400 14px/1.45 var(--font-ui);
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+  white-space: pre-line;
+  transition: color 150ms, opacity 150ms;
+}
+
+.quote:hover { color: var(--text-muted); }
+.quote.swap { opacity: 0; }
+
+/* Termin + Wetter unten, nur wenn die Shell Daten liefert */
+.info {
+  position: fixed;
+  bottom: 36px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  background: var(--card);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font: 500 13px var(--font-ui);
+  max-width: 46vw;
+}
+
+.chip[hidden] { display: none; }
+
+.chip > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip .sym { font-size: 16px; color: var(--text-faint); }
+
+/* Termin bald (≤ 60 min) oder läuft: Glut, sonst leise */
+.chip.soon { color: var(--accent-text); background: var(--active); border-color: transparent; }
+.chip.soon .sym { color: var(--accent-text); font-variation-settings: "FILL" 1, "wght" 400, "opsz" 24; }
+
+@media (max-height: 560px) {
+  .search { margin-top: 32px; }
+  .info { position: static; margin-top: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main { animation: none; }
+}

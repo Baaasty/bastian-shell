@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Projekt-Infos für die Claude-Zentrale (Bar oben links).
+
+  project-info <pfad> [<pfad> …]
+
+Gibt JSON aus: { "<pfad>": { "dir", "branch", "changes",
+                             "roadmap": { "file", "done", "total", "next", "nextFile", "partial", "parts" } | null } }
+- Pfad darf ein Repo-Ordner oder eine *.code-workspace-Datei sein (dann zählt der erste Ordner darin).
+- Haupt-Roadmap: <dir>/docs/ROADMAP.md, sonst ROADMAP.md, sonst (docs/)PRD.md – das ist "file" (wie bisher).
+  Vorrang hat die jüngste docs/ROADMAP-*.md (Bindestrich) im Ordner oder in einem verknüpften Git-Worktree des Repos
+  (z. B. docs/ROADMAP-HYPRLAND.md im Worktree desktop-hyprland), sonst zeigt die Zentrale eine veraltete Roadmap.
+- Unter-Roadmaps (Standard v2): docs/roadmaps/*.md, dazu das ältere Muster docs/ROADMAP_*.md. done/total zählen
+  die Checkboxen (- [ ] / - [x]) aller Dateien zusammen; "parts" = je Datei { file, done, total, current }.
+- "next" = erster offener Punkt (ohne Markdown-Zierrat), und zwar aus
+  1. der Unter-Roadmap, auf die die Haupt-Roadmap in einer Zeile mit "Aktuell:" verlinkt, sonst
+  2. der Unter-Roadmap mit dem Wort "Aktuell" im Kopf (vor der ersten ##-Überschrift, z. B. "Status: Aktuell"), sonst
+  3. der Haupt-Roadmap, sonst der ersten Unter-Roadmap mit offenem Punkt (Reihenfolge der Links in der Haupt-Roadmap,
+     dann alphabetisch). "nextFile" = Datei, aus der "next" stammt.
+- "partial" = Anzahl "- [~]"-Zeilen (Standard v2: verboten, zählen weder als offen noch als fertig).
+Liest nur, ändert nichts. Fehler pro Projekt werden still übersprungen.
+"""
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+
+BOX = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.*)$")
+PARTIAL = re.compile(r"^\s*[-*+]\s+\[~\]\s+")
+CURRENT = re.compile(r"(?<![\w-])Aktuell(?![\w-])")          # "Aktuell", nicht "Aktueller"
+LINK = re.compile(r"\]\(([^)\s#]+\.md)(?:#[^)]*)?\)")
+
+
+def workspace_dir(path: str) -> str:
+    """Erster Ordner aus einer .code-workspace-Datei (JSON mit Kommentaren, grob bereinigt)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+        raw = re.sub(r"^\s*//.*$", "", raw, flags=re.M)
+        raw = re.sub(r",(\s*[\]}])", r"\1", raw)
+        folders = json.loads(raw).get("folders") or []
+        first = folders[0].get("path", "") if folders else ""
+        if first:
+            return os.path.normpath(os.path.join(os.path.dirname(path), os.path.expanduser(first)))
+    except (OSError, ValueError, AttributeError, IndexError):
+        pass
+    return ""
+
+
+def git_info(d: str):
+    try:
+        # --no-optional-locks: Abfrage im Hintergrund (alle 15–60 s) schreibt sonst den Index neu und hält
+        # dabei .git/index.lock – parallele git-Befehle im Projekt scheitern dann mit „index.lock exists“
+        out = subprocess.run(["git", "--no-optional-locks", "-C", d, "status", "--porcelain", "-b"], capture_output=True,
+                             text=True, timeout=4).stdout
+    except (OSError, subprocess.SubprocessError):
+        return "", 0
+    lines = [l for l in out.split("\n") if l]
+    head = lines.pop(0)[3:] if lines and lines[0].startswith("## ") else ""
+    branch = head.split("...")[0].split(" [")[0]
+    branch = re.sub(r"^(No commits yet on|Initial commit on) ", "", branch)
+    if branch == "HEAD (no branch)":
+        branch = "detached"
+    return branch, len(lines)
+
+
+def clean(text: str) -> str:
+    text = re.sub(r"\*+|__|`", "", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)   # Links -> Text
+    return text.strip()[:140]
+
+
+def scan(f: str):
+    """-> dict(done, total, next, partial, head_current, text) oder None."""
+    done = total = partial = 0
+    nxt = ""
+    head_current = False
+    in_head = True
+    try:
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            in_head = False
+        m = BOX.match(line)
+        if m:
+            in_head = False
+            total += 1
+            if m.group(1) in "xX":
+                done += 1
+            elif not nxt:
+                nxt = clean(m.group(2))
+            continue
+        if PARTIAL.match(line):
+            partial += 1
+            continue
+        if in_head and CURRENT.search(line):
+            head_current = True
+    return {"done": done, "total": total, "next": nxt, "partial": partial, "head_current": head_current, "text": text}
+
+
+def sub_roadmaps(d: str) -> list:
+    found = sorted(glob.glob(os.path.join(d, "docs", "roadmaps", "*.md")))
+    found += sorted(glob.glob(os.path.join(d, "docs", "ROADMAP_*.md")))
+    return [f for f in found if os.path.isfile(f)]
+
+
+def worktree_dirs(d: str) -> list:
+    """Repo-Ordner + verknüpfte Worktrees (leer, wenn kein Git)."""
+    dirs = [d]
+    try:
+        out = subprocess.run(["git", "-C", d, "worktree", "list", "--porcelain"], capture_output=True,
+                             text=True, timeout=5).stdout
+        for line in out.splitlines():
+            if line.startswith("worktree "):
+                w = line[9:].strip()
+                if w and os.path.isdir(w) and w not in dirs:
+                    dirs.append(w)
+    except Exception:
+        pass
+    return dirs
+
+
+def newest_variant(d: str):
+    """Jüngste docs/ROADMAP-*.md (Bindestrich) in d oder einem Worktree von d, sonst None."""
+    found = []
+    for w in worktree_dirs(d):
+        found += glob.glob(os.path.join(w, "docs", "ROADMAP-*.md"))
+    found = [f for f in found if os.path.isfile(f)]
+    return max(found, key=os.path.getmtime) if found else None
+
+
+def roadmap(d: str):
+    main = None
+    variant = newest_variant(d)
+    for f in ([variant] if variant else []) + [os.path.join(d, rel) for rel in ("docs/ROADMAP.md", "ROADMAP.md", "docs/PRD.md", "PRD.md")]:
+        if os.path.isfile(f):
+            info = scan(f)
+            if info is not None and (info["total"] or info["partial"] or f != variant):
+                main = (f, info)
+                break
+    subs = []
+    for f in sub_roadmaps(d):
+        if main and os.path.samefile(f, main[0]):
+            continue
+        info = scan(f)
+        if info and (info["total"] or info["partial"]):
+            subs.append((f, info))
+    if not main and not subs:
+        return None
+
+    # Reihenfolge: wie in der Haupt-Roadmap verlinkt, Rest alphabetisch; Link in "Aktuell:"-Zeile merken
+    linked, current = [], None
+    if main:
+        base = os.path.dirname(main[0])
+        for line in main[1]["text"].splitlines():
+            for target in LINK.findall(line):
+                p = os.path.normpath(os.path.join(base, target))
+                if p not in linked:
+                    linked.append(p)
+                if current is None and re.search(r"(?<![\w-])Aktuell\s*:", line):
+                    if any(os.path.normpath(s) == p for s, _ in subs):
+                        current = p
+    subs.sort(key=lambda s: (linked.index(os.path.normpath(s[0])) if os.path.normpath(s[0]) in linked else 999, s[0]))
+    if current is None:
+        current = next((s for s, i in subs if i["head_current"]), None)
+
+    candidates = []
+    if current:
+        candidates += [(s, i) for s, i in subs if os.path.normpath(s) == os.path.normpath(current)]
+    if main:
+        candidates.append(main)
+    candidates += subs
+    nxt, nxt_file = "", ""
+    for f, info in candidates:
+        if info["next"]:
+            nxt, nxt_file = info["next"], f
+            break
+
+    files = ([main] if main else []) + subs
+    return {
+        "file": main[0] if main else subs[0][0],
+        "done": sum(i["done"] for _, i in files),
+        "total": sum(i["total"] for _, i in files),
+        "next": nxt,
+        "nextFile": nxt_file,
+        "partial": sum(i["partial"] for _, i in files),
+        "parts": [{"file": f, "done": i["done"], "total": i["total"],
+                   "current": bool(current) and os.path.normpath(f) == os.path.normpath(current)} for f, i in files],
+    }
+
+
+def main() -> None:
+    result = {}
+    for p in sys.argv[1:]:
+        try:
+            d = workspace_dir(p) if p.endswith(".code-workspace") else p
+            if not d or not os.path.isdir(d):
+                continue
+            branch, changes = git_info(d)
+            result[p] = {"dir": d, "branch": branch, "changes": changes, "roadmap": roadmap(d)}
+        except Exception:
+            continue
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""GoXLR: Fader-Stand beim Sperren merken, nach dem Entsperren wiederherstellen.
+
+  goxlr-state save [-n]      Lautstärken aller Kanäle nach ~/.local/state/desktop/goxlr-faders.json (0600)
+  goxlr-state restore [-n]   gespeicherten Stand zurücksetzen – nur Kanäle, die abweichen
+  goxlr-state lock [-n]      Sperren: Fader merken + Routing komplett aus (Reset läuft im Hintergrund)
+  goxlr-state unlock [-n]    Entsperren: Fader zurück (nur wenn vorher „lock“ lief); Routing bleibt aus
+  goxlr-state sync           liest $XDG_RUNTIME_DIR/desktop-lock und tut lock bzw. unlock (Pfad-Unit)
+  goxlr-state status         gemerkter Stand und aktueller Stand
+  -n / --dry-run             nur anzeigen, nichts senden/schreiben
+
+Schreibt exakte Rohwerte (0–255) per HTTP-API der GoXLR Utility (goxlr-client volume rundet auf ganze Prozent
+und träfe den Wert nicht exakt); fällt die API aus, geht es über goxlr-client. Doku: docs/setup/goxlr.md
+Schalter: ~/.config/desktop/goxlr.json { "restoreFaders": true, "resetRoutingOnLock": true } (fehlt = an)
+"""
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+
+API = "http://localhost:14564/api"
+HOME = os.path.expanduser("~")
+RUN = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME", f"{HOME}/.local/state"), "desktop")
+STATE = os.path.join(STATE_DIR, "goxlr-faders.json")
+FLAG = os.path.join(RUN, "desktop-goxlr-locked")  # da, solange „lock“ aktiv ist (verschwindet beim Abmelden)
+LOCKFILE = os.path.join(RUN, "desktop-goxlr-state.lock")
+LOCKSTATE = os.path.join(RUN, "desktop-lock")  # „locked“/„unlocked“ (scripts/lock)
+CONFIG = f"{HOME}/.config/desktop/goxlr.json"
+SCRIPTS = os.path.dirname(os.path.realpath(__file__))
+CLI = {"Mic": "mic", "LineIn": "line-in", "Console": "console", "System": "system", "Game": "game",
+       "Chat": "chat", "Sample": "sample", "Music": "music", "Headphones": "headphones",
+       "MicMonitor": "mic-monitor", "LineOut": "line-out"}
+
+
+def config(key):
+    try:
+        with open(CONFIG) as f:
+            return bool(json.load(f).get(key, True))
+    except (OSError, ValueError):
+        return True
+
+
+def get_device():
+    """(Seriennummer, Gerätedaten) oder (None, None), wenn Daemon/Gerät fehlt."""
+    try:
+        with urllib.request.urlopen(f"{API}/get-devices", timeout=3) as r:
+            mixers = json.load(r).get("mixers") or {}
+    except (OSError, ValueError):
+        return None, None
+    for serial, dev in mixers.items():
+        return serial, dev
+    return None, None
+
+
+def set_volume(serial, channel, raw):
+    body = json.dumps({"Command": [serial, {"SetVolume": [channel, int(raw)]}]}).encode()
+    req = urllib.request.Request(f"{API}/command", body, {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=3) as r:
+            if json.load(r) == "Ok":
+                return True
+    except (OSError, ValueError):
+        pass
+    # Rückfall: goxlr-client (ganze Prozent)
+    pct = max(0, min(100, round(raw / 2.55)))
+    return subprocess.run(["goxlr-client", "--device", serial, "volume", CLI[channel], str(pct)],
+                          capture_output=True, timeout=5).returncode == 0
+
+
+def read_state():
+    try:
+        with open(STATE) as f:
+            return json.load(f).get("volumes") or {}
+    except (OSError, ValueError):
+        return None
+
+
+def cmd_save(dry):
+    serial, dev = get_device()
+    if not dev:
+        print("goxlr-state: Gerät nicht erreichbar", file=sys.stderr)
+        return 1
+    vols = dev["levels"]["volumes"]
+    print("save:", json.dumps(vols))
+    if dry:
+        return 0
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = STATE + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"saved": int(time.time()), "volumes": vols}, f)
+    os.replace(tmp, STATE)
+    os.chmod(STATE, 0o600)
+    return 0
+
+
+def cmd_restore(dry):
+    saved = read_state()
+    if saved is None:
+        print("goxlr-state: kein gespeicherter Stand", file=sys.stderr)
+        return 1
+    serial, dev = get_device()
+    if not dev:
+        print("goxlr-state: Gerät nicht erreichbar", file=sys.stderr)
+        return 1
+    now = dev["levels"]["volumes"]
+    todo = [(ch, v) for ch, v in saved.items() if ch in CLI and now.get(ch) != v]
+    if not todo:
+        print("restore: nichts zu tun")
+        return 0
+    rc = 0
+    for ch, v in todo:
+        print(f"restore: {ch} {now.get(ch)} -> {v}")
+        if not dry:
+            if not set_volume(serial, ch, v):
+                rc = 1
+            time.sleep(0.05)
+    return rc
+
+
+def reset_routing(dry, background):
+    cmd = [os.path.join(SCRIPTS, "goxlr-reset-routing"), "--if", "resetRoutingOnLock"] + (["--dry-run"] if dry else [])
+    if background and not dry:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return 0
+    return subprocess.run(cmd).returncode
+
+
+def cmd_lock(dry):
+    if os.path.exists(FLAG):
+        print("lock: schon aktiv (Stand bleibt wie gemerkt)")
+        return 0
+    rc = 0
+    if config("restoreFaders"):
+        rc = cmd_save(dry)
+    if rc == 0 and not dry:
+        open(FLAG, "w").close()
+    reset_routing(dry, background=True)
+    return rc
+
+
+def cmd_unlock(dry):
+    if not os.path.exists(FLAG):
+        print("unlock: war nicht von „lock“ gemerkt – nichts zu tun")
+        return 0
+    rc = 0
+    if config("restoreFaders"):
+        rc = cmd_restore(dry)
+    if rc == 0 and not dry:
+        try:
+            os.unlink(FLAG)
+        except OSError:
+            pass
+    return rc
+
+
+def cmd_sync(dry):
+    try:
+        with open(LOCKSTATE) as f:
+            s = f.read().strip()
+    except OSError:
+        return 0
+    if s == "locked":
+        return cmd_lock(dry)
+    if s == "unlocked":
+        return cmd_unlock(dry)
+    return 0
+
+
+def cmd_status(dry):
+    saved = read_state()
+    _, dev = get_device()
+    now = dev["levels"]["volumes"] if dev else {}
+    print("gesperrt-gemerkt:", os.path.exists(FLAG))
+    for ch in CLI:
+        print(f"{ch:11} gemerkt={None if saved is None else saved.get(ch)} jetzt={now.get(ch)}")
+    return 0
+
+
+COMMANDS = {"save": cmd_save, "restore": cmd_restore, "lock": cmd_lock, "unlock": cmd_unlock,
+            "sync": cmd_sync, "status": cmd_status}
+
+
+def main():
+    args = [a for a in sys.argv[1:] if a not in ("-n", "--dry-run")]
+    dry = len(args) != len(sys.argv) - 1
+    if len(args) != 1 or args[0] not in COMMANDS:
+        print(__doc__)
+        return 2
+    # ein Lauf nach dem anderen (Hook in scripts/lock und Pfad-Unit können zusammenfallen)
+    os.makedirs(RUN, exist_ok=True)
+    with open(LOCKFILE, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        return COMMANDS[args[0]](dry)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

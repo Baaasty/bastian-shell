@@ -1,0 +1,9 @@
+# Wird von desktop-goxlr-unlock.path ausgelöst: „locked“ → Fader merken + Routing aus (idempotent),
+# „unlocked“ → Fader zurück (nur wenn vorher gemerkt). Routing bleibt aus.
+[Unit]
+Description=Desktop: GoXLR-Fader abgleichen (Sperre geändert)
+
+[Service]
+Type=oneshot
+ExecStart=%h/Workspace/desktop-hyprland/scripts/goxlr-state sync
+TimeoutStartSec=20

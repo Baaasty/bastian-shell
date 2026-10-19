@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""equibop-theme – Desktop-Look (hearth) für Equibop/Discord ein- und ausschalten.
+
+  equibop-theme install   Theme aus der Palette erzeugen, nach ~/.config/equibop/themes/ kopieren, in den Einstellungen einschalten
+  equibop-theme off       Theme ausschalten und die Datei wieder entfernen
+  equibop-theme status    was ist da, was ist an, läuft Equibop
+
+Das Theme ändert nur Discords Farb-Variablen und die Schrift (Layout, Icons, Server-Leiste bleiben; Blurple gedämpft).
+Equibop überschreibt seine Einstellungen beim Beenden – deshalb fasst das Skript nichts an, solange Equibop läuft
+(es schreibt dann nur den Befehl auf). Ohne Skript geht es auch per Klick: Equibop → Einstellungen → Equicord → Themes →
+„Desktop (Equibop)“ einschalten (Datei vorher in den Themes-Ordner kopieren).
+
+Geändert wird nur: ~/.config/equibop/themes/desktop.theme.css (neu) und in ~/.config/equibop/settings/settings.json der
+Eintrag "desktop.theme.css" in "enabledThemes". Sicherung vorher: ~/.local/state/desktop/theme-backup-<Datum>/equibop/.
+Umgebung: EQUIBOP_CONFIG (Standard ~/.config/equibop).
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+GEN = os.path.join(REPO, "theme", "gen", "equibop.py")
+SRC = os.path.join(REPO, "theme", "out", "equibop", "desktop.theme.css")
+CFG = os.path.expanduser(os.environ.get("EQUIBOP_CONFIG") or "~/.config/equibop")
+THEMES = os.path.join(CFG, "themes")
+DST = os.path.join(THEMES, "desktop.theme.css")
+SETTINGS = os.path.join(CFG, "settings", "settings.json")
+NAME = "desktop.theme.css"
+MARK = "ERZEUGT aus theme/palette.json"
+STATE = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+BACKUP = os.path.join(STATE, "desktop", "theme-backup-" + time.strftime("%Y-%m-%d"), "equibop")
+ME = os.path.relpath(os.path.realpath(__file__), REPO)
+
+
+def say(msg):
+    print(msg, flush=True)
+
+
+def die(msg):
+    print("Fehler: " + msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def running():
+    if os.environ.get("EQUIBOP_THEME_TEST"):  # nur für Tests mit einer Kopie der Config
+        return False
+    return subprocess.run(["pgrep", "-x", "equibop"], capture_output=True).returncode == 0
+
+
+def read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_json(path, data):
+    tmp = path + ".tmp-%d" % os.getpid()
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def generate():
+    r = subprocess.run([sys.executable, "-I", GEN], cwd=REPO)
+    if r.returncode or not os.path.exists(SRC):
+        die("Theme konnte nicht erzeugt werden (python3 -I theme/gen/equibop.py)")
+
+
+def foreign(path):
+    """True, wenn dort eine Datei liegt, die nicht von uns stammt."""
+    if not os.path.exists(path):
+        return False
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        return MARK not in f.read()
+
+
+def backup():
+    os.makedirs(BACKUP, mode=0o700, exist_ok=True)
+    for p in (SETTINGS, DST):
+        if os.path.exists(p):
+            shutil.copy2(p, os.path.join(BACKUP, os.path.basename(p) + "." + time.strftime("%H%M%S")))
+    return BACKUP
+
+
+def enabled():
+    try:
+        return NAME in (read_json(SETTINGS).get("enabledThemes") or [])
+    except (OSError, ValueError):
+        return None
+
+
+def need_idle(cmd):
+    if running():
+        say("Equibop läuft – ich fasse nichts an (es überschreibt seine Einstellungen beim Beenden).")
+        say("Dann so: Equibop beenden, danach")
+        say("  %s %s" % (os.path.join(REPO, ME), cmd))
+        say("und Equibop wieder starten. (Ohne Beenden: theme/out/equibop/desktop.theme.css nach %s kopieren, dann Equibop → Einstellungen → Equicord → Themes → „Desktop (Equibop)“ einschalten.)" % THEMES)
+        return True
+    return False
+
+
+def install():
+    generate()
+    if foreign(DST):
+        die("%s existiert und stammt nicht von hier – nicht überschrieben." % DST)
+    if not os.path.isdir(CFG) or not os.path.exists(SETTINGS):
+        die("Equibop-Einstellungen fehlen: %s (Equibop einmal starten und beenden)" % SETTINGS)
+    if need_idle("install"):
+        return
+    dst = backup()
+    os.makedirs(THEMES, exist_ok=True)
+    shutil.copy2(SRC, DST)
+    se = read_json(SETTINGS)
+    lst = [t for t in (se.get("enabledThemes") or []) if t != NAME] + [NAME]
+    se["enabledThemes"] = lst
+    se.setdefault("themeActivationModes", {})
+    write_json(SETTINGS, se)
+    say("Theme installiert und eingeschaltet: %s" % DST)
+    say("Sicherung: %s" % dst)
+    say("Jetzt Equibop starten. Zurück: %s off" % os.path.join(REPO, ME))
+
+
+def off():
+    if need_idle("off"):
+        return
+    dst = backup()
+    if os.path.exists(SETTINGS):
+        se = read_json(SETTINGS)
+        if NAME in (se.get("enabledThemes") or []):
+            se["enabledThemes"] = [t for t in se["enabledThemes"] if t != NAME]
+            (se.get("themeActivationModes") or {}).pop(NAME, None)
+            write_json(SETTINGS, se)
+    if os.path.exists(DST) and not foreign(DST):
+        os.remove(DST)
+    say("Theme aus und Datei entfernt. Sicherung: %s" % dst)
+
+
+def status():
+    say("Quelle:      %s" % ("erzeugt" if os.path.exists(SRC) else "noch nicht erzeugt (install erzeugt sie)"))
+    same = os.path.exists(DST) and os.path.exists(SRC) and open(DST, "rb").read() == open(SRC, "rb").read()
+    say("Themes-Ordner: %s" % ("liegt da" + ("" if same else " (anderer Stand als theme/out – install erneuert)") if os.path.exists(DST) else "leer"))
+    en = enabled()
+    say("Eingeschaltet: %s" % ("ja" if en else "nein" if en is not None else "unbekannt (settings.json fehlt)"))
+    say("Equibop läuft: %s" % ("ja" if running() else "nein"))
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "install":
+        install()
+    elif cmd == "off":
+        off()
+    elif cmd == "status":
+        status()
+    else:
+        print(__doc__)
+        sys.exit(0 if cmd in ("", "-h", "--help") else 1)
+
+
+if __name__ == "__main__":
+    main()

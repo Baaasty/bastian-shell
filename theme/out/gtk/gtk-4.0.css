@@ -1,0 +1,122 @@
+/* ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern.
+ * Neu erzeugen: python3 -I theme/gen/gtk.py
+ * Rückweg: python3 -I theme/gen/gtk.py --rueckweg  (Backup unter ~/.local/state/desktop/theme-backup-*)
+ * GTK4 / libadwaita */
+@define-color accent_color #F2A58A;
+@define-color accent_bg_color #DB6B4C;
+@define-color accent_fg_color #2B1A12;
+@define-color destructive_color #E78A7A;
+@define-color destructive_bg_color #974539;
+@define-color destructive_fg_color #F6ECDD;
+@define-color success_color #A3B083;
+@define-color success_bg_color #A3B083;
+@define-color success_fg_color #2B1A12;
+@define-color warning_color #E0AE55;
+@define-color warning_bg_color #E0AE55;
+@define-color warning_fg_color #2B1A12;
+@define-color error_color #E78A7A;
+@define-color error_bg_color #974539;
+@define-color error_fg_color #F6ECDD;
+@define-color window_bg_color #382D26;
+@define-color window_fg_color #F6ECDD;
+@define-color view_bg_color #2F2620;
+@define-color view_fg_color #F6ECDD;
+@define-color headerbar_bg_color #45372E;
+@define-color headerbar_fg_color #F6ECDD;
+@define-color headerbar_border_color #4C4038;
+@define-color headerbar_backdrop_color #382D26;
+@define-color headerbar_shade_color rgba(12, 7, 4, 0.30);
+@define-color headerbar_darker_shade_color rgba(12, 7, 4, 0.36);
+@define-color sidebar_bg_color #312720;
+@define-color sidebar_fg_color #F6ECDD;
+@define-color sidebar_backdrop_color #382D26;
+@define-color sidebar_shade_color rgba(12, 7, 4, 0.25);
+@define-color sidebar_border_color #4C4038;
+@define-color secondary_sidebar_bg_color #382D26;
+@define-color secondary_sidebar_fg_color #F6ECDD;
+@define-color secondary_sidebar_backdrop_color #382D26;
+@define-color secondary_sidebar_shade_color rgba(12, 7, 4, 0.20);
+@define-color secondary_sidebar_border_color #4C4038;
+@define-color card_bg_color #45372E;
+@define-color card_fg_color #F6ECDD;
+@define-color card_shade_color rgba(12, 7, 4, 0.22);
+@define-color dialog_bg_color #382D26;
+@define-color dialog_fg_color #F6ECDD;
+@define-color popover_bg_color #45372E;
+@define-color popover_fg_color #F6ECDD;
+@define-color popover_shade_color rgba(12, 7, 4, 0.25);
+@define-color thumbnail_bg_color #45372E;
+@define-color thumbnail_fg_color #F6ECDD;
+@define-color shade_color rgba(12, 7, 4, 0.34);
+@define-color scrollbar_outline_color rgba(12, 7, 4, 0.55);
+
+:root {
+  --accent-color: #F2A58A;
+  --accent-bg-color: #DB6B4C;
+  --accent-fg-color: #2B1A12;
+  --destructive-color: #E78A7A;
+  --destructive-bg-color: #974539;
+  --destructive-fg-color: #F6ECDD;
+  --success-color: #A3B083;
+  --success-bg-color: #A3B083;
+  --success-fg-color: #2B1A12;
+  --warning-color: #E0AE55;
+  --warning-bg-color: #E0AE55;
+  --warning-fg-color: #2B1A12;
+  --error-color: #E78A7A;
+  --error-bg-color: #974539;
+  --error-fg-color: #F6ECDD;
+  --window-bg-color: #382D26;
+  --window-fg-color: #F6ECDD;
+  --view-bg-color: #2F2620;
+  --view-fg-color: #F6ECDD;
+  --headerbar-bg-color: #45372E;
+  --headerbar-fg-color: #F6ECDD;
+  --headerbar-border-color: #4C4038;
+  --headerbar-backdrop-color: #382D26;
+  --headerbar-shade-color: rgba(12, 7, 4, 0.30);
+  --headerbar-darker-shade-color: rgba(12, 7, 4, 0.36);
+  --sidebar-bg-color: #312720;
+  --sidebar-fg-color: #F6ECDD;
+  --sidebar-backdrop-color: #382D26;
+  --sidebar-shade-color: rgba(12, 7, 4, 0.25);
+  --sidebar-border-color: #4C4038;
+  --secondary-sidebar-bg-color: #382D26;
+  --secondary-sidebar-fg-color: #F6ECDD;
+  --secondary-sidebar-backdrop-color: #382D26;
+  --secondary-sidebar-shade-color: rgba(12, 7, 4, 0.20);
+  --secondary-sidebar-border-color: #4C4038;
+  --card-bg-color: #45372E;
+  --card-fg-color: #F6ECDD;
+  --card-shade-color: rgba(12, 7, 4, 0.22);
+  --dialog-bg-color: #382D26;
+  --dialog-fg-color: #F6ECDD;
+  --popover-bg-color: #45372E;
+  --popover-fg-color: #F6ECDD;
+  --popover-shade-color: rgba(12, 7, 4, 0.25);
+  --thumbnail-bg-color: #45372E;
+  --thumbnail-fg-color: #F6ECDD;
+  --shade-color: rgba(12, 7, 4, 0.34);
+  --scrollbar-outline-color: rgba(12, 7, 4, 0.55);
+}
+
+/* Ränder und Ecken: ruhig, deckend */
+window.background, window.dialog, window.csd { background-color: @window_bg_color; }
+.card, .boxed-list, list.boxed-list { border: 1px solid #4C4038; border-radius: 14px; box-shadow: none; }
+popover > contents, popover.menu > contents { border: 1px solid #605349; border-radius: 14px; }
+entry, spinbutton, .view text { border-radius: 10px; }
+entry:focus-within, spinbutton:focus-within { outline-color: alpha(#DB6B4C, 0.55); }
+button { border-radius: 10px; }
+button.suggested-action { background-color: #DB6B4C; color: #2B1A12; }
+button.suggested-action:hover { background-color: #E57B5C; }
+button.suggested-action:active { background-color: #C65A3D; }
+button.destructive-action { background-color: #974539; color: #F6ECDD; }
+row:selected, listview > row:selected, columnview row:selected { background-color: alpha(#DB6B4C, 0.30); color: @window_fg_color; }
+selection, text selection { background-color: alpha(#DB6B4C, 0.45); color: #F6ECDD; }
+scale highlight, progressbar progress, levelbar block.filled { background-color: #DB6B4C; }
+tooltip, tooltip.background { background-color: #45372E; color: #F6ECDD; border: 1px solid #605349; border-radius: 10px; }
+link, a { color: #F2A58A; }
+/* Menüs: ruhiger Hover statt Akzent, Einträge mit eigenen weichen Ecken */
+popover.menu modelbutton { border-radius: 8px; min-height: 30px; }
+popover.menu modelbutton:hover, popover.menu modelbutton:selected { background-color: #574940; color: #F6ECDD; }
+popover.menu separator { background-color: #58493F; }

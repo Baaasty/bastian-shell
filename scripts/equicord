@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""equicord – eigenen Equicord-Build mit dem Plugin „DesktopBridge“ bauen und in Discord (RPM) einspielen.
+
+  equicord build       Plugin (equicord/desktopBridge) in den Equicord-Klon kopieren und mit pnpm bauen (ohne sudo)
+  equicord update      Equicord aktualisieren (git pull --ff-only), dann bauen
+  equicord inject      Discord (RPM, ~/.config/discord/app-*) auf den eigenen Build umstellen + Plugin einschalten
+                       (Discord muss BEENDET sein). `--if-needed` = still, nur wenn nötig (z. B. nach einem Discord-Update)
+  equicord uninject    Discord wieder ohne Equicord
+  equicord install     (alt, Equibop) Equibop auf den eigenen Build umstellen + Plugin einschalten (Equibop beendet!)
+  equicord off         (alt, Equibop) zurück auf Standard-Equicord
+  equicord status      was ist gebaut, eingespielt, verbunden
+
+Einspielen in Discord (ohne sudo: das RPM legt die App beim ersten Start unter ~/.config/discord/app-<version>/ ab,
+gleiches Verfahren wie der offizielle Equicord-Installer): resources/app.asar -> resources/_app.asar, daneben
+resources/app/{index.js,package.json}, index.js lädt <Klon>/dist/desktop/patcher.js (der startet dann Discord aus _app.asar).
+Ein Discord-Update bringt einen neuen app-Ordner ohne Equicord mit -> `scripts/app-run discord` spielt vor dem Start neu ein.
+Plugin-Schalter: ~/.config/Equicord/settings/settings.json (plugins.DesktopBridge.enabled), Sicherung vorher.
+
+Was „install“ ändert (nur diese zwei Stellen, vorher als Kopie gesichert unter ~/.local/state/desktop/equibop-backup/):
+  ~/.config/equibop/state.json              Schlüssel "equicordDir" -> <Klon>/dist   (Equibop-Einstellung „Equicord-Speicherort“)
+  ~/.config/equibop/settings/settings.json  plugins.DesktopBridge.enabled = true
+„off“ entfernt genau diese zwei Einträge wieder; alles andere (Fensterposition, Themes, andere Plugins) bleibt.
+Equibop überschreibt beide Dateien beim Beenden – deshalb nie bei laufendem Equibop ändern.
+
+Umgebung: EQUICORD_DIR (Klon, Standard ~/.local/src/equicord), EQUIBOP_CONFIG (Standard ~/.config/equibop).
+"""
+
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import time
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+PLUGIN_SRC = os.path.join(REPO, "equicord", "desktopBridge")
+CLONE = os.path.expanduser(os.environ.get("EQUICORD_DIR") or "~/.local/src/equicord")
+PLUGIN_DST = os.path.join(CLONE, "src", "userplugins", "desktopBridge")
+DIST = os.path.join(CLONE, "dist")
+CFG = os.path.expanduser(os.environ.get("EQUIBOP_CONFIG") or "~/.config/equibop")
+STATE_JSON = os.path.join(CFG, "state.json")
+SETTINGS_JSON = os.path.join(CFG, "settings", "settings.json")
+BACKUP = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop", "equibop-backup")
+SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid(), "desktop", "cams.sock")
+PLUGIN = "DesktopBridge"
+DISCORD_HOME = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "discord")
+EQ_DATA = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "Equicord")
+EQ_SETTINGS = os.path.join(EQ_DATA, "settings", "settings.json")
+PATCHER = os.path.join(DIST, "desktop", "patcher.js")
+MARK = "// desktop: scripts/equicord inject"
+
+
+def say(msg):
+    print(msg, flush=True)
+
+
+def die(msg):
+    print("Fehler: " + msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def equibop_running():
+    if os.environ.get("EQUICORD_TEST"):   # nur für Tests mit einer Kopie der Config (EQUIBOP_CONFIG)
+        return False
+    r = subprocess.run(["pgrep", "-x", "equibop"], capture_output=True)
+    return r.returncode == 0
+
+
+def read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def write_json(path, data):
+    tmp = path + ".tmp-%d" % os.getpid()
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
+def pnpm():
+    p = shutil.which("pnpm") or os.path.expanduser("~/.local/bin/pnpm")
+    if not os.path.exists(p):
+        die("pnpm fehlt – `npm i -g pnpm@12.8.1 --prefix ~/.local` (ohne sudo)")
+    return p
+
+
+def run(cmd, **kw):
+    r = subprocess.run(cmd, cwd=CLONE, **kw)
+    if r.returncode != 0:
+        die("%s ist fehlgeschlagen (%d)" % (" ".join(cmd[:3]), r.returncode))
+
+
+def head():
+    r = subprocess.run(["git", "-C", CLONE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
+    return r.stdout.strip() or "?"
+
+
+def build():
+    if not os.path.isdir(os.path.join(CLONE, ".git")):
+        die("kein Equicord-Klon unter %s (git clone https://github.com/Equicord/Equicord %s)" % (CLONE, CLONE))
+    if not os.path.isdir(PLUGIN_SRC):
+        die("Plugin-Quelle fehlt: " + PLUGIN_SRC)
+    # kopieren statt verlinken: esbuild löst die @-Pfade nur innerhalb des Klons auf
+    shutil.rmtree(PLUGIN_DST, ignore_errors=True)
+    shutil.copytree(PLUGIN_SRC, PLUGIN_DST)
+    if not os.path.isdir(os.path.join(CLONE, "node_modules")):
+        run([pnpm(), "install", "--frozen-lockfile"])
+    run([pnpm(), "build"])
+    if not os.path.exists(PATCHER):
+        die("Build ohne dist/desktop/patcher.js")
+    say("Gebaut: %s (Equicord %s, Plugin %s)" % (DIST, head(), PLUGIN))
+
+
+def update():
+    run(["git", "pull", "--ff-only"])
+    run([pnpm(), "install", "--frozen-lockfile"])
+    build()
+
+
+def discord_running():
+    return subprocess.run(["pgrep", "-x", "Discord"], capture_output=True).returncode == 0
+
+
+def discord_resources():
+    """resources-Ordner der neuesten Discord-Version (app-1.0.162 …), sonst None."""
+    try:
+        apps = [d for d in os.listdir(DISCORD_HOME) if d.startswith("app-")]
+    except OSError:
+        return None
+    def ver(d):
+        try:
+            return tuple(int(x) for x in d[4:].split("."))
+        except ValueError:
+            return ()
+    for d in sorted(apps, key=ver, reverse=True):
+        res = os.path.join(DISCORD_HOME, d, "resources")
+        if os.path.exists(os.path.join(res, "app.asar")) or os.path.exists(os.path.join(res, "_app.asar")):
+            return res
+    return None
+
+
+def injected(res):
+    idx = os.path.join(res, "app", "index.js")
+    try:
+        with open(idx, encoding="utf-8") as f:
+            return MARK in f.read() and os.path.exists(os.path.join(res, "_app.asar"))
+    except OSError:
+        return False
+
+
+def enable_plugin():
+    if os.path.exists(EQ_SETTINGS):
+        dst = os.path.join(BACKUP, time.strftime("%Y%m%d-%H%M%S") + "-equicord")
+        os.makedirs(dst, mode=0o700, exist_ok=True)
+        shutil.copy2(EQ_SETTINGS, os.path.join(dst, "settings.json"))
+        se = read_json(EQ_SETTINGS)
+    else:
+        os.makedirs(os.path.dirname(EQ_SETTINGS), exist_ok=True)
+        se = {}
+    plugins = se.setdefault("plugins", {})
+    cur = plugins.get(PLUGIN) if isinstance(plugins.get(PLUGIN), dict) else {}
+    if cur.get("enabled") is True:
+        return False
+    cur["enabled"] = True
+    plugins[PLUGIN] = cur
+    write_json(EQ_SETTINGS, se)
+    return True
+
+
+def inject():
+    quiet = "--if-needed" in sys.argv[2:]
+    res = discord_resources()
+    if not res:
+        if quiet:
+            return
+        die("Discord ist noch nicht eingerichtet (%s/app-* fehlt) – einmal `discord` starten, dann erneut." % DISCORD_HOME)
+    if injected(res):
+        if not quiet:
+            say("Schon eingespielt: " + res)
+        return
+    if discord_running():
+        if quiet:
+            return
+        die("Discord läuft. Erst beenden (Tray -> Quit), dann erneut.")
+    if not os.path.exists(PATCHER):
+        if quiet:
+            return
+        say("Noch nicht gebaut – baue jetzt …")
+        build()
+    asar, orig = os.path.join(res, "app.asar"), os.path.join(res, "_app.asar")
+    if os.path.exists(asar):
+        if os.path.exists(orig):
+            os.unlink(orig)
+        os.rename(asar, orig)
+    app = os.path.join(res, "app")
+    shutil.rmtree(app, ignore_errors=True)
+    os.makedirs(app)
+    with open(os.path.join(app, "index.js"), "w", encoding="utf-8") as f:
+        f.write("%s\nrequire(%s);\n" % (MARK, json.dumps(PATCHER)))
+    with open(os.path.join(app, "package.json"), "w", encoding="utf-8") as f:
+        f.write('{ "name": "discord", "main": "index.js" }\n')
+    on = enable_plugin()
+    if not quiet or on:
+        say("Eingespielt: %s -> %s" % (res, PATCHER))
+        say("Plugin %s %s. Jetzt Discord starten. Zurück: scripts/equicord uninject" % (PLUGIN, "eingeschaltet" if on else "war schon an"))
+
+
+def uninject():
+    res = discord_resources()
+    if not res or not injected(res):
+        say("Discord hat kein Equicord von hier.")
+        return
+    if discord_running():
+        die("Discord läuft. Erst beenden, dann erneut.")
+    shutil.rmtree(os.path.join(res, "app"), ignore_errors=True)
+    os.rename(os.path.join(res, "_app.asar"), os.path.join(res, "app.asar"))
+    say("Discord läuft wieder ohne Equicord (%s). Einstellungen unter %s bleiben." % (res, EQ_DATA))
+
+
+def backup_files():
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dst = os.path.join(BACKUP, stamp)
+    os.makedirs(dst, mode=0o700, exist_ok=True)
+    for p in (STATE_JSON, SETTINGS_JSON):
+        if os.path.exists(p):
+            shutil.copy2(p, os.path.join(dst, os.path.basename(os.path.dirname(p)) + "-" + os.path.basename(p)))
+    return dst
+
+
+def install():
+    if equibop_running():
+        die("Equibop läuft. Erst beenden (es überschreibt seine Einstellungen beim Beenden), dann erneut.")
+    if not os.path.exists(os.path.join(DIST, "equibop", "main.js")):
+        say("Noch nicht gebaut – baue jetzt …")
+        build()
+    if not os.path.exists(STATE_JSON):
+        die("Equibop-Zustand fehlt: %s (Equibop einmal starten und beenden)" % STATE_JSON)
+    if not os.path.exists(SETTINGS_JSON):
+        die("Equicord-Einstellungen fehlen: %s (Equibop einmal starten und beenden)" % SETTINGS_JSON)
+    dst = backup_files()
+    st = read_json(STATE_JSON)
+    st["equicordDir"] = DIST
+    write_json(STATE_JSON, st)
+    se = read_json(SETTINGS_JSON)
+    plugins = se.setdefault("plugins", {})
+    cur = plugins.get(PLUGIN) if isinstance(plugins.get(PLUGIN), dict) else {}
+    cur["enabled"] = True
+    plugins[PLUGIN] = cur
+    write_json(SETTINGS_JSON, se)
+    say("Equibop nutzt jetzt %s und das Plugin %s ist eingeschaltet." % (DIST, PLUGIN))
+    say("Sicherung der alten Dateien: " + dst)
+    say("Jetzt Equibop starten. Zurück: scripts/equicord off")
+
+
+def off():
+    if equibop_running():
+        die("Equibop läuft. Erst beenden, dann erneut.")
+    dst = backup_files()
+    if os.path.exists(STATE_JSON):
+        st = read_json(STATE_JSON)
+        if st.pop("equicordDir", None) is not None:
+            write_json(STATE_JSON, st)
+    if os.path.exists(SETTINGS_JSON):
+        se = read_json(SETTINGS_JSON)
+        p = (se.get("plugins") or {}).get(PLUGIN)
+        if isinstance(p, dict):
+            p["enabled"] = False
+            write_json(SETTINGS_JSON, se)
+    say("Equibop nutzt wieder das Standard-Equicord (equicord.asar, Updates automatisch); Plugin %s aus." % PLUGIN)
+    say("Sicherung: " + dst)
+    if not os.path.exists(os.path.join(CFG, "sessionData", "equicord.asar")):
+        say("Hinweis: sessionData/equicord.asar fehlt – Equibop lädt es beim Start selbst nach (Internet nötig).")
+
+
+def sock_alive():
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(1)
+    try:
+        s.connect(SOCK)
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def status():
+    built = os.path.exists(PATCHER)
+    say("Klon:        %s (%s)" % (CLONE, head() if os.path.isdir(CLONE) else "fehlt"))
+    synced = os.path.isdir(PLUGIN_DST) and all(
+        os.path.exists(os.path.join(PLUGIN_DST, f)) and open(os.path.join(PLUGIN_DST, f), "rb").read() == open(os.path.join(PLUGIN_SRC, f), "rb").read()
+        for f in os.listdir(PLUGIN_SRC))
+    say("Plugin:      %s" % ("im Klon, gleich wie im Repo" if synced else "Klon hat anderen Stand – `scripts/equicord build`"))
+    newest = 0
+    if os.path.isdir(PLUGIN_SRC):
+        newest = max(os.path.getmtime(os.path.join(PLUGIN_SRC, f)) for f in os.listdir(PLUGIN_SRC))
+    stale = built and os.path.getmtime(PATCHER) < newest
+    say("Build:       %s" % ("fertig" + (" (Plugin ist neuer – bauen!)" if stale else "") if built else "fehlt"))
+    try:
+        dirset = read_json(STATE_JSON).get("equicordDir")
+    except (OSError, ValueError):
+        dirset = None
+    res = discord_resources()
+    say("Discord:     %s" % ((res + (" – eingespielt" if injected(res) else " – ohne Equicord")) if res else "nicht eingerichtet"))
+    try:
+        den = ((read_json(EQ_SETTINGS).get("plugins") or {}).get(PLUGIN) or {}).get("enabled")
+    except (OSError, ValueError):
+        den = None
+    say("Plugin an:   %s (Discord)" % ("ja" if den else "nein"))
+    say("Discord läuft: %s" % ("ja" if discord_running() else "nein"))
+    say("Equibop:     equicordDir = %s" % (dirset or "(Standard)"))
+    try:
+        en = ((read_json(SETTINGS_JSON).get("plugins") or {}).get(PLUGIN) or {}).get("enabled")
+    except (OSError, ValueError):
+        en = None
+    say("Plugin an:   %s (Equibop)" % ("ja" if en else "nein"))
+    say("Equibop läuft: %s" % ("ja" if equibop_running() else "nein"))
+    say("Socket:      %s" % ("verbunden-bereit (Plugin läuft)" if sock_alive() else "nicht da (Plugin läuft nicht)"))
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    fn = {"build": build, "update": update, "install": install, "off": off, "status": status,
+          "inject": inject, "uninject": uninject}.get(cmd)
+    if not fn:
+        print(__doc__.strip())
+        sys.exit(0 if cmd in ("", "-h", "--help", "help") else 2)
+    fn()
+
+
+if __name__ == "__main__":
+    main()

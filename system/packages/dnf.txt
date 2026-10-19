@@ -1,0 +1,174 @@
+# dnf-Pakete für Fedora 44 + Hyprland 0.56 + Quickshell (Stand 2026-10-18 abends)
+# Quelle der Wahrheit: der laufende PC (`rpm -q`, `dnf history`, `dnf repoquery --installed --qf '%{name} %{reason}'`).
+# `dnf repoquery --userinstalled` liefert ~400 Einträge, weil das Kiwi-Image fast alles als "User" markiert – Basis-Rauschen.
+#
+# Format: ein Paket pro Zeile, "# …" = Kommentar.
+#   paket     installieren
+#   -paket    entfernen (dnf remove)
+#   ?paket    optional / nicht mehr nötig: bootstrap zeigt nur einen Hinweis; installiert wird nur mit --optional
+#   %paket    nur für die KWin-/Plasma-Sitzung (Rückfall, Branch kwin): bootstrap installiert es nur mit --kwin
+# system/bootstrap installiert alles Fehlende in EINEM `dnf install` (idempotent). Basis (Kernel, systemd, NetworkManager …)
+# bringen Fedora Workstation und Fedora KDE selbst mit und steht deshalb nicht hier.
+
+# == Multimedia: volles ffmpeg statt ffmpeg-free (RPM Fusion) – Sonderfall, bootstrap macht `dnf swap`
+ffmpeg
+
+# == NVIDIA (RPM Fusion nonfree). Secure Boot ist AN → MOK-Schlüssel einschreiben (README, manuell)
+# Hinweise zu NVIDIA unter Hyprland (Treiber 615, nvidia_drm modeset/fbdev = Y) stehen in hypr/env.conf
+akmods
+mokutil
+openssl
+akmod-nvidia
+xorg-x11-drv-nvidia-cuda       # nvidia-smi (Shell: GPU-Ring), CUDA/NVENC
+libva-nvidia-driver            # VA-API über NVDEC (Video im Browser); hypr/env.conf setzt LIBVA_DRIVER_NAME
+
+# == Hyprland-Sitzung (Repo sdegler/hyprland aus repos.txt) – docs/HYPRLAND.md, danach ohne sudo: scripts/hypr install
+hyprland                       # 0.56.x; hyprlang (.conf) ist ab 0.55 veraltet → vor Updates auf 0.57+ die Release-Notes lesen
+hyprland-uwsm                  # Sitzungsdatei „Hyprland (uwsm-managed)“ für den Login
+hyprland-guiutils              # Hyprlands eigene Dialoge (App hängt, Erlaubnis-Abfragen)
+uwsm                           # Sitzung als systemd-Units; alle Apps laufen über `uwsm app --`
+xdg-desktop-portal-hyprland    # Bildschirm teilen (Picker: scripts/share-picker)
+xdg-desktop-portal-kde         # Dateidialog (hypr/portals.conf)
+hypridle                       # Leerlauf: dimmen, sperren, Monitore aus (hypr/hypridle.conf)
+hyprlock                       # Notfall-Sperre, wenn die Shell nicht läuft (scripts/lock)
+hyprsunset                     # Abendwärme (scripts/nightlight); COPR sdegler/hyprland – bei Bastian noch nicht installiert (Stand 18.10.)
+grim                           # Ausschneiden (Snip)
+slurp                          # Bereichsauswahl (Abhängigkeit von hyprland, wird genutzt)
+wf-recorder                    # Bereich als Video (scripts/screenrec)
+wl-clipboard                   # wl-copy / wl-paste (Snip, Zwischenablage)
+cliphist                       # Zwischenablage-Verlauf (Launcher)
+kitty                          # Standard-Terminal (Super+Return), Look: scripts/kitty-theme install
+xdg-terminal-exec              # Terminal-Apps aus dem Launcher (uwsm app)
+playerctl                      # Medientasten / MPRIS
+tesseract                      # OCR im Snip (scripts/snip-ocr) – bei Bastian noch nicht installiert (Stand 18.10.)
+tesseract-langpack-deu
+tesseract-langpack-eng
+polkit-kde                     # Rückfall-Agent, falls die Shell den Passwort-Dialog nicht übernimmt (scripts/polkit-agent)
+pam-kwallet                    # KWallet mit dem Login-Passwort öffnen (hypr/autostart.conf: pam_kwallet_init)
+
+# == Quickshell + Werkzeuge der Shell/Generatoren
+quickshell                     # COPR errornointernet/quickshell (0.3.2; Fedoras 0.2.1 kann keinen Blur)
+rsms-inter-fonts               # UI-Schrift Inter (JetBrains Mono Nerd Font + Material Symbols: bootstrap Schritt 6)
+librsvg2-tools                 # rsvg-convert (Icons, Cursor)
+xcursorgen                     # Cursor-Theme „Desktop“ (design/cursors)
+ImageMagick                    # magick (Snip, Wallpaper)
+jq
+curl
+libnotify                      # notify-send
+python3-pillow                 # theme/gen/wallpaper.py
+socat                          # Sockets (Discord-Brücke, Kamera-Relay)
+qt6-qttools                    # qdbus-qt6
+gcc                            # Linker für cargo-Builds (hyprflow, Share-Picker); früher auch scripts/screencast.c (KWin)
+wireplumber                    # wpctl (Lautstärke, GoXLR-Routing)
+pipewire-utils
+
+# == Qt/KDE-Look unter Hyprland (QT_QPA_PLATFORMTHEME=kde, Farbschema „Desktop Hearth“, Icons „Desktop-Icons“, Breeze)
+# Auf Fedora KDE ist das alles schon da; auf Fedora Workstation holt bootstrap Schritt 2 die Gruppe `kde-desktop`
+# (plasma-workspace, plasma-login-manager, dolphin, konsole …). Die wichtigsten Bausteine stehen hier zur Sicherheit:
+plasma-workspace               # plasma-apply-colorscheme, plasma-changeicons, kwriteconfig6 (rice theme on)
+plasma-integration             # Qt-Plattformtheme „kde“
+plasma-breeze                  # Widget-Stil Breeze
+breeze-icon-theme              # Basis für „Desktop-Icons“
+kde-gtk-config
+kdialog                        # Dialoge (Abmelden-Rückfrage, scripts/hypr power)
+dolphin
+konsole                        # Not-Aus: scripts/hypr panic öffnet Konsole
+plasma-login-manager           # Anmeldung (scripts/loginscreen)
+kcm-plasmalogin
+
+# == Browser + Editor
+helium-bin                     # Browser (COPR imput/helium); Google Chrome ist entfernt (2026-10-18)
+code                           # VS Code nativ (Repo vscode)
+
+# == Apps als RPM (bis 2026-10-18 Flatpaks; Daten umziehen: scripts/flatpak-to-native, Start: scripts/app-run)
+discord                        # RPM Fusion nonfree · Bar-Chip, discord-bridge (Socket $XDG_RUNTIME_DIR/discord-ipc-0); geht erst weg, wenn Equibop funktioniert
+lpf-spotify-client             # RPM Fusion nonfree · baut spotify-client lokal (bootstrap: Gruppe pkg-build + lpf update)
+thunderbird                    # Fedora, Release statt ESR · Profil ~/.thunderbird, Theme aus theme/gen/thunderbird.py
+steam                          # RPM Fusion nonfree · Bibliothek ~/Data/Games/SteamLibrary (in Steam hinzufügen)
+mpv                            # Standard-Videoplayer · system/copies/.config/mimeapps.list
+yt-dlp
+kde-connect                    # Handy-Kopplung (kdeconnectd)
+# equibop                      # NICHT aus einem Repo: GitHub-RPM Equicord/Equibop (bootstrap Schritt 2, wie goxlr-utility)
+# goxlr-utility                # NICHT aus einem Repo: GitHub-RPM GoXLR-on-Linux/goxlr-utility (bootstrap Schritt 2)
+
+# == Entwicklung
+git
+git-lfs                        # jetzt per dnf (früher Binary in ~/.local/bin – das danach löschen, es überdeckt /usr/bin)
+gh
+nodejs                         # → nodejs22 + npm; pnpm kommt user-lokal (bootstrap Schritt 6, Equicord-Build)
+ripgrep
+python3
+cargo                          # + rust: hyprflow (scripts/session build), Share-Picker (scripts/share-picker build)
+pkgconf-pkg-config
+gtk4-devel                     # nur zum Bauen des Share-Pickers (kann nach dem Bau wieder weg)
+gtk4-layer-shell               # Laufzeit-Bibliothek des Share-Pickers – bei Bastian noch nicht installiert (Stand 18.10.)
+gtk4-layer-shell-devel
+btop
+fastfetch
+# zsh im Desktop-Look (scripts/zsh-setup install): Plugins aus Fedora, fzf-tab per git nach ~/.local/share/zsh
+zsh
+zsh-autosuggestions
+zsh-syntax-highlighting
+zsh-completions                # zusätzliche Tab-Vervollständigungen
+eza
+bat
+fzf
+zoxide
+atuin                          # Strg+R: durchsuchbarer Verlauf (lokal, ohne Sync)
+fd-find
+tealdeer                       # tldr: kurze Beispiele statt man
+git-delta                      # schöne git diffs (theme/gen/delta.py)
+du-dust
+duf
+lazygit                        # COPR atim/lazygit (repos.txt)
+yazi                           # COPR lihaohong/yazi (repos.txt)
+
+# == Container
+podman
+podman-docker                  # `docker`-Befehl → Podman (+ /etc/containers/nodocker)
+podman-compose
+distrobox                      # Container „ubuntu“ für Claude Desktop
+
+# == Netz, Cloud, Hardware
+rclone                         # iCloud Drive/Fotos (icloud-sync, icloud-photos)
+v4l-utils                      # v4l2-ctl: Facecam (Kamera-Regler)
+
+# == Schrift-Fallbacks (eingeführt beim VS-Code-Flatpak-Schriftproblem, evtl. überflüssig)
+dejavu-sans-fonts
+dejavu-sans-mono-fonts
+liberation-sans-fonts
+
+# == Entfernte KDE-Apps (dnf history 17) – unerwünscht, werden wieder entfernt
+-akregator
+-dragon
+-elisa-player
+-kaddressbook
+-kamoso
+-kmahjongg
+-kmail
+-kmines
+-kmouth
+-kolourpaint
+-kontact
+-korganizer
+-kpat
+-neochat
+-qrca
+-skanpage
+
+# == Nur Plasma-/KWin-Sitzung (Rückfall; bootstrap --kwin)
+%gstreamer1-plugins-bad-free   # nvh264enc für die KWin-Bildschirmaufnahme (unter Hyprland: wf-recorder)
+%krdp                          # Remote Desktop (Plasma); Firewall-Dienst rdp nur, wenn installiert
+
+# == Optional / nicht (mehr) nötig – installiert nur mit --optional, nichts wird gelöscht
+?hyprpicker                    # Farbpipette – nicht nötig, Snip liest das Pixel selbst (docs/SNIP.md); kam als schwache Abhängigkeit
+?gamemode                      # Host-Dienst gamemoded (CPU „performance“ während Spielen); kam mit Steam; Nutzen meist klein
+                               #   → in Steam pro Spiel Startoption „gamemoderun %command%“
+?chezmoi                       # nicht mehr nötig: Dotfiles liegen in system/dotfiles + system/copies (weg: sudo dnf remove chezmoi)
+?ydotool                       # offen: „Enter = sofort einfügen“ in der Zwischenablage (nur bei Bedarf)
+
+# Entfernt / ersetzt (nur als Gedächtnis, nichts davon wird installiert):
+#   google-chrome-stable   entfernt 2026-10-18 (dnf history 35) → Helium. /etc/yum.repos.d/google-chrome.repo liegt noch da (optional löschen).
+#   xwaylandvideobridge    kam mit der KDE-Gruppe, unter Hyprland unnötig
+# Schwache Abhängigkeiten, die dnf mit hyprland/hyprland-guiutils geholt hat und die niemand benutzt (nichts zu tun):
+#   nwg-panel, wofi, python3-i3ipc, python3-xlib, python3-netifaces, brightnessctl, wlr-randr, newt

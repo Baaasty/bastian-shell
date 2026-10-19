@@ -1,0 +1,339 @@
+#!/usr/bin/env bash
+# Discord, Spotify, Thunderbird: vom Flatpak aufs native RPM umziehen (Login, Einstellungen, Mail-Profil mitnehmen).
+#
+#   scripts/flatpak-to-native status
+#   scripts/flatpak-to-native migrate [--dry-run] discord|spotify|thunderbird|all
+#   scripts/flatpak-to-native remove-flatpaks [--dry-run]
+#
+# migrate, pro App:
+#   1. prüft: RPM installiert (rpm -q), App läuft NICHT (flatpak ps + pgrep), Flatpak-Daten da, Ziel fehlt oder leer
+#   2. Sicherung: ~/.local/state/desktop/flatpak-backup/<app>-<datum>.tar.zst (ganzes ~/.var/app/<id> ohne cache/)
+#   3. kopiert (Flatpak-Daten bleiben unangetastet):
+#        Discord      ~/.var/app/com.discordapp.Discord/config/discord   → ~/.config/discord
+#        Spotify      ~/.var/app/com.spotify.Client/config/spotify       → ~/.config/spotify   (ohne Cache/Offline-Songs)
+#        Thunderbird  ~/.var/app/org.mozilla.thunderbird_esr/.thunderbird → ~/.thunderbird    (inkl. profiles.ini/installs.ini)
+#   4. Thunderbird: trägt das Profil für die RPM-Installation ein (sonst legt Thunderbird ein neues, leeres an, s. u.)
+#   5. Link-Handler (discord://, spotify:, mailto: …), die aufs Flatpak zeigen, aufs RPM umstellen (xdg-mime)
+# remove-flatpaks: die drei Flatpaks deinstallieren – nur, wenn RPM da und Daten umgezogen. System-Installationen
+#   brauchen polkit/Passwort: dann nur den Befehl ausgeben. Daten in ~/.var/app bleiben liegen (Sicherung ist ja da).
+#
+# Thunderbird-Profil: Seit „Dedicated Profiles“ merkt sich Thunderbird pro Installation (Hash des Programmordners,
+# CityHash64 über den Pfad in UTF-16) sein Profil in installs.ini/profiles.ini ([Install<HASH>], Locked=1).
+# Das Flatpak (/app/lib/thunderbird) hat BD520B11F73A6B64. Das RPM (/usr/lib64/thunderbird) hätte einen anderen Hash,
+# fände keinen Eintrag, und das echte Profil ist vom Flatpak „belegt“ → es würde ein neues Profil angelegt
+# (oder das leere Alt-Profil „default“ mit Default=1 genommen). Darum: alte Install-Abschnitte raus, Abschnitt mit dem
+# RPM-Hash rein, Default=1 aufs echte Profil. ESR 153 → Release 157 ist ein Upgrade, --allow-downgrade braucht es nicht.
+set -euo pipefail
+
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/desktop"
+BACKUP_DIR="$STATE/flatpak-backup"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+APPS=(discord spotify thunderbird)
+DRY=0
+STAMP="$(date +%Y-%m-%d-%H%M)"
+
+head_() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
+ok()    { printf '  \033[32mok\033[0m  %s\n' "$1"; }
+info()  { printf '  ..  %s\n' "$1"; }
+warn()  { printf '  \033[33m!!\033[0m  %s\n' "$1"; }
+fail()  { printf '  \033[31mxx\033[0m  %s\n' "$1"; }
+
+# Befehl ausführen oder (dry-run) nur zeigen
+run() {
+    if (( DRY )); then printf '  \033[2m[dry-run]\033[0m'; printf ' %q' "$@"; printf '\n'
+    else "$@"; fi
+}
+
+name()    { case "$1" in discord) echo Discord;; spotify) echo Spotify;; thunderbird) echo Thunderbird;; esac; }
+fp_id()   { case "$1" in discord) echo com.discordapp.Discord;; spotify) echo com.spotify.Client;; thunderbird) echo org.mozilla.thunderbird_esr;; esac; }
+rpm_pkg() { case "$1" in discord) echo discord;; spotify) echo spotify-client;; thunderbird) echo thunderbird;; esac; }
+rpm_hint() { case "$1" in discord) echo "sudo dnf install discord";; spotify) echo "sudo dnf install lpf-spotify-client && lpf update spotify-client";; thunderbird) echo "sudo dnf install thunderbird";; esac; }
+desktop_native() { case "$1" in discord) echo discord.desktop;; spotify) echo spotify.desktop;; thunderbird) echo net.thunderbird.Thunderbird.desktop;; esac; }
+# Prozessnamen (Flatpak und RPM heißen gleich)
+procs()   { case "$1" in discord) echo 'Discord|discord';; spotify) echo 'spotify';; thunderbird) echo 'thunderbird|thunderbird-bin';; esac; }
+src()     { local b="$HOME/.var/app/$(fp_id "$1")"; case "$1" in discord) echo "$b/config/discord";; spotify) echo "$b/config/spotify";; thunderbird) echo "$b/.thunderbird";; esac; }
+dst()     { case "$1" in discord) echo "$CONF/discord";; spotify) echo "$CONF/spotify";; thunderbird) echo "$HOME/.thunderbird";; esac; }
+
+rpm_ok()      { rpm -q "$(rpm_pkg "$1")" >/dev/null 2>&1; }
+fp_scope()    { flatpak list --app --columns=application,installation 2>/dev/null | awk -v id="$(fp_id "$1")" '$1==id {print $2; exit}'; }
+fp_running()  { flatpak ps --columns=application 2>/dev/null | grep -qx "$(fp_id "$1")"; }
+proc_running(){ pgrep -u "$(id -u)" -x "$(procs "$1")" >/dev/null 2>&1; }
+running()     { fp_running "$1" || proc_running "$1"; }
+nonempty()    { [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
+migrated()    { nonempty "$(dst "$1")"; }
+
+# Programmordner des Thunderbird-RPMs (für den Install-Hash)
+tb_installdir() {
+    local f
+    f="$(rpm -ql thunderbird 2>/dev/null | grep -m1 -E '^/usr/lib(64)?/thunderbird/thunderbird$' || true)"
+    if [ -n "$f" ]; then dirname "$f"; else echo /usr/lib64/thunderbird; fi
+}
+
+# ───────────────────────── Thunderbird: profiles.ini / installs.ini aufs RPM umstellen ─────────────────────────
+# Aufruf: python3 -I -c "$TB_PY" <thunderbird-root> <rpm-installdir> <write|show>
+TB_PY='
+import configparser, io, pathlib, sys
+M = 0xFFFFFFFFFFFFFFFF
+k0, k1, k2, k3 = 0xc3a5c85c97cb3127, 0xb492b66fbe98f273, 0x9ae16a3b2f90404f, 0xc949d7c7509e6557
+def f64(s, i): return int.from_bytes(s[i:i+8], "little")
+def f32(s, i): return int.from_bytes(s[i:i+4], "little")
+def rot(v, r): return v if r == 0 else ((v >> r) | (v << (64 - r))) & M
+def smix(v): return v ^ (v >> 47)
+def h128(u, v):
+    km = 0x9ddfea08eb382d69
+    a = ((u ^ v) * km) & M; a ^= a >> 47
+    b = ((v ^ a) * km) & M; b ^= b >> 47
+    return (b * km) & M
+def h0_16(s):
+    n = len(s)
+    if n > 8:
+        a, b = f64(s, 0), f64(s, n - 8)
+        return (h128(a, rot((b + n) & M, n)) ^ b) & M
+    if n >= 4:
+        return h128((n + (f32(s, 0) << 3)) & M, f32(s, n - 4))
+    if n > 0:
+        y = (s[0] + (s[n >> 1] << 8)) & 0xffffffff; z = (n + (s[n - 1] << 2)) & 0xffffffff
+        return (smix(((y * k2) ^ (z * k3)) & M) * k2) & M
+    return k2
+def h17_32(s):
+    n = len(s)
+    a = (f64(s, 0) * k1) & M; b = f64(s, 8); c = (f64(s, n - 8) * k2) & M; d = (f64(s, n - 16) * k0) & M
+    return h128((rot((a - b) & M, 43) + rot(c, 30) + d) & M, (a + rot(b ^ k3, 20) - c + n) & M)
+def wh(w, x, y, z, a, b):
+    a = (a + w) & M; b = rot((b + a + z) & M, 21); c = a; a = (a + x + y) & M; b = (b + rot(a, 44)) & M
+    return ((a + z) & M, (b + c) & M)
+def whs(s, i, a, b): return wh(f64(s, i), f64(s, i + 8), f64(s, i + 16), f64(s, i + 24), a, b)
+def h33_64(s):
+    n = len(s)
+    z = f64(s, 24); a = (f64(s, 0) + (n + f64(s, n - 16)) * k0) & M; b = rot((a + z) & M, 52); c = rot(a, 37)
+    a = (a + f64(s, 8)) & M; c = (c + rot(a, 7)) & M; a = (a + f64(s, 16)) & M
+    vf = (a + z) & M; vs = (b + rot(a, 31) + c) & M
+    a = (f64(s, 16) + f64(s, n - 32)) & M; z = f64(s, n - 8); b = rot((a + z) & M, 52); c = rot(a, 37)
+    a = (a + f64(s, n - 24)) & M; c = (c + rot(a, 7)) & M; a = (a + f64(s, n - 16)) & M
+    wf = (a + z) & M; ws = (b + rot(a, 31) + c) & M
+    r = smix(((vf + ws) * k2 + (wf + vs) * k0) & M)
+    return (smix((r * k0 + vs) & M) * k2) & M
+def city64(s):
+    n = len(s)
+    if n <= 32: return h0_16(s) if n <= 16 else h17_32(s)
+    if n <= 64: return h33_64(s)
+    x = f64(s, n - 40); y = (f64(s, n - 16) + f64(s, n - 56)) & M; z = h128((f64(s, n - 48) + n) & M, f64(s, n - 24))
+    v = whs(s, n - 64, n, z); w = whs(s, n - 32, (y + k1) & M, x)
+    x = (x * k1 + f64(s, 0)) & M
+    ln = (n - 1) & ~63; i = 0
+    while True:
+        x = (rot((x + y + v[0] + f64(s, i + 8)) & M, 37) * k1) & M
+        y = (rot((y + v[1] + f64(s, i + 48)) & M, 42) * k1) & M
+        x ^= w[1]; y = (y + v[0] + f64(s, i + 40)) & M
+        z = (rot((z + w[0]) & M, 33) * k1) & M
+        v = whs(s, i, (v[1] * k1) & M, (x + w[0]) & M)
+        w = whs(s, i + 32, (z + w[1]) & M, (y + f64(s, i + 16)) & M)
+        z, x = x, z
+        i += 64; ln -= 64
+        if ln == 0: break
+    return h128((h128(v[0], w[0]) + smix(y) * k1 + z) & M, (h128(v[1], w[1]) + x) & M)
+def install_hash(d): return "%016X" % city64(d.encode("utf-16-le"))
+
+root, installdir, mode = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+def load(p):
+    cp = configparser.ConfigParser(interpolation=None); cp.optionxform = str
+    if p.exists(): cp.read(p)
+    return cp
+prof, inst = load(root / "profiles.ini"), load(root / "installs.ini")
+old = [s for s in inst.sections()] + [s[len("Install"):] for s in prof.sections() if s.startswith("Install")]
+real = next((inst[s]["Default"] for s in inst.sections() if "Default" in inst[s]), None) \
+    or next((prof[s]["Default"] for s in prof.sections() if s.startswith("Install") and "Default" in prof[s]), None) \
+    or next((prof[s]["Path"] for s in prof.sections() if s.startswith("Profile") and prof[s].get("Default") == "1"), None)
+if not real:
+    sys.exit("kein Standardprofil in profiles.ini/installs.ini gefunden")
+h = install_hash(installdir)
+fh = install_hash("/app/lib/thunderbird")
+print("  ..  echtes Profil: " + real)
+print("  ..  RPM-Ordner " + installdir + " → Install-Hash " + h)
+if fh in old:
+    print("  ok  Hash-Verfahren geprüft: Flatpak-Abschnitt " + fh + " passt zu /app/lib/thunderbird")
+else:
+    print("  !!  Flatpak-Abschnitt " + fh + " nicht gefunden (alt: " + ", ".join(old or ["–"]) + ") – zur Sicherheit greift zusätzlich Default=1")
+for s in [s for s in prof.sections() if s.startswith("Install")]:
+    prof.remove_section(s)
+for s in [s for s in prof.sections() if s.startswith("Profile")]:
+    if prof[s].get("Path") == real: prof[s]["Default"] = "1"
+    elif "Default" in prof[s]: del prof[s]["Default"]
+prof["Install" + h] = {"Default": real, "Locked": "1"}
+inst = configparser.ConfigParser(interpolation=None); inst.optionxform = str
+inst[h] = {"Default": real, "Locked": "1"}
+for fname, cp in (("profiles.ini", prof), ("installs.ini", inst)):
+    buf = io.StringIO(); cp.write(buf, space_around_delimiters=False)
+    if mode == "write":
+        (root / fname).write_text(buf.getvalue())
+        print("  ok  " + str(root / fname) + " angepasst")
+    else:
+        print("  ..  würde " + fname + " so schreiben:")
+        for line in buf.getvalue().strip().splitlines(): print("        " + line)
+'
+
+# ───────────────────────── status ─────────────────────────
+
+human() { du -sh "$1" 2>/dev/null | cut -f1; }
+
+cmd_status() {
+    local a scope ver run choice
+    for a in "${APPS[@]}"; do
+        head_ "$(name "$a")"
+        if rpm_ok "$a"; then ok "RPM $(rpm -q --qf '%{NAME} %{VERSION}' "$(rpm_pkg "$a")")"
+        else warn "RPM $(rpm_pkg "$a") fehlt → $(rpm_hint "$a")"; fi
+        scope="$(fp_scope "$a")"
+        if [ -n "$scope" ]; then
+            run=""; running "$a" && run=" · läuft gerade"
+            info "Flatpak $(fp_id "$a") ($scope)$run"
+        else ok "Flatpak $(fp_id "$a") nicht (mehr) installiert"; fi
+        if [ -d "$(src "$a")" ]; then info "Flatpak-Daten $(src "$a") ($(human "$(src "$a")"))"
+        else info "keine Flatpak-Daten ($(src "$a"))"; fi
+        if migrated "$a"; then ok "natives Profil da: $(dst "$a")"
+        else info "natives Profil fehlt: $(dst "$a") → migrate $a"; fi
+        choice="$("$(dirname "$(realpath "$0")")/app-run" --which "$a" 2>/dev/null || true)"
+        info "Shell/Launcher starten: ${choice:-none} (scripts/app-run)"
+    done
+    head_ "Steam · mpv · Haruna"
+    if rpm -q steam >/dev/null 2>&1; then ok "RPM steam"; else warn "RPM steam fehlt → sudo dnf install steam"; fi
+    flatpak info com.valvesoftware.Steam >/dev/null 2>&1 && info "Flatpak Steam noch installiert" || ok "kein Steam-Flatpak"
+    if rpm -q mpv >/dev/null 2>&1; then ok "RPM mpv (Video: $(xdg-mime query default video/mp4 2>/dev/null || echo ?))"; else warn "mpv fehlt"; fi
+    flatpak info org.kde.haruna >/dev/null 2>&1 && warn "Haruna-Flatpak noch da" || ok "Haruna-Flatpak entfernt"
+    head_ "Sicherungen ($BACKUP_DIR)"
+    if nonempty "$BACKUP_DIR"; then
+        local f; for f in "$BACKUP_DIR"/*; do info "$(basename "$f") ($(human "$f"))"; done
+    else info "noch keine"; fi
+}
+
+# ───────────────────────── migrate ─────────────────────────
+
+# Vorbedingungen; gibt Gründe aus, Rückgabe 1 = nicht umziehen
+preflight() {
+    local a="$1" bad=0 d
+    if rpm_ok "$a"; then ok "RPM $(rpm_pkg "$a") installiert"
+    else fail "RPM $(rpm_pkg "$a") fehlt → erst: $(rpm_hint "$a")"; bad=1; fi
+    if running "$a"; then fail "$(name "$a") läuft – erst ganz beenden (auch Tray/Hintergrund), dann nochmal"; bad=1
+    else ok "$(name "$a") läuft nicht"; fi
+    if [ -d "$(src "$a")" ]; then ok "Flatpak-Daten da: $(src "$a") ($(human "$(src "$a")"))"
+    else fail "keine Flatpak-Daten: $(src "$a")"; bad=1; fi
+    d="$(dst "$a")"
+    if nonempty "$d"; then fail "Ziel $d ist nicht leer (schon umgezogen oder RPM schon gestartet?) – nichts überschrieben"; bad=1
+    else ok "Ziel frei: $d"; fi
+    if [ "$a" = thunderbird ] && [ -f "$CONF/mozilla/thunderbird/profiles.ini" ]; then
+        fail "RPM-Thunderbird hat schon ein neues Profil in $CONF/mozilla/thunderbird angelegt – erst wegschieben:"
+        info "  mv $CONF/mozilla/thunderbird $CONF/mozilla/thunderbird.leer-$STAMP"; bad=1
+    fi
+    command -v zstd >/dev/null 2>&1 || { fail "zstd fehlt (für die Sicherung)"; bad=1; }
+    return "$bad"
+}
+
+backup() {
+    local a="$1" id; id="$(fp_id "$a")"
+    local out="$BACKUP_DIR/$a-$STAMP.tar.zst"
+    info "Sicherung: $out (~/.var/app/$id ohne cache/)"
+    run mkdir -p "$BACKUP_DIR"
+    run tar -C "$HOME/.var/app" --exclude="$id/cache" -I 'zstd -T0 -3 -q' -cf "$out" "$id"
+    (( DRY )) || ok "Sicherung fertig ($(human "$out"))"
+}
+
+copy_data() {
+    local a="$1" s d; s="$(src "$a")"; d="$(dst "$a")"
+    [ -d "$d" ] && run rmdir "$d"                 # leer (preflight), sonst legt cp einen Unterordner an
+    run mkdir -p "$(dirname "$d")"
+    run cp -a --reflink=auto "$s" "$d"
+    case "$a" in
+        discord)
+            # Chromium-Sperren der Flatpak-Sitzung (sonst „Profil wird schon benutzt“)
+            run rm -f "$d/SingletonLock" "$d/SingletonSocket" "$d/SingletonCookie" ;;
+        spotify)
+            # Speicherort zeigte in den Flatpak-Cache
+            run sed -i "s#$HOME/.var/app/com.spotify.Client/cache/spotify#${XDG_CACHE_HOME:-$HOME/.cache}/spotify#g" "$d/prefs"
+            info "Offline-Songs lagen im Flatpak-Cache (nicht übernommen) – in Spotify neu herunterladen" ;;
+        thunderbird)
+            local idir; idir="$(tb_installdir)"
+            if (( DRY )); then python3 -I -c "$TB_PY" "$s" "$idir" show
+            else python3 -I -c "$TB_PY" "$d" "$idir" write; fi ;;
+    esac
+}
+
+# Link-/Dateitypen, die aufs Flatpak zeigen, aufs RPM umstellen (MimeType= der RPM-.desktop)
+handlers() {
+    local a="$1" nd fd f types t cur n=0
+    nd="$(desktop_native "$a")"; fd="$(fp_id "$a").desktop"
+    f="/usr/share/applications/$nd"
+    if [ ! -f "$f" ]; then info "Link-Handler: $nd fehlt noch (kommt mit dem RPM) – übersprungen"; return; fi
+    types="$(sed -n 's/^MimeType=//p' "$f" | head -1 | tr ';' ' ')"
+    for t in $types; do
+        cur="$(xdg-mime query default "$t" 2>/dev/null || true)"
+        if [ "$cur" = "$fd" ] || [ -z "$cur" ]; then
+            if (( n == 0 )) && [ -f "$CONF/mimeapps.list" ] && ! (( DRY )); then
+                cp -a "$CONF/mimeapps.list" "$BACKUP_DIR/mimeapps.list-$STAMP"
+            fi
+            run xdg-mime default "$nd" "$t"; n=$((n + 1))
+        fi
+    done
+    (( n )) && ok "Link-Handler aufs RPM: $n Typ(en)" || ok "Link-Handler: nichts zeigte aufs Flatpak"
+}
+
+cmd_migrate() {
+    local sel=() a failed=0
+    for a in "$@"; do
+        case "$a" in
+            --dry-run) DRY=1 ;;
+            all) sel=("${APPS[@]}") ;;
+            discord|spotify|thunderbird) sel+=("$a") ;;
+            *) echo "unbekannt: $a (discord|spotify|thunderbird|all)" >&2; exit 2 ;;
+        esac
+    done
+    (( ${#sel[@]} )) || { echo "Aufruf: flatpak-to-native migrate [--dry-run] discord|spotify|thunderbird|all" >&2; exit 2; }
+    (( DRY )) && printf '\033[2mdry-run: nichts wird geändert\033[0m\n'
+    for a in "${sel[@]}"; do
+        head_ "$(name "$a"): Flatpak → RPM"
+        if ! preflight "$a"; then
+            if (( DRY )); then warn "würde hier abbrechen – Plan trotzdem:"
+            else warn "$(name "$a") übersprungen (nichts geändert)"; failed=1; continue; fi
+        fi
+        backup "$a"
+        copy_data "$a"
+        handlers "$a"
+        (( DRY )) || ok "$(name "$a") umgezogen → testen: scripts/app-run $a (Shell/Bar nehmen jetzt das RPM)"
+    done
+    if ! (( DRY )) && (( ! failed )); then
+        printf '\nWenn alles läuft: scripts/flatpak-to-native remove-flatpaks\n'
+    fi
+    return "$failed"
+}
+
+# ───────────────────────── remove-flatpaks ─────────────────────────
+
+cmd_remove() {
+    local a scope sys=() usr=()
+    [ "${1:-}" = "--dry-run" ] && DRY=1
+    (( DRY )) && printf '\033[2mdry-run: nichts wird geändert\033[0m\n'
+    head_ "Flatpaks entfernen (Daten in ~/.var/app bleiben)"
+    for a in "${APPS[@]}"; do
+        scope="$(fp_scope "$a")"
+        if [ -z "$scope" ]; then ok "$(fp_id "$a"): nicht installiert"; continue; fi
+        if ! rpm_ok "$a"; then warn "$(fp_id "$a") bleibt: RPM $(rpm_pkg "$a") fehlt"; continue; fi
+        if ! migrated "$a"; then warn "$(fp_id "$a") bleibt: noch nicht umgezogen (migrate $a)"; continue; fi
+        if running "$a"; then warn "$(fp_id "$a") bleibt: $(name "$a") läuft gerade"; continue; fi
+        if [ "$scope" = system ]; then sys+=("$(fp_id "$a")"); else usr+=("$(fp_id "$a")"); fi
+    done
+    if (( ${#usr[@]} )); then run flatpak uninstall --user -y --noninteractive "${usr[@]}"; fi
+    if (( ${#sys[@]} )); then
+        info "System-Installation braucht dein Passwort (polkit) – selbst ausführen:"
+        printf '      flatpak uninstall --system -y %s\n' "${sys[*]}"
+    fi
+    (( ${#usr[@]} + ${#sys[@]} )) || info "nichts zu entfernen"
+    info "danach ungenutzte Runtimes ansehen/entfernen (fragt nach):"
+    printf '      flatpak uninstall --unused --system\n      flatpak uninstall --unused --user\n'
+    info "Flatpak-Daten löschen, wenn alles läuft (Sicherungen in $BACKUP_DIR):"
+    printf '      rm -rf ~/.var/app/{com.discordapp.Discord,com.spotify.Client,org.mozilla.thunderbird_esr}\n'
+}
+
+case "${1:-}" in
+    status) cmd_status ;;
+    migrate) shift; cmd_migrate "$@" ;;
+    remove-flatpaks) shift; cmd_remove "$@" ;;
+    *) sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

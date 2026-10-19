@@ -1,0 +1,55 @@
+{
+  "name": "VS Code",
+  "about": "German layout: keys with ` and / need Shift (as VS Code shows them). Ctrl+K is remapped to clear the terminal",
+  "match": { "class": ["code", "code-oss", "com.microsoft.vscode", "codium", "vscodium"] },
+  "order": 30,
+  "sections": [
+    {
+      "name": "Find",
+      "keys": [
+        { "keys": "Ctrl+P", "title": "Go to file" },
+        { "keys": "Ctrl+Shift+P", "title": "Command palette" },
+        { "keys": "Ctrl+Shift+O", "title": "Go to symbol in file" },
+        { "keys": "Ctrl+T", "title": "Go to symbol in workspace" },
+        { "keys": "Ctrl+G", "title": "Go to line" },
+        { "keys": "Ctrl+F", "title": "Find" },
+        { "keys": "Ctrl+H", "title": "Replace" },
+        { "keys": "Ctrl+Shift+F", "title": "Search in all files" }
+      ]
+    },
+    {
+      "name": "Editors & panels",
+      "keys": [
+        { "keys": "Ctrl+Tab", "title": "Switch editor (recent)" },
+        { "keys": "Ctrl+PgUp PgDn", "title": "Previous / next editor" },
+        { "keys": "Ctrl+W", "title": "Close editor" },
+        { "keys": "Ctrl+Shift+T", "title": "Reopen closed editor" },
+        { "keys": "Ctrl+1 2 3", "title": "Focus editor group 1 / 2 / 3" },
+        { "keys": "Ctrl+B", "title": "Toggle sidebar" },
+        { "keys": "Ctrl+Shift+E", "title": "Explorer" },
+        { "keys": "Ctrl+Shift+G", "title": "Source control" },
+        { "keys": "Ctrl+Shift+X", "title": "Extensions" },
+        { "keys": "Ctrl+Shift+´", "title": "Toggle terminal", "note": "Ctrl+` (German layout: Shift+´)" },
+        { "keys": "Ctrl+J", "title": "Toggle bottom panel" },
+        { "keys": "Ctrl+K", "title": "Clear terminal", "note": "your own binding" },
+        { "keys": "Ctrl+,", "title": "Settings" }
+      ]
+    },
+    {
+      "name": "Code",
+      "keys": [
+        { "keys": "F12", "title": "Go to definition" },
+        { "keys": "Shift+F12", "title": "Show references" },
+        { "keys": "F2", "title": "Rename symbol" },
+        { "keys": "Ctrl+.", "title": "Quick fix" },
+        { "keys": "Ctrl+Space", "title": "Suggestions" },
+        { "keys": "Ctrl+Shift+7", "title": "Toggle line comment", "note": "Ctrl+/ (German layout: Shift+7)" },
+        { "keys": "Ctrl+D", "title": "Select next occurrence" },
+        { "keys": "Alt+↑ ↓", "title": "Move line up / down" },
+        { "keys": "Ctrl+Shift+K", "title": "Delete line" },
+        { "keys": "Ctrl+Alt+-", "title": "Go back (cursor history)" },
+        { "keys": "Ctrl+Shift+-", "title": "Go forward" }
+      ]
+    }
+  ]
+}

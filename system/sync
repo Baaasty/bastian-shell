@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# Kopierte Einstellungen abgleichen (VS Code, Claude, Standard-Apps, Autostart, Monitore, GoXLR).
+# Welche Dateien: system/copies.txt · Ablage im Repo: system/copies/<pfad ab ~>
+#
+#   system/sync               = status: was ist gleich, was weicht ab (+ Stand der Symlinks)
+#   system/sync pull [-n]     PC → Repo holen und Diff zeigen (rückgängig: git checkout system/copies)
+#                             -n = nur zeigen, nichts kopieren
+#   system/sync push          Repo → PC: zeigt nur, was passieren würde
+#   system/sync push --apply  wirklich schreiben; altes PC-Original vorher als <datei>.vor-desktop
+#   system/sync list          alle Pfade (ab ~), für system/bootstrap
+#   … [muster]                nur Pfade, die das Muster enthalten, z. B. `system/sync pull Code`
+#
+# Sicherheit: pull übernimmt keine Textdatei, in der etwas wie Token/Passwort/Key steht (nur Zeilennummern
+# werden gezeigt, nie der Inhalt). Secrets gehören nur in secrets.json bzw. werden neu angelegt (README).
+set -u
+
+SYS="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+REPO="$(dirname "$SYS")"
+LIST="$SYS/copies.txt"
+COPIES="$SYS/copies"
+DOT="$SYS/dotfiles"
+SECRET_RE='token|secret|passw(or)?d|api[_-]?key|BEGIN.*PRIVATE|bearer|client[_-]?secret|refresh[_-]?token'
+
+cmd="${1:-status}"; [ $# -gt 0 ] && shift
+APPLY=0; DRY=0; FILTER=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --apply) APPLY=1 ;;
+        -n|--dry-run) DRY=1 ;;
+        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -*) echo "Unbekannt: $1 (--help)" >&2; exit 1 ;;
+        *) FILTER="$1" ;;
+    esac
+    shift
+done
+
+ok()   { printf '  \033[32mok\033[0m  %s\n' "$1"; }
+diff_() { printf '  \033[33m≠\033[0m   %s\n' "$1"; }
+info() { printf '  ..  %s\n' "$1"; }
+warn() { printf '  \033[33m!!\033[0m  %s\n' "$1"; }
+act()  { printf '  \033[36m%s\033[0m   %s\n' "$1" "$2"; }
+
+# Alle Pfade (ab ~) aus copies.txt: Dateien direkt, "Ordner/ Muster" = Vereinigung aus PC und Repo
+entries() {
+    local line path pat f
+    while IFS= read -r line; do
+        line="${line%%#*}"; read -r path pat <<<"$line"
+        [ -z "${path:-}" ] && continue
+        if [[ "$path" == */ ]]; then
+            for base in "$HOME" "$COPIES"; do
+                [ -d "$base/$path" ] || continue
+                for f in "$base/$path"$pat; do [ -f "$f" ] && printf '%s\n' "$path${f##*/}"; done
+            done
+        else
+            printf '%s\n' "$path"
+        fi
+    done < "$LIST" | sort -u | { if [ -n "$FILTER" ]; then grep -F -- "$FILTER"; else cat; fi; }
+}
+
+is_text() { grep -Iq . "$1" 2>/dev/null || [ ! -s "$1" ]; }
+
+# Nächster freier Backup-Name: x.vor-desktop, sonst x.vor-desktop-<zeit>
+backup_name() {
+    local b="$1.vor-desktop"
+    [ -e "$b" ] && b="$1.vor-desktop-$(date +%Y%m%d-%H%M%S)"
+    printf '%s' "$b"
+}
+
+case "$cmd" in
+list)
+    entries
+    ;;
+
+status)
+    printf '\033[1m== Kopien (system/copies ↔ ~)\033[0m\n'
+    n=0
+    while IFS= read -r rel; do
+        pc="$HOME/$rel"; rp="$COPIES/$rel"
+        if   [ ! -e "$rp" ]; then diff_ "$rel  (nur auf dem PC → sync pull)"; n=$((n+1))
+        elif [ ! -e "$pc" ]; then diff_ "$rel  (nur im Repo → sync push)"; n=$((n+1))
+        elif cmp -s "$pc" "$rp"; then ok "$rel"
+        elif [ "$pc" -nt "$rp" ]; then diff_ "$rel  (PC neuer → sync pull)"; n=$((n+1))
+        else diff_ "$rel  (Repo neuer → sync push)"; n=$((n+1)); fi
+    done < <(entries)
+    printf '\n\033[1m== Symlinks (system/dotfiles → ~)\033[0m\n'
+    while IFS= read -r -d '' src; do
+        rel="${src#"$DOT"/}"; dst="$HOME/$rel"
+        [ -n "$FILTER" ] && [[ "$rel" != *"$FILTER"* ]] && continue
+        if [ -L "$dst" ] && [ "$(readlink -f "$dst")" = "$src" ]; then ok "$rel (Link)"
+        elif [ -L "$dst" ]; then warn "$rel ist ein fremder Link → $(readlink "$dst")"
+        elif [ -e "$dst" ]; then
+            cmp -s "$src" "$dst" && info "$rel  noch eigene Datei (gleich) – Umstellen: system/bootstrap --apply --only 8" \
+                || warn "$rel  noch eigene Datei, WEICHT AB – vor dem Umstellen prüfen: diff ~/$rel $src"
+        else info "$rel  fehlt auf dem PC"; fi
+    done < <(find "$DOT" -type f ! -name '*.example' -print0 | sort -z)   # *.example = Vorlage, nie verlinken
+    echo
+    (( n )) && echo "  $n Kopie(n) weichen ab." || echo "  Alle Kopien aktuell."
+    ;;
+
+pull)
+    copied=0; blocked=0
+    while IFS= read -r rel; do
+        pc="$HOME/$rel"; rp="$COPIES/$rel"
+        [ -f "$pc" ] || { [ -e "$rp" ] && info "$rel  fehlt auf dem PC (bleibt im Repo; löschen nur von Hand)"; continue; }
+        cmp -s "$pc" "$rp" 2>/dev/null && continue
+        if is_text "$pc"; then
+            hits=$(grep -inE "$SECRET_RE" "$pc" | cut -d: -f1 | paste -sd, -)
+            if [ -n "$hits" ]; then
+                warn "$rel  NICHT übernommen: sieht nach Secret aus (Zeile $hits) – prüfen, Secret raus, dann nochmal"
+                blocked=$((blocked+1)); continue
+            fi
+        fi
+        if (( DRY )); then
+            act "→" "$rel"
+            if is_text "$pc" && [ -e "$rp" ]; then diff -u --label "repo/$rel" --label "pc/$rel" "$rp" "$pc" | sed 's/^/      /'
+            elif [ -e "$rp" ]; then info "binär geändert ($(stat -c %s "$rp") → $(stat -c %s "$pc") Bytes)"
+            else info "neu"; fi
+        else
+            mkdir -p "$(dirname "$rp")" && cp "$pc" "$rp" && act "+" "$rel"
+        fi
+        copied=$((copied+1))
+    done < <(entries)
+    echo
+    if (( DRY )); then
+        echo "  -n: $copied Datei(en) würden ins Repo kommen. Ohne -n ausführen."
+    elif (( copied )); then
+        git -C "$REPO" --no-pager diff --stat -- system/copies
+        git -C "$REPO" --no-pager diff -- system/copies
+        git -C "$REPO" status --short -- system/copies | grep '^??' | sed 's/^/  neu: /'
+        echo "  $copied Datei(en) ins Repo geholt. Rückgängig: git -C $REPO checkout -- system/copies"
+    else
+        echo "  Nichts zu holen – Repo ist aktuell."
+    fi
+    (( blocked )) && exit 2
+    exit 0
+    ;;
+
+push)
+    todo=0
+    while IFS= read -r rel; do
+        pc="$HOME/$rel"; rp="$COPIES/$rel"
+        [ -f "$rp" ] || continue
+        cmp -s "$rp" "$pc" 2>/dev/null && continue
+        todo=$((todo+1))
+        if (( APPLY )); then
+            if [ -e "$pc" ]; then b="$(backup_name "$pc")"; cp -a "$pc" "$b"; fi
+            mkdir -p "$(dirname "$pc")" && cp "$rp" "$pc" && act "+" "$rel${b:+  (alt: ${b#"$HOME"/})}"
+            unset b
+        else
+            act "→" "$rel"
+            if [ -e "$pc" ] && is_text "$rp"; then diff -u --label "pc/$rel" --label "repo/$rel" "$pc" "$rp" | sed 's/^/      /'
+            elif [ -e "$pc" ]; then info "binär, würde ersetzt (Backup: ${rel##*/}.vor-desktop)"
+            else info "neu auf dem PC"; fi
+            [ -e "$pc" ] && [ "$pc" -nt "$rp" ] && warn "PC-Fassung ist neuer – vielleicht erst: system/sync pull"
+        fi
+    done < <(entries)
+    echo
+    if (( todo == 0 )); then echo "  Nichts zu tun – PC hat den Repo-Stand."
+    elif (( APPLY )); then
+        echo "  $todo Datei(en) geschrieben. VS Code/Claude lesen neu ein; GoXLR: Profil in der GoXLR-App laden;"
+        echo "  Monitore (kwinoutputconfig.json) + Autostart greifen nach Ab-/Anmelden."
+    else echo "  dry-run: $todo Datei(en) würden geschrieben. Ausführen: system/sync push --apply"; fi
+    ;;
+
+*)
+    echo "Unbekannt: $cmd (status|pull|push|list, --help)" >&2; exit 1 ;;
+esac

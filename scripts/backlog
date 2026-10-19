@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""Ideen eines Projekts in dessen docs/BACKLOG.md (Standard v2) – für die Claude-Zentrale.
+
+  backlog list    <projekt>                                  offene Ideen als JSON
+  backlog add     <projekt> [--date JJJJ-MM-TT] [--source Q] <text> [<text> …]
+  backlog rm      <projekt> <id>                             Idee löschen
+  backlog promote <projekt> <id>                             Idee → ROADMAP (offener Punkt), im BACKLOG „Übernommen“
+
+<projekt> = Repo-Ordner. Workspaces (*.code-workspace) und Ordner ohne Git und ohne BACKLOG.md werden nicht
+angefasst ({"ok": false, "reason": …}) – die Shell nimmt dann wie bisher die lokale Liste.
+
+Format:
+  ## Ideen
+  - **Titel** – worum es geht (2026-10-18, Claude-Zentrale)
+Offen = jeder Listenpunkt (-, *, +, 1.) außerhalb der Abschnitte „In Ausarbeitung“, „Übernommen“, „Verworfen“
+(eingerückte Folgezeilen gehören zum Punkt). Von Hand geschriebene Zeilen ohne **Titel** oder Datum gehen auch.
+id = Hash der Zeile (sha1, 10 Zeichen; doppelte Zeilen bekommen -2, -3 …) – IDs stehen nicht in der Datei.
+
+promote hängt „- [ ] Titel – Text (aus BACKLOG, Datum)“ in der Roadmap (docs/ROADMAP.md, sonst ROADMAP.md, sonst neu
+docs/ROADMAP.md) unter „## Neu (aus Backlog)“ an – vor „## Später“, sonst ans Ende, damit der „next“-Punkt der
+Zentrale nicht springt. Die BACKLOG-Zeile wandert nach „## Übernommen“ mit „→ ROADMAP“ (Fluss BACKLOG → ROADMAP).
+
+Jede Ausgabe: {"ok", "file", "exists", "ideas": [{id, text, title, body, date, line}], "changed": [Doc-Dateien mit
+ungesicherten Git-Änderungen]}. Committet nie, schreibt atomar (tmp + rename).
+"""
+import datetime
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+TEMPLATE = os.path.join(HERE, "..", "claude", "skills", "_standard", "templates", "docs", "BACKLOG.md")
+# Ersatz, falls die Vorlage fehlt (Stand Standard v2)
+FALLBACK = """# Backlog – {{NAME}}
+
+Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **Titel** – worum es geht (Datum, Quelle).
+**Keine Checkboxen** (Ideen sind keine Zusagen, werden nicht gezählt). Wird es ernst: Konzept in `concepts/<slug>.md`
+(Status Idee → VORSCHLAG → beschlossen → umgesetzt | verworfen) oder direkt als Punkt in [ROADMAP.md](ROADMAP.md).
+
+## Ideen
+
+## In Ausarbeitung
+
+## Übernommen
+
+## Verworfen
+<!-- mit Grund, damit sie nicht wiederkommt -->
+"""
+SOURCE = "Claude-Zentrale"
+NEW_SECTION = "Neu (aus Backlog)"
+
+HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+ITEM = re.compile(r"^([-*+]|\d+[.)])\s+(.*)$")          # Listenpunkt ohne Einrückung
+BOX = re.compile(r"^\[[ xX~]\]\s+")
+TAIL = re.compile(r"\s*\((\d{4}-\d{2}-\d{2})(?:[,;][^)]*)?\)\s*$")
+TITLE = re.compile(r"^\*\*(.+?)\*\*\s*(?:[–—:-]\s*)?(.*)$")
+# Abschnitte, deren Punkte nicht (mehr) offen sind
+CLOSED = re.compile(r"ausarbeitung|übernommen|uebernommen|erledigt|verworfen|abgelehnt|"
+                    r"in progress|drafting|adopted|accepted|promoted|done|rejected|discarded", re.I)
+IDEAS = re.compile(r"^(ideen|ideas)\b", re.I)
+ADOPTED = re.compile(r"übernommen|uebernommen|adopted|promoted", re.I)
+REJECTED = re.compile(r"verworfen|rejected|discarded", re.I)
+LATER = re.compile(r"^(später|spaeter|later)\b", re.I)
+
+
+def out(obj, code=0):
+    print(json.dumps(obj, ensure_ascii=False))
+    sys.exit(code)
+
+
+def fail(reason, **extra):
+    out(dict({"ok": False, "reason": reason}, **extra), 1)
+
+
+def today():
+    return datetime.date.today().isoformat()
+
+
+def repo_dir(path):
+    """Projektordner prüfen: nur echte Ordner mit Git oder vorhandener BACKLOG.md."""
+    p = os.path.realpath(os.path.expanduser(path))
+    if p.endswith(".code-workspace") or not os.path.isdir(p):
+        fail("workspace" if p.endswith(".code-workspace") else "no-dir", path=path)
+    if not (os.path.exists(os.path.join(p, ".git")) or os.path.isfile(os.path.join(p, "docs", "BACKLOG.md"))):
+        fail("no-repo", path=path)
+    return p
+
+
+# ---------- Datei lesen/schreiben (Zeilenenden bleiben, wie sie sind) ----------
+
+def read(file):
+    with open(file, encoding="utf-8", newline="") as f:
+        raw = f.read()
+    nl = "\r\n" if "\r\n" in raw else "\n"
+    lines = raw.split(nl)
+    trailing = raw.endswith(nl)
+    if trailing:
+        lines.pop()
+    return lines, nl, trailing
+
+
+def write(file, lines, nl="\n", trailing=True):
+    d = os.path.dirname(file)
+    os.makedirs(d, exist_ok=True)
+    text = nl.join(lines) + (nl if trailing else "")
+    fd, tmp = tempfile.mkstemp(prefix=".backlog-", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        if os.path.exists(file):
+            os.chmod(tmp, os.stat(file).st_mode & 0o777)
+        else:
+            os.chmod(tmp, 0o644)
+        os.replace(tmp, file)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def template(name):
+    try:
+        with open(TEMPLATE, encoding="utf-8") as f:
+            t = f.read()
+    except OSError:
+        t = FALLBACK
+    return t.replace("{{NAME}}", name).rstrip("\n").split("\n")
+
+
+# ---------- Struktur ----------
+
+def sections(lines):
+    """[(titel, start, ende)] – start = Zeile der Überschrift (-1 = vor der ersten), ende exklusiv."""
+    res, title, start, fence = [], "", -1, False
+    for i, l in enumerate(lines):
+        if l.lstrip().startswith("```"):
+            fence = not fence
+        m = None if fence else HEADING.match(l)
+        if m and len(m.group(1)) >= 2:
+            res.append((title, start, i))
+            title, start = m.group(2), i
+    res.append((title, start, len(lines)))
+    return res
+
+
+def items(lines):
+    """Alle Listenpunkte der obersten Ebene: {section, start, end, raw} (end exklusiv, inkl. Folgezeilen)."""
+    res = []
+    for title, s, e in sections(lines):
+        i, fence, comment = s + 1, False, False
+        while i < e:
+            l = lines[i]
+            if l.lstrip().startswith("```"):
+                fence = not fence
+            if "<!--" in l and "-->" not in l.split("<!--", 1)[1]:
+                comment = True
+            if comment:
+                comment = "-->" not in l
+                i += 1
+                continue
+            m = None if fence else ITEM.match(l)
+            if not m:
+                i += 1
+                continue
+            j = i + 1
+            while j < e and lines[j].strip() and (lines[j][:1] in " \t"):
+                j += 1
+            res.append({"section": title, "start": i, "end": j, "raw": l})
+            i = j
+    return res
+
+
+def parse(raw):
+    """Zeile -> title/body/date/text (ohne Markdown-Zierrat)."""
+    m = ITEM.match(raw)
+    s = BOX.sub("", m.group(2).strip() if m else raw.strip())
+    date = ""
+    t = TAIL.search(s)
+    if t:
+        date, s = t.group(1), s[:t.start()].rstrip()
+    m = TITLE.match(s)
+    if m:
+        title, body = m.group(1).strip(), m.group(2).strip()
+    else:
+        title, body = s, ""
+    clean = lambda x: re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", re.sub(r"\*\*|__|`", "", x)).strip()
+    title, body = clean(title), clean(body)
+    return {"title": title, "body": body, "date": date, "text": title + (" – " + body if body else "")}
+
+
+def with_ids(its):
+    seen = {}
+    for it in its:
+        h = hashlib.sha1(it["raw"].strip().encode("utf-8")).hexdigest()[:10]
+        seen[h] = seen.get(h, 0) + 1
+        it["id"] = h if seen[h] == 1 else h + "-" + str(seen[h])
+    return its
+
+
+def open_items(lines):
+    return [it for it in with_ids(items(lines)) if not CLOSED.search(it["section"] or "")]
+
+
+def find(lines, iid):
+    for it in open_items(lines):
+        if it["id"] == iid:
+            return it
+    fail("not-found", id=iid)
+
+
+def section_end(lines, s, e):
+    """Einfügestelle am Ende eines Abschnitts: nach der letzten nicht-leeren Zeile."""
+    k = e
+    while k > s + 1 and not lines[k - 1].strip():
+        k -= 1
+    return k
+
+
+def insert_into(lines, match, new, before=None, heading=None):
+    """new (Zeilen) ans Ende des ersten Abschnitts, dessen Titel match erfüllt. Fehlt er: neu anlegen
+    (vor dem ersten Abschnitt, der before erfüllt, sonst am Ende). Gibt neue Zeilen zurück."""
+    secs = sections(lines)
+    for title, s, e in secs:
+        if s >= 0 and match.search(title):
+            k = section_end(lines, s, e)
+            # direkt unter der Überschrift: Kommentarzeilen (<!-- … -->) bleiben oben
+            return lines[:k] + new + lines[k:]
+    block = ["## " + heading] + new + [""]
+    if before:
+        for title, s, e in secs:
+            if s >= 0 and before.search(title):
+                return lines[:s] + block + lines[s:]
+    while lines and not lines[-1].strip():
+        lines = lines[:-1]
+    return lines + [""] + block[:-1]
+
+
+# ---------- Ausgabe ----------
+
+def changed(root, files):
+    try:
+        # --no-optional-locks: nur lesen, kein index.lock (läuft aus der Shell neben der Arbeit im Projekt)
+        r = subprocess.run(["git", "--no-optional-locks", "-C", root, "status", "--porcelain", "-uall", "--"] + files,
+                           capture_output=True, text=True, timeout=5)
+        return [l[3:].strip().strip('"') for l in r.stdout.splitlines() if len(l) > 3]
+    except Exception:
+        return []
+
+
+def roadmap_file(root):
+    for rel in ("docs/ROADMAP.md", "ROADMAP.md"):
+        if os.path.isfile(os.path.join(root, rel)):
+            return rel
+    return "docs/ROADMAP.md"
+
+
+def state(root, file):
+    exists = os.path.isfile(file)
+    ideas = []
+    if exists:
+        lines, _, _ = read(file)
+        for it in open_items(lines):
+            p = parse(it["raw"])
+            if p["text"]:
+                ideas.append(dict(p, id=it["id"], line=it["start"] + 1))
+    return {"ok": True, "file": file, "exists": exists, "ideas": ideas,
+            "changed": changed(root, ["docs/BACKLOG.md", roadmap_file(root)])}
+
+
+# ---------- Befehle ----------
+
+def one_line(text):
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def format_idea(text, date, source):
+    """„Titel – Text“ / „Titel: Text“ / nur Titel -> **Titel** – Text (Datum, Quelle)"""
+    t = one_line(text)
+    t = re.sub(r"^([-*+]|\d+[.)])\s+", "", t)
+    m = re.match(r"^(.+?)\s+[–—-]\s+(.+)$", t) or re.match(r"^([^:]{2,60}):\s+(.+)$", t)
+    title, body = (m.group(1), m.group(2)) if m else (t, "")
+    title = title.replace("**", "")
+    return "- **" + title + "**" + (" – " + body if body else "") + " (" + date + ", " + source + ")"
+
+
+def cmd_add(root, file, args):
+    date, source, texts = today(), SOURCE, []
+    i = 0
+    while i < len(args):
+        if args[i] == "--date" and i + 1 < len(args):
+            date = args[i + 1] if re.match(r"^\d{4}-\d{2}-\d{2}$", args[i + 1]) else date
+            i += 2
+        elif args[i] == "--source" and i + 1 < len(args):
+            source = one_line(args[i + 1]).replace(")", "") or SOURCE
+            i += 2
+        else:
+            texts.append(args[i])
+            i += 1
+    new = [format_idea(t, date, source) for t in texts if one_line(t)]
+    if not new:
+        fail("empty")
+    if os.path.isfile(file):
+        lines, nl, trailing = read(file)
+    else:
+        lines, nl, trailing = template(os.path.basename(root)), "\n", True
+    loose = open_items(lines)
+    if not any(s >= 0 and IDEAS.search(t) for t, s, _ in sections(lines)) and loose:
+        # von Hand ohne „## Ideen“: hinter die letzte offene Idee
+        k = loose[-1]["end"]
+        lines = lines[:k] + new + lines[k:]
+    else:
+        lines = insert_into(lines, IDEAS, new, before=CLOSED, heading="Ideen")
+    write(file, lines, nl, trailing)
+
+
+def cmd_rm(root, file, iid):
+    lines, nl, trailing = read(file)
+    it = find(lines, iid)
+    write(file, lines[:it["start"]] + lines[it["end"]:], nl, trailing)
+
+
+def cmd_promote(root, file, iid):
+    lines, nl, trailing = read(file)
+    it = find(lines, iid)
+    p = parse(it["raw"])
+    # 1. Roadmap: offener Punkt unter „Neu (aus Backlog)“
+    rel = roadmap_file(root)
+    rfile = os.path.join(root, rel)
+    if os.path.isfile(rfile):
+        rlines, rnl, rtrail = read(rfile)
+    else:
+        rlines = ["# Roadmap – " + os.path.basename(root), "",
+                  "Format: `- [ ]` offen · `- [x]` fertig (mit Datum). Reihenfolge = Priorität. "
+                  "Ideen → [BACKLOG.md](BACKLOG.md)."]
+        rnl, rtrail = "\n", True
+    entry = "- [ ] " + p["text"] + " (aus BACKLOG, " + today() + ")"
+    rlines = insert_into(rlines, re.compile("^" + re.escape(NEW_SECTION)), [entry], before=LATER, heading=NEW_SECTION)
+    write(rfile, rlines, rnl, rtrail)
+    # 2. BACKLOG: Zeile (samt Folgezeilen) nach „Übernommen“ mit Verweis
+    block = lines[it["start"]:it["end"]]
+    block[0] = block[0].rstrip() + " → ROADMAP „" + NEW_SECTION + "“"
+    rest = lines[:it["start"]] + lines[it["end"]:]
+    rest = insert_into(rest, ADOPTED, block, before=REJECTED, heading="Übernommen")
+    write(file, rest, nl, trailing)
+
+
+def main(argv):
+    if len(argv) < 2 or argv[0] not in ("list", "add", "rm", "promote"):
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(2)
+    cmd, root = argv[0], repo_dir(argv[1])
+    file = os.path.join(root, "docs", "BACKLOG.md")
+    try:
+        if cmd == "add":
+            cmd_add(root, file, argv[2:])
+        elif cmd in ("rm", "promote"):
+            if len(argv) < 3:
+                fail("no-id")
+            if not os.path.isfile(file):
+                fail("not-found", id=argv[2])
+            (cmd_rm if cmd == "rm" else cmd_promote)(root, file, argv[2])
+        out(state(root, file))
+    except OSError as e:
+        fail("io", error=str(e))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -1,0 +1,157 @@
+/**
+ * @name Desktop (Equibop)
+ * @description Bastians PC-Look (hearth): warme Braunflächen, Creme-Text – Discord bleibt erkennbar (Blurple gedämpft, Layout unverändert)
+ * @author desktop
+ * @version 1
+ */
+/* ERZEUGT aus theme/palette.json (Variante hearth) – nicht von Hand ändern. Neu: python3 -I theme/gen/equibop.py */
+/* Nur Farb-Variablen + Schrift. Layout, Icons, Emojis, Rollenfarben, Avatare, Status (grün/gelb/rot) bleiben Discord. */
+
+.theme-dark.theme-dark,
+.theme-darker.theme-darker,
+.theme-midnight.theme-midnight {
+    /* Flächen (Discord: base-lowest = Server-Leiste/Titel, lower = Kanalliste, low = Seitenfelder, surface = Chat/Karten/Popouts) */
+    --background-base-lowest: #211A15;
+    --background-base-lower: #2A211B;
+    --background-base-low: #2F2620;
+    --background-surface-high: #382D26;
+    --background-surface-higher: #45372E;
+    --background-surface-highest: #544235;
+    --app-frame-background: #211A15;
+    --app-frame-border: rgba(255, 236, 214, 0.10);
+    --chat-background-default: #382D26;
+    --chat-background: #382D26;
+    --chat-border: rgba(255, 236, 214, 0.10);
+    --channel-background-default: #2A211B;
+    --home-background: #382D26;
+    --guild-profile-banner-background-default: #211A15;
+    --channeltextarea-background: #45372E;
+    --card-background-default: #45372E;
+    --card-border-default: rgba(255, 236, 214, 0.10);
+    --card-secondary-bg: rgba(246, 236, 221, 0.07);
+    --card-primary-pressed-bg: #2F2620;
+    --card-secondary-pressed-bg: #2F2620;
+    --embed-background: #45372E;
+    --embed-background-alternate: #45372E;
+    --modal-background: #382D26;
+    --modal-footer-background: #2C241E;
+    --bg-surface-raised: #45372E;
+    --background-secondary-alt: #2A211B;
+    --background-accent: #544235;
+    --background-scrim: rgba(24, 17, 13, 0.72);
+    --background-scrim-lightbox: rgba(24, 17, 13, 0.9);
+    --spoiler-hidden-background: #6B4A38;
+    --spoiler-hidden-background-hover: #805E46;
+    --spoiler-revealed-background: #2F2620;
+
+    /* Schleier (Hover, Auswahl, Kacheln) */
+    --background-mod-muted: rgba(246, 236, 221, 0.05);
+    --background-mod-subtle: rgba(246, 236, 221, 0.08);
+    --background-mod-normal: rgba(246, 236, 221, 0.12);
+    --background-mod-strong: rgba(246, 236, 221, 0.17);
+    --interactive-background-default: rgba(246, 236, 221, 0.05);
+    --interactive-background-hover: rgba(246, 236, 221, 0.09);
+    --interactive-background-active: rgba(246, 236, 221, 0.13);
+    --interactive-background-selected: rgba(246, 236, 221, 0.16);
+    --message-background-hover: rgba(246, 236, 221, 0.045);
+    --control-secondary-background-default: rgba(246, 236, 221, 0.09);
+    --control-secondary-background-hover: rgba(246, 236, 221, 0.13);
+    --control-secondary-background-active: rgba(246, 236, 221, 0.17);
+    --control-icon-only-background-hover: rgba(246, 236, 221, 0.1);
+    --control-icon-only-background-active: rgba(246, 236, 221, 0.15);
+    --redesign-button-tertiary-pressed-background: rgba(246, 236, 221, 0.15);
+
+    /* Text */
+    --text-strong: #F6ECDD;
+    --text-default: #F6ECDD;
+    --text-subtle: #D2C2AE;
+    --text-muted: #B5A591;
+    --text-invert: #211A15;
+    --chat-text-muted: #B5A591;
+    --channels-default: #C5B5A1;
+    --channel-icon: #B5A591;
+    --interactive-text-default: #D2C2AE;
+    --interactive-text-hover: #F6ECDD;
+    --interactive-text-active: #F6ECDD;
+    --interactive-icon-default: #D2C2AE;
+    --interactive-icon-hover: #F6ECDD;
+    --interactive-icon-active: #F6ECDD;
+    --interactive-muted: #6B4A38;
+    --textbox-markdown-syntax: #B5A591;
+    --control-icon-only-icon-default: #D2C2AE;
+    --control-secondary-text-default: #F6ECDD;
+    --redesign-button-tertiary-text: #F6ECDD;
+    --redesign-button-tertiary-pressed-text: #F6ECDD;
+
+    /* Ränder und Eingabefelder */
+    --border-muted: rgba(246, 236, 221, 0.05);
+    --border-subtle: rgba(255, 236, 214, 0.10);
+    --border-normal: rgba(255, 236, 214, 0.20);
+    --border-strong: rgba(246, 236, 221, 0.34);
+    --input-background-default: rgba(0, 0, 0, 0.2);
+    --input-border-default: rgba(255, 236, 214, 0.20);
+    --input-border-hover: rgba(246, 236, 221, 0.3);
+    --input-text-default: #F6ECDD;
+    --input-placeholder-text-default: #B5A591;
+    --input-icon-default: #D2C2AE;
+    --channel-text-area-placeholder: #B5A591;
+
+    /* Marken-Akzent: Discord-Blurple, gedämpft (Buttons, Links, Erwähnungen, Auswahl) */
+    --brand-500: #545BAB;
+    --brand-360: #ACB2EC;
+    --brand-400: #ACB2EC;
+    --brand-530: #4C529A;
+    --brand-560: #434989;
+    --brand-600: #434989;
+    --brand-experiment: #545BAB;
+    --background-brand: #545BAB;
+    --control-primary-background-default: #545BAB;
+    --control-primary-background-hover: #4C529A;
+    --control-primary-background-active: #434989;
+    --control-primary-text-default: #F6ECDD;
+    --control-primary-text-hover: #F6ECDD;
+    --control-primary-text-active: #F6ECDD;
+    --control-primary-icon-default: #F6ECDD;
+    --control-primary-icon-hover: #F6ECDD;
+    --control-primary-icon-active: #F6ECDD;
+    --control-brand-foreground: #ACB2EC;
+    --control-brand-foreground-new: #ACB2EC;
+    --text-brand: #ACB2EC;
+    --text-link: #9CA9E8;
+    --interactive-accent-background-default: rgba(246, 236, 221, 0.09);
+    --interactive-accent-background-hover: #545BAB;
+    --interactive-accent-background-active: #434989;
+    --interactive-accent-background-selected: #545BAB;
+    --input-border-active: #ACB2EC;
+    --border-focus: #ACB2EC;
+    --mention-background: rgba(84, 91, 171, 0.3);
+    --mention-foreground: #CBCFF6;
+    --message-highlight-background-default: rgba(84, 91, 171, 0.14);
+    --message-highlight-background-hover: rgba(84, 91, 171, 0.19);
+
+    /* Scrollbars */
+    --scrollbar-thin-thumb: #A07C5C;
+    --scrollbar-thin-track: transparent;
+    --scrollbar-auto-thumb: #A07C5C;
+    --scrollbar-auto-track: transparent;
+    --scrollbar-auto-scrollbar-color-thumb: #A07C5C;
+    --scrollbar-auto-scrollbar-color-track: #2F2620;
+
+    /* Alte Namen (Plugins/Themes anderer greifen darauf zu) */
+    --background-primary: #382D26;
+    --background-secondary: #2A211B;
+    --background-tertiary: #211A15;
+    --background-floating: #45372E;
+    --background-modifier-hover: rgba(246, 236, 221, 0.07);
+    --background-modifier-selected: rgba(246, 236, 221, 0.14);
+    --background-modifier-accent: rgba(255, 236, 214, 0.10);
+    --text-normal: #F6ECDD;
+    --header-primary: #F6ECDD;
+    --header-secondary: #D2C2AE;
+    --interactive-normal: #D2C2AE;
+    --interactive-hover: #F6ECDD;
+    --interactive-active: #F6ECDD;
+}
+
+/* Schrift: Inter für den Fließtext (Discords gg sans bleibt als Rückfall, Überschriften/Code unverändert) */
+html:root { --font-primary: "Inter", "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif; }

@@ -1,0 +1,156 @@
+#!/usr/bin/python3 -I
+"""Kamera (Elgato Facecam MK.1) per V4L2-ioctl, nur stdlib. Details: docs/facecam.md
+
+Die Facecam nimmt Einstellungen nur an, solange sie streamt (z. B. im Discord-Call), sonst
+"Broken pipe". Brightness/Power-Line blendet uvcvideo als "disabled" aus (v4l2-ctl sieht sie nicht),
+per VIDIOC_S_CTRL mit der ID gehen sie trotzdem.
+
+  scripts/camera status            {"device":"/dev/video0","busy":true,"auto":true,"exposure":200,"brightness":35,"powerLine":2}
+  scripts/camera set brightness N  Helligkeit 0-255 (nur bei laufendem Stream)
+  scripts/camera apply N           Auto-Belichtung an, Anti-Flimmern 50 Hz, Helligkeit N
+"""
+import fcntl
+import json
+import os
+import struct
+import sys
+import time
+
+VIDIOC_G_CTRL = 0xC008561B
+VIDIOC_S_CTRL = 0xC008561C
+CID_BRIGHTNESS = 0x00980900
+CID_POWER_LINE = 0x00980918       # 0 aus, 1 50 Hz, 2 60 Hz
+CID_AUTO_EXPOSURE = 0x009A0901    # 0 Auto, 2 Shutter Priority
+CID_EXPOSURE_TIME = 0x009A0902    # 100 µs
+POWER_LINE_50HZ = 1
+AUTO = 0
+
+
+def find():
+    """(Pfad, USB-Geräteordner in sysfs) des Facecam-Capture-Knotens, sonst (None, None)."""
+    base = "/sys/class/video4linux"
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return None, None
+    for n in names:
+        d = os.path.join(base, n)
+        try:
+            with open(os.path.join(d, "name")) as f:
+                name = f.read()
+            with open(os.path.join(d, "index")) as f:
+                index = f.read().strip()
+        except OSError:
+            continue
+        if "Facecam" in name and index == "0":
+            usb = os.path.realpath(os.path.join(d, "device", ".."))
+            return "/dev/" + n, usb
+    return None, None
+
+
+def streaming(usb):
+    """Läuft ein Stream? Dann zählt der USB-Knoten ~1000 URBs/s, im Leerlauf fast keine.
+    (Nicht per GET prüfen: ohne Stream schreibt uvcvideo bei jedem Versuch eine Fehlerzeile ins Kernel-Log.)"""
+    path = os.path.join(usb, "urbnum")
+    try:
+        with open(path) as f:
+            a = int(f.read())
+        time.sleep(0.25)
+        with open(path) as f:
+            b = int(f.read())
+    except (OSError, ValueError):
+        return False
+    return b - a > 20
+
+
+def get(fd, cid):
+    buf = bytearray(struct.pack("<Ii", cid, 0))
+    try:
+        fcntl.ioctl(fd, VIDIOC_G_CTRL, buf)
+    except OSError:
+        return None
+    return struct.unpack("<Ii", buf)[1]
+
+
+def put(fd, cid, value):
+    fcntl.ioctl(fd, VIDIOC_S_CTRL, bytearray(struct.pack("<Ii", cid, value)))
+
+
+def die(msg, code=1):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def open_streaming():
+    dev, usb = find()
+    if not dev:
+        die("no Facecam")
+    if not streaming(usb):
+        die("camera is off (settings only apply while it streams)", 2)
+    try:
+        return os.open(dev, os.O_RDWR | os.O_NONBLOCK)
+    except OSError as e:
+        die(f"{dev}: {e.strerror}")
+
+
+def brightness_arg(s):
+    try:
+        v = int(s)
+    except (TypeError, ValueError):
+        die("brightness: 0-255")
+    if not 0 <= v <= 255:
+        die("brightness: 0-255")
+    return v
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "status":
+        dev, usb = find()
+        if not dev:
+            print(json.dumps({"device": ""}))
+            return
+        out = {"device": dev, "busy": streaming(usb), "auto": None, "exposure": None,
+               "brightness": None, "powerLine": None}
+        if out["busy"]:
+            try:
+                fd = os.open(dev, os.O_RDWR | os.O_NONBLOCK)
+            except OSError:
+                fd = None
+            if fd is not None:
+                ae = get(fd, CID_AUTO_EXPOSURE)
+                out["auto"] = None if ae is None else ae == AUTO
+                out["exposure"] = get(fd, CID_EXPOSURE_TIME)
+                out["brightness"] = get(fd, CID_BRIGHTNESS)
+                out["powerLine"] = get(fd, CID_POWER_LINE)
+                os.close(fd)
+        print(json.dumps(out, separators=(",", ":")))
+    elif cmd == "set" and len(argv) == 4 and argv[2] == "brightness":
+        v = brightness_arg(argv[3])
+        fd = open_streaming()
+        try:
+            put(fd, CID_BRIGHTNESS, v)
+        except OSError as e:
+            die(f"brightness: {e.strerror}")
+        finally:
+            os.close(fd)
+    elif cmd == "apply" and len(argv) == 3:
+        v = brightness_arg(argv[2])
+        fd = open_streaming()
+        failed = []
+        for name, cid, val in (("auto_exposure", CID_AUTO_EXPOSURE, AUTO),
+                               ("power_line_frequency", CID_POWER_LINE, POWER_LINE_50HZ),
+                               ("brightness", CID_BRIGHTNESS, v)):
+            try:
+                put(fd, cid, val)
+            except OSError as e:
+                failed.append(f"{name}: {e.strerror}")
+        os.close(fd)
+        if failed:
+            die("; ".join(failed))
+    else:
+        die(__doc__.strip())
+
+
+if __name__ == "__main__":
+    main(sys.argv)

@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Wer fragt nach dem Passwort (Polkit)? Es kann nur EIN Agent je Sitzung registriert sein.
+#   polkit-agent status   Modus, Shell, Agent, Wächter
+#   polkit-agent on       Shell-Dialog (Standard), KDE-Agent nur als Rückfall
+#   polkit-agent off      KDE-Agent (altes Fenster), Shell meldet sich ab – Rückweg, geht immer
+#   polkit-agent start    Wächter starten (Autostart), Modus bleibt
+#   polkit-agent run      Wächter (läuft als User-Dienst desktop-polkit-agent, startet hypr/autostart.conf)
+#
+# Aussperr-Schutz (Wächter, alle 2 s): ist die Shell nicht als Agent registriert (abgestürzt, Neustart, Fehler),
+# startet er den KDE-Agenten; kommt die Shell zurück, übergibt er wieder (KDE-Agent aus, Shell meldet sich neu an).
+# Nie gleichzeitig zwei. Läuft gerade ein KDE-Passwortfenster, wartet er mit der Übergabe.
+# Modus liegt in ~/.config/desktop/polkit-agent (shell|kde). Shell-Zustand: $XDG_RUNTIME_DIR/desktop-polkit.
+set -uo pipefail
+
+SELF=$(readlink -f "$0")
+REPO=$(dirname "$(dirname "$SELF")")
+SHELL_DIR="$REPO/shell"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE="$RUN/desktop-polkit"
+MODE_FILE="$HOME/.config/desktop/polkit-agent"
+KDE=/usr/libexec/kf6/polkit-kde-authentication-agent-1
+UNIT=desktop-polkit-agent
+UID_=$(id -u)
+
+mode() { local m; m=$(cat "$MODE_FILE" 2>/dev/null | tr -d '[:space:]'); [ "$m" = kde ] && echo kde || echo shell; }
+shell_pid() { pgrep -u "$UID_" -f -- "qs -p $SHELL_DIR\$" | head -n1; }
+# Shell lebt UND hat sich als Agent gemeldet (Datei trägt die PID der laufenden Shell)
+shell_registered() {
+    local pid st
+    pid=$(shell_pid); [ -n "$pid" ] || return 1
+    read -r st spid < "$STATE" 2>/dev/null || return 1
+    [ "$st" = registered ] && [ "$spid" = "$pid" ]
+}
+kde_pid() { pgrep -u "$UID_" -x polkit-kde-auth | head -n1; }
+kde_dialog_open() { hyprctl clients -j 2>/dev/null | grep -q 'org.kde.polkit-kde-authentication-agent-1'; }
+ipc() { timeout 3 qs ipc --any-display -p "$SHELL_DIR" call polkit "$@" 2>/dev/null; }
+
+start_kde() {
+    kde_pid >/dev/null && return 0
+    if command -v uwsm >/dev/null && uwsm check is-active >/dev/null 2>&1; then
+        setsid -f uwsm app -- "$KDE" >/dev/null 2>&1 </dev/null
+    else
+        setsid -f "$KDE" >/dev/null 2>&1 </dev/null
+    fi
+    log "KDE-Agent gestartet"
+}
+stop_kde() { kde_pid >/dev/null || return 0; pkill -u "$UID_" -x polkit-kde-auth; sleep 0.6; log "KDE-Agent beendet"; }
+log() { echo "polkit-agent: $*"; }
+
+ensure_watcher() {
+    systemctl --user is-active --quiet "$UNIT" && return 0
+    systemd-run --user --quiet --collect --unit="$UNIT" -p Restart=always -p RestartSec=2 -p PartOf=graphical-session.target \
+        "$SELF" run >/dev/null 2>&1 && log "Wächter gestartet"
+}
+
+# Übergabe KDE → Shell: KDE aus, Shell anmelden; klappt es nicht, sofort KDE zurück (nie ohne Agent bleiben)
+handover() {
+    kde_dialog_open && return 1
+    stop_kde
+    ipc register >/dev/null
+    local i
+    for i in 1 2 3 4 5 6 7 8; do sleep 0.5; shell_registered && { log "Shell ist Agent"; return 0; }; done
+    log "Übergabe gescheitert – KDE-Agent zurück"
+    start_kde
+    return 1
+}
+
+watch() {
+    exec 9>"$RUN/desktop-polkit-agent.lock"
+    flock -n 9 || { log "Wächter läuft schon"; exit 0; }
+    local down=0 start now cool=0
+    start=$(date +%s)
+    while true; do
+        now=$(date +%s)
+        if [ "$(mode)" = kde ]; then
+            # KDE-Modus: Shell abmelden, dann KDE-Agent
+            if shell_registered; then ipc release >/dev/null; sleep 1; fi
+            kde_pid >/dev/null || { shell_registered || start_kde; }
+            down=0
+        elif shell_registered; then
+            down=0
+            kde_pid >/dev/null && stop_kde
+        else
+            if [ -n "$(shell_pid)" ]; then
+                down=0
+                if kde_pid >/dev/null; then
+                    # Shell da, aber nicht Agent, KDE hält die Anmeldung → übergeben (nach Fehlschlag 60 s Pause)
+                    if [ "$now" -ge "$cool" ] && case "$(ipc status)" in unregistered|released) true ;; *) false ;; esac; then
+                        handover || cool=$((now + 60))
+                    fi
+                elif [ $((now - start)) -ge 15 ]; then
+                    # niemand ist Agent: Shell noch einmal anmelden lassen, sonst KDE
+                    ipc register >/dev/null; sleep 3
+                    shell_registered || start_kde
+                fi
+            else
+                # keine Shell (Absturz/Neustart): nach ~6 s oder nach der Startfrist KDE-Agent
+                down=$((down + 1))
+                if [ "$down" -ge 3 ] || [ $((now - start)) -ge 15 ]; then start_kde; fi
+            fi
+        fi
+        sleep 2
+    done
+}
+
+case "${1:-status}" in
+    run) watch ;;
+    start) ensure_watcher ;;   # Autostart: Wächter starten, Modus unverändert
+    on)
+        mkdir -p "$(dirname "$MODE_FILE")"; echo shell > "$MODE_FILE"; ensure_watcher
+        log "an – Shell-Dialog (Übergabe in ein paar Sekunden)" ;;
+    off)
+        mkdir -p "$(dirname "$MODE_FILE")"; echo kde > "$MODE_FILE"; ensure_watcher
+        log "aus – KDE-Agent (Shell meldet sich in ein paar Sekunden ab)" ;;
+    status)
+        echo "Modus:    $(mode)"
+        echo "Shell:    $(shell_pid | sed 's/^$/läuft nicht/') (Agent: $(shell_registered && echo ja || echo nein))"
+        echo "KDE-Agent: $(kde_pid | sed 's/^$/aus/')"
+        echo "Wächter:  $(systemctl --user is-active "$UNIT" 2>/dev/null)" ;;
+    *) sed -n '2,10p' "$SELF"; exit 1 ;;
+esac

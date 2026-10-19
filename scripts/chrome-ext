@@ -1,0 +1,468 @@
+#!/usr/bin/python3 -I
+"""Browser-Erweiterung „Desktop“ (Helium/Chrome) <-> Shell (Native Messaging).
+
+  chrome-ext install [--browser helium|chrome|both]
+                              Erweiterungen bauen (theme/gen/chrome.py) + Host-Manifest de.bastian.desktop.json nach
+                              <Profilordner>/NativeMessagingHosts (Standard: alle installierten Browser)
+  chrome-ext remove  [--browser …]   Host-Manifest (+ Tabs-Datei) weg (Erweiterungen selbst: …://extensions)
+  chrome-ext status  [--browser …]   Was ist installiert, läuft der Host, wie viele Tabs
+  chrome-ext activate <tabId> Tab im Browser nach vorne holen (ruft die Shell auf)
+
+Browser: chrome = Google Chrome (RPM, ~/.config/google-chrome), helium = Helium (RPM helium-bin, ~/.config/net.imput.helium).
+Startet der Browser das Skript selbst (erstes Argument chrome-extension://…), läuft es als Host:
+  - stdin/stdout = Native Messaging (4 Byte Länge, little endian, + JSON)
+  - Tabs von der Erweiterung -> ~/.cache/desktop/chrome-tabs.json (atomar)
+  - Unix-Socket $XDG_RUNTIME_DIR/desktop-chrome.sock (nur User) für Befehle der Shell
+  - schiebt Shell-Daten zur neuen Tab-Seite: nächste Termine (agenda.json) + Wetter (chrome-shell.json,
+    schreibt shell/services/ChromeTabs.qml) + Wissenshäppchen/Nudges (newtab-feed.json)
+  - stößt scripts/newtab-feed höchstens alle 3 h als systemd-User-Unit an (der entscheidet selbst, was alt ist)
+  - Passwörter (iCloud über scripts/passwords): Nachrichten {"type": "pw", "id": n, "op": …}, Antwort {"type": "pw", "id": n, "ok": …}
+      status            -> {"count"}                       Anzahl Einträge
+      match   url       -> {"entries": [{id,title,user,site,hasTotp,hasPassword}]}   ohne Geheimnisse
+      fill    url id    -> {"user", "password"}            nur für https bzw. http://localhost, id muss zu url passen
+      totp    url id    -> {"code", "remaining"}           frisch geholt, gleiche Prüfung
+      copy    url id field (password|totp|user) -> {"clearAfter"}   per passwords copy (wl-copy --sensitive), Wert bleibt hier
+      aliases           -> {"aliases": [{address,label,domain}]}    nur aktive Hide-My-Email-Adressen
+    Geheimnisse werden nie geloggt, nie gespeichert und nicht über den Shell-Socket herausgegeben.
+Nur RPM-Browser. Profile werden außer dem Host-Manifest nicht angefasst. Laufen beide Browser gleichzeitig mit der
+Erweiterung, gewinnt der zuletzt gestartete Host (Socket + Tabs-Datei sind nur einmal da).
+"""
+import json
+import os
+import pathlib
+import re
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+import urllib.parse
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+NAME = "de.bastian.desktop"
+HOME = pathlib.Path.home()
+BROWSERS = {
+    "helium": {"label": "Helium", "bin": "/usr/bin/helium", "ui": "helium://extensions",
+               "nmh": HOME / ".config/net.imput.helium/NativeMessagingHosts"},
+    "chrome": {"label": "Chrome", "bin": "/usr/bin/google-chrome-stable", "ui": "chrome://extensions",
+               "nmh": HOME / ".config/google-chrome/NativeMessagingHosts"},
+}
+CACHE = HOME / ".cache/desktop"
+TABS = CACHE / "chrome-tabs.json"
+SHELL = CACHE / "chrome-shell.json"
+AGENDA = CACHE / "agenda.json"
+FEED = CACHE / "newtab-feed.json"        # Wikipedia + KI-Nudges, schreibt scripts/newtab-feed
+FEED_EVERY_MS = 3 * 3600 * 1000
+SOCK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "desktop-chrome.sock"
+PASSWORDS = ROOT / "scripts/passwords"   # CLI über icp (iCloud-Schlüsselbund), liefert JSON
+FEATURES = ["tabs", "shell", "pw"]       # meldet der Host beim Start ("hello"), Erweiterung erkennt alte Hosts
+
+
+def ext_id() -> str:
+    return subprocess.run([sys.executable, "-I", str(ROOT / "theme/gen/chrome.py"), "--id"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def write_json(path: pathlib.Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False))
+    os.replace(tmp, path)
+
+
+def read_json(path: pathlib.Path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+# ---------------- Host (von Chrome gestartet) ----------------
+
+out_lock = threading.Lock()
+
+
+def send(msg) -> None:
+    data = json.dumps(msg, ensure_ascii=False).encode()
+    with out_lock:
+        sys.stdout.buffer.write(struct.pack("<I", len(data)) + data)
+        sys.stdout.buffer.flush()
+
+
+def shell_data():
+    """Termine der nächsten 2 Tage (nur Titel, Zeit, Ort) + Wetter, klein gehalten."""
+    now = time.time() * 1000
+    events = []
+    ag = read_json(AGENDA) or {}
+    for e in ag.get("events", []):
+        if e.get("end", 0) > now and e.get("start", 0) < now + 2 * 86400000:
+            events.append({k: e.get(k) for k in ("title", "start", "end", "allDay", "location")})
+    events.sort(key=lambda e: e["start"] or 0)
+    sh = read_json(SHELL) or {}
+    feed = read_json(FEED) or {}
+    return {"events": events[:12], "weather": sh.get("weather"),
+            "feed": {"date": feed.get("date"), "wiki": feed.get("wiki", [])[:16], "nudges": feed.get("nudges", [])[:10]}}
+
+
+def maybe_refresh_feed(state: dict) -> None:
+    """newtab-feed anstoßen, wenn der letzte Lauf > 3 h her ist (und wir es nicht gerade erst versucht haben)."""
+    now = time.time() * 1000
+    checked = (read_json(FEED) or {}).get("checked", 0)
+    if now - checked < FEED_EVERY_MS or now - state.get("tried", 0) < 3600 * 1000:
+        return
+    state["tried"] = now
+    try:
+        # eigene Unit: läuft nie doppelt, stirbt nicht mit Chrome, Log in journalctl --user -u desktop-newtab-feed
+        subprocess.Popen(["systemd-run", "--user", "--quiet", "--collect", "--unit=desktop-newtab-feed",
+                          str(ROOT / "scripts/newtab-feed")],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def pusher(stop: threading.Event, wake: threading.Event) -> None:
+    last = None
+    feed_state = {}
+    while not stop.is_set():
+        maybe_refresh_feed(feed_state)
+        try:
+            data = shell_data()
+            if data != last or wake.is_set():
+                send({"type": "shell", "data": data})
+                last = data
+        except OSError:
+            return
+        wake.clear()
+        wake.wait(30)
+
+
+def server(wake: threading.Event) -> None:
+    """Befehle der Shell: eine JSON-Zeile pro Verbindung, z. B. {"type": "activate", "tabId": 12}."""
+    try:
+        SOCK.unlink()
+    except FileNotFoundError:
+        pass
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    old = os.umask(0o177)
+    try:
+        srv.bind(str(SOCK))
+    finally:
+        os.umask(old)
+    srv.listen(4)
+    while True:
+        conn, _ = srv.accept()
+        with conn:
+            conn.settimeout(2)
+            try:
+                line = conn.makefile("rb").readline(4096)
+                msg = json.loads(line)
+                if msg.get("type") == "activate" and isinstance(msg.get("tabId"), int):
+                    send({"type": "activate", "tabId": msg["tabId"]})
+                elif msg.get("type") == "refresh":
+                    wake.set()
+                    send({"type": "report"})
+                else:
+                    raise ValueError("unknown")
+                conn.sendall(b"ok\n")
+            except (OSError, ValueError, AttributeError):
+                try:
+                    conn.sendall(b"error\n")
+                except OSError:
+                    pass
+
+
+# ---------------- Passwörter (scripts/passwords) ----------------
+# Alles hier antwortet nur der Erweiterung (stdout = Native Messaging). Kein print, kein Log, keine Datei.
+
+ENTRY_ID = re.compile(r"[0-9a-f]{16}(-\d{1,4})?")
+pw_slots = threading.BoundedSemaphore(3)
+
+
+class PwError(Exception):
+    pass
+
+
+def pw_run(*args: str) -> str:
+    if not os.access(PASSWORDS, os.X_OK):
+        raise PwError("passwords CLI missing (scripts/passwords)")
+    try:
+        r = subprocess.run([str(PASSWORDS), *args], capture_output=True, text=True, timeout=30,
+                           stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        raise PwError("passwords CLI timed out") from None
+    except OSError as e:
+        raise PwError(f"passwords CLI failed ({type(e).__name__})") from None
+    if r.returncode:
+        # scripts/passwords schreibt laut Vertrag nie Werte nach stderr; trotzdem nur die letzte Zeile, gekürzt
+        lines = r.stderr.strip().splitlines()
+        raise PwError((lines[-1] if lines else "passwords CLI error")[:200])
+    return r.stdout
+
+
+def page_url(value, secure: bool) -> str:
+    """Seiten-URL ohne Query/Fragment (landet als Argument im Prozess). secure: nur https oder http://localhost."""
+    try:
+        u = urllib.parse.urlsplit(str(value or ""))
+    except ValueError:
+        raise PwError("bad url") from None
+    host = (u.hostname or "").lower()
+    if u.scheme not in ("https", "http") or not host:
+        raise PwError("unsupported page")
+    if secure and u.scheme == "http" and not is_local(host):
+        raise PwError("insecure page (http)")
+    return urllib.parse.urlunsplit((u.scheme, u.netloc, u.path or "/", "", ""))
+
+
+def is_local(host: str) -> bool:
+    return host in ("localhost", "127.0.0.1", "::1", "[::1]") or host.endswith(".localhost")
+
+
+def site_label(urls) -> str:
+    for u in urls or []:
+        try:
+            h = urllib.parse.urlsplit(u if "//" in u else "https://" + u).hostname
+        except ValueError:
+            h = None
+        if h:
+            return h[4:] if h.startswith("www.") else h
+    return ""
+
+
+def pw_match(url: str) -> list:
+    data = json.loads(pw_run("match", url) or "[]")
+    return [{"id": e.get("id"), "title": e.get("title") or "", "user": e.get("user") or "",
+             "site": site_label(e.get("urls")), "hasTotp": bool(e.get("hasTotp")),
+             "hasPassword": bool(e.get("hasPassword"))}
+            for e in data if isinstance(e, dict) and isinstance(e.get("id"), str)
+            # „Nie speichern“-Einträge o. Ä. ohne Benutzer, Passwort und 2FA: nichts zum Ausfüllen
+            and (e.get("user") or e.get("hasPassword") or e.get("hasTotp"))]
+
+
+def pw_entry(msg: dict, secure: bool) -> dict:
+    """Eintrag nur, wenn er laut scripts/passwords zur Seite passt (Overrides inklusive)."""
+    entry = msg.get("entry")
+    if not isinstance(entry, str) or not ENTRY_ID.fullmatch(entry):
+        raise PwError("bad entry")
+    for e in pw_match(page_url(msg.get("url"), secure)):
+        if e["id"] == entry:
+            return e
+    raise PwError("entry does not match this site")
+
+
+def pw_answer(msg: dict) -> dict:
+    op = msg.get("op")
+    if op == "status":
+        return {"count": len(json.loads(pw_run("list") or "[]"))}
+    if op == "match":
+        return {"entries": pw_match(page_url(msg.get("url"), secure=False))}
+    if op == "fill":
+        e = pw_entry(msg, secure=True)
+        out = {"user": e["user"]}
+        if e["hasPassword"]:
+            out["password"] = pw_run("get", e["id"], "password")
+        return out
+    if op == "totp":
+        e = pw_entry(msg, secure=True)
+        if not e["hasTotp"]:
+            raise PwError("no 2FA code for this entry")
+        t = json.loads(pw_run("get", e["id"], "totp", "--json"))
+        return {"code": str(t.get("code", "")), "remaining": int(t.get("remaining", 0))}
+    if op == "copy":
+        field = msg.get("field")
+        if field not in ("password", "totp", "user"):
+            raise PwError("bad field")
+        e = pw_entry(msg, secure=False)   # Zwischenablage: auch auf http-Seiten, Wert geht nicht an die Seite
+        r = json.loads(pw_run("copy", e["id"], field, "--json") or "{}")
+        return {"clearAfter": r.get("clearAfter")}
+    if op == "aliases":
+        data = json.loads(pw_run("aliases") or "[]")
+        return {"aliases": [{"address": a.get("address"), "label": a.get("label") or "",
+                             "domain": a.get("domain") or ""}
+                            for a in data if isinstance(a, dict) and a.get("address") and a.get("active", True)]}
+    raise PwError("unknown op")
+
+
+def pw_handle(msg: dict) -> None:
+    rid = msg.get("id")
+    with pw_slots:
+        try:
+            reply = {"ok": True, **pw_answer(msg)}
+        except PwError as e:
+            reply = {"ok": False, "error": str(e)}
+        except (ValueError, TypeError, AttributeError):
+            reply = {"ok": False, "error": "unexpected answer from passwords CLI"}
+    try:
+        send({"type": "pw", "id": rid, **reply})
+    except OSError:
+        pass
+
+
+def read_exact(n: int) -> bytes:
+    buf = b""
+    while len(buf) < n:
+        chunk = sys.stdin.buffer.read(n - len(buf))
+        if not chunk:
+            return b""
+        buf += chunk
+    return buf
+
+
+def host() -> None:
+    stop, wake = threading.Event(), threading.Event()
+    threading.Thread(target=server, args=(wake,), daemon=True).start()
+    threading.Thread(target=pusher, args=(stop, wake), daemon=True).start()
+    send({"type": "hello", "features": FEATURES})
+    try:
+        while True:
+            head = read_exact(4)
+            if not head:
+                break
+            size = struct.unpack("<I", head)[0]
+            if size > 16 * 1024 * 1024:
+                break
+            try:
+                msg = json.loads(read_exact(size))
+            except ValueError:
+                continue
+            if not isinstance(msg, dict):   # gültiges JSON, aber kein Objekt: ignorieren statt Host-Absturz
+                continue
+            if msg.get("type") == "tabs":
+                write_json(TABS, {
+                    "updated": int(time.time() * 1000),
+                    "running": True,
+                    "pid": os.getpid(),
+                    "focusedWindow": msg.get("focusedWindow", -1),
+                    "activeTitles": msg.get("activeTitles", {}),
+                    "tabs": msg.get("tabs", []),
+                })
+            elif msg.get("type") == "refresh":
+                wake.set()
+            elif msg.get("type") == "pw":
+                threading.Thread(target=pw_handle, args=(msg,), daemon=True).start()
+    finally:
+        # Chrome zu / Erweiterung neu geladen: keine alten Tabs stehen lassen
+        stop.set()
+        write_json(TABS, {"updated": int(time.time() * 1000), "running": False, "tabs": []})
+        try:
+            SOCK.unlink()
+        except OSError:
+            pass
+
+
+# ---------------- CLI ----------------
+
+def pick(browser: str) -> list:
+    """--browser helium|chrome|both|(leer) -> Liste von Schlüsseln. Standard/both: alle installierten, sonst Helium."""
+    if browser in BROWSERS:
+        return [browser]
+    if browser not in ("", "both"):
+        sys.exit(f"Unbekannter Browser: {browser} (helium|chrome|both)")
+    found = [k for k, b in BROWSERS.items() if pathlib.Path(b["bin"]).exists()]
+    return found or ["helium"]
+
+
+def nmh_path(key: str) -> pathlib.Path:
+    return BROWSERS[key]["nmh"] / f"{NAME}.json"
+
+
+def install(browser: str) -> None:
+    keys = pick(browser)
+    subprocess.run([sys.executable, "-I", str(ROOT / "theme/gen/chrome.py")], check=True)
+    eid = ext_id()
+    manifest = {
+        "name": NAME,
+        "description": "Desktop shell bridge (tabs, agenda, weather, passwords)",
+        "path": str(pathlib.Path(__file__).resolve()),
+        "type": "stdio",
+        "allowed_origins": [f"chrome-extension://{eid}/"],
+    }
+    for k in keys:
+        nmh_path(k).parent.mkdir(parents=True, exist_ok=True)
+        nmh_path(k).write_text(json.dumps(manifest, indent=2) + "\n")
+        print(f"Host-Manifest ({BROWSERS[k]['label']}): {nmh_path(k)}")
+    print(f"Erweiterungs-ID: {eid}")
+    ui = BROWSERS[keys[0]]["ui"]
+    print(f"Einmalig in {ui} (Entwicklermodus an) -> „Entpackte Erweiterung laden“:")
+    print(f"  {ROOT / 'theme/out/chrome-desktop'}      (Desktop Theme)")
+    print(f"  {ROOT / 'theme/out/chrome-desktop-ext'}  (Desktop)")
+    print("Danach bei „Desktop“ einmal auf Neu laden (↻), damit der Host startet.")
+
+
+def remove(browser: str) -> None:
+    for k in pick(browser):
+        if nmh_path(k).exists():
+            nmh_path(k).unlink()
+            print(f"entfernt ({BROWSERS[k]['label']}): {nmh_path(k)}")
+    if TABS.exists():
+        TABS.unlink()
+        print(f"entfernt: {TABS}")
+    print("Erweiterungen selbst im Browser unter …://extensions entfernen.")
+
+
+def status(browser: str) -> None:
+    for k in pick(browser):
+        b = BROWSERS[k]
+        target = (read_json(nmh_path(k)) or {}).get("path", "")
+        here = target == str(pathlib.Path(__file__).resolve())
+        print(f"{b['label'] + ':':<14} {'RPM ok' if pathlib.Path(b['bin']).exists() else 'nicht installiert'}"
+              f" · Host-Manifest {'da' if nmh_path(k).exists() else 'fehlt (chrome-ext install --browser ' + k + ')'}"
+              + (f" · Host: {'dieses Repo' if here else target} {'(mit Passwörtern)' if here else ''}" if target else ""))
+    print(f"Erweiterung:   {ext_id()}")
+    d = read_json(TABS)
+    if not d:
+        print("Tabs:          noch keine Datei (Erweiterung geladen?)")
+    else:
+        age = (time.time() * 1000 - d.get("updated", 0)) / 1000
+        state = "Host läuft" if d.get("running") else "Host aus"
+        print(f"Tabs:          {len(d.get('tabs', []))} ({state}, vor {age:.0f} s)")
+    print(f"Socket:        {'da' if SOCK.exists() else 'fehlt'}")
+
+
+def command(msg) -> int:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(2)
+    try:
+        s.connect(str(SOCK))
+        s.sendall(json.dumps(msg).encode() + b"\n")
+        ok = s.recv(16).startswith(b"ok")
+    except OSError as e:
+        print(f"Host nicht erreichbar: {e}", file=sys.stderr)
+        return 1
+    finally:
+        s.close()
+    return 0 if ok else 1
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args and args[0].startswith("chrome-extension://"):
+        host()
+        return 0
+    browser = ""
+    if "--browser" in args:
+        i = args.index("--browser")
+        if i + 1 >= len(args):
+            print(__doc__)
+            return 2
+        browser = args[i + 1]
+        del args[i:i + 2]
+    cmd = args[0] if args else "status"
+    if cmd == "install":
+        install(browser)
+    elif cmd == "remove":
+        remove(browser)
+    elif cmd == "status":
+        status(browser)
+    elif cmd == "activate" and len(args) == 2 and args[1].isdigit():
+        return command({"type": "activate", "tabId": int(args[1])})
+    elif cmd == "refresh":
+        return command({"type": "refresh"})
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

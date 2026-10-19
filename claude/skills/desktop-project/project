@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stable entry point for the shell's project registry CLI (scripts/project), also for other skills:
+#   ~/.claude/skills/desktop-project/project <command> …   (same arguments as scripts/project; `hilfe` = help)
+# The skill folder is a symlink into <repo>/claude/skills/, so the repo is found from here.
+set -euo pipefail
+exec "$(dirname "$(readlink -f "$0")")/../../../scripts/project" "$@"

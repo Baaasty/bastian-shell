@@ -1,0 +1,60 @@
+{
+  "manifest_version": 2,
+  "name": "Desktop",
+  "version": "0.3.0",
+  "description": "Warmes Braun, Creme und Terrakotta-Akzent. ERZEUGT aus theme/palette.json (hearth).",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "desktop-theme@bastian",
+      "strict_min_version": "128.0"
+    }
+  },
+  "theme": {
+    "colors": {
+      "frame": "#2A211B",
+      "frame_inactive": "#201914",
+      "tab_background_text": "#B5A591",
+      "tab_background_separator": "transparent",
+      "tab_selected": "#382D26",
+      "tab_text": "#F6ECDD",
+      "tab_line": "#DB6B4C",
+      "tab_loading": "#DB6B4C",
+      "toolbar": "#2A211B",
+      "toolbar_text": "#F6ECDD",
+      "bookmark_text": "#F6ECDD",
+      "toolbar_top_separator": "#3F352E",
+      "toolbar_bottom_separator": "#3F352E",
+      "toolbar_vertical_separator": "#3F352E",
+      "toolbar_field": "#382D26",
+      "toolbar_field_text": "#F6ECDD",
+      "toolbar_field_border": "#4C4038",
+      "toolbar_field_separator": "#4C4038",
+      "toolbar_field_focus": "#382D26",
+      "toolbar_field_text_focus": "#F6ECDD",
+      "toolbar_field_border_focus": "#A2553F",
+      "toolbar_field_highlight": "#A2553F",
+      "toolbar_field_highlight_text": "#F6ECDD",
+      "button_background_hover": "#3E2D24",
+      "button_background_active": "#4A362A",
+      "icons": "#D2C2AE",
+      "icons_attention": "#F2A58A",
+      "sidebar": "#382D26",
+      "sidebar_text": "#F6ECDD",
+      "sidebar_border": "#4C4038",
+      "sidebar_highlight": "#5C3B2E",
+      "sidebar_highlight_text": "#F6ECDD",
+      "sidebar_highlight_border": "#605349",
+      "popup": "#382D26",
+      "popup_text": "#F6ECDD",
+      "popup_border": "#605349",
+      "popup_highlight": "#5C3B2E",
+      "popup_highlight_text": "#F6ECDD",
+      "ntp_background": "#2A211B",
+      "ntp_text": "#F6ECDD"
+    },
+    "properties": {
+      "color_scheme": "dark",
+      "content_color_scheme": "dark"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Thunderbird",
+  "about": "Mail and calendar · single letters work in the message list",
+  "match": { "class": ["thunderbird", "net.thunderbird.thunderbird", "org.mozilla.thunderbird", "thunderbird-esr", "org.mozilla.thunderbird_esr", "betterbird"] },
+  "order": 70,
+  "sections": [
+    {
+      "name": "Write",
+      "keys": [
+        { "keys": "Ctrl+N", "title": "New message" },
+        { "keys": "Ctrl+R", "title": "Reply" },
+        { "keys": "Ctrl+Shift+R", "title": "Reply all" },
+        { "keys": "Ctrl+L", "title": "Forward" },
+        { "keys": "Ctrl+Enter", "title": "Send", "note": "in the message window" }
+      ]
+    },
+    {
+      "name": "Read",
+      "keys": [
+        { "keys": "f b", "title": "Next / previous message" },
+        { "keys": "n", "title": "Next unread message" },
+        { "keys": "m", "title": "Mark read / unread" },
+        { "keys": "s", "title": "Star" },
+        { "keys": "a", "title": "Archive" },
+        { "keys": "j", "title": "Mark as junk" },
+        { "keys": "Del", "title": "Delete" },
+        { "keys": "Ctrl+Shift+K", "title": "Quick filter this folder" },
+        { "keys": "Ctrl+K", "title": "Search all mail" }
+      ]
+    },
+    {
+      "name": "Views",
+      "keys": [
+        { "keys": ["Ctrl+Tab", "Ctrl+Shift+Tab"], "title": "Next / previous tab" },
+        { "keys": "Ctrl+W", "title": "Close tab" },
+        { "keys": "Ctrl+Shift+C", "title": "Calendar" },
+        { "keys": "Ctrl+Shift+D", "title": "Tasks" },
+        { "keys": "Ctrl+Shift+B", "title": "Address book" },
+        { "keys": "F8", "title": "Show / hide message pane" }
+      ]
+    }
+  ]
+}

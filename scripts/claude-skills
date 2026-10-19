@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Claude-Code-Skills der Shell (claude/skills/<name>, z. B. desktop-project) nach ~/.claude/skills verlinken.
+# Nur Ordner mit SKILL.md sind Skills. Eigene/Firmen-Skills aus anderen Repos bringen ihr eigenes Install mit und
+# rufen für den Desktop-Teil ~/.claude/skills/desktop-project/project auf (Wrapper um scripts/project).
+#   claude-skills            Übersicht
+#   claude-skills install    Symlinks anlegen (vorhandene fremde Ordner werden nie angefasst) + tote eigene Links weg
+#   claude-skills uninstall  nur unsere Symlinks wieder entfernen (auch tote, z. B. nach Umbenennen/Löschen eines Skills)
+set -euo pipefail
+src="$(dirname "$(readlink -f "$0")")/../claude/skills"
+src="$(readlink -f "$src")"
+dst="$HOME/.claude/skills"
+
+status() {
+  for d in "$src"/*/; do
+    [ -f "$d/SKILL.md" ] || continue
+    n=$(basename "$d")
+    l="$dst/$n"
+    if [ -L "$l" ] && [ "$(readlink -f "$l")" = "${d%/}" ]; then s="installiert"
+    elif [ -L "$l" ]; then s="zeigt woanders hin: $(readlink "$l") (install biegt um)"
+    elif [ -e "$l" ]; then s="BELEGT (fremder Ordner, nicht angefasst)"
+    else s="nicht installiert"; fi
+    printf '  %-16s %s\n' "$n" "$s"
+  done
+}
+
+# Tote Links, die in unser Skill-Verzeichnis zeigten (Skill gelöscht, umbenannt oder in ein anderes Repo umgezogen)
+prune() {
+  for l in "$dst"/*; do
+    [ -L "$l" ] || continue
+    t=$(readlink "$l")
+    case "$t" in "$src"/*) [ -e "$l" ] || { rm "$l"; echo "  tot, entfernt: $l"; } ;; esac
+  done
+}
+
+case "${1:-status}" in
+  install)
+    mkdir -p "$dst"
+    for d in "$src"/*/; do
+      [ -f "$d/SKILL.md" ] || continue
+      n=$(basename "$d")
+      l="$dst/$n"
+      if [ -L "$l" ]; then ln -sfn "${d%/}" "$l"
+      elif [ -e "$l" ]; then echo "  $n: $l existiert schon (kein Symlink) – übersprungen" >&2; continue
+      else ln -s "${d%/}" "$l"; fi
+      echo "  $n -> ${d%/}"
+    done
+    prune ;;
+  uninstall)
+    for d in "$src"/*/; do
+      l="$dst/$(basename "$d")"
+      if [ -L "$l" ] && [ "$(readlink -f "$l")" = "${d%/}" ]; then rm "$l"; echo "  entfernt: $l"; fi
+    done
+    prune ;;
+  status) status
+    for l in "$dst"/*; do [ -L "$l" ] && [ ! -e "$l" ] && case "$(readlink "$l")" in "$src"/*) echo "  $(basename "$l"): toter Link (install räumt auf)";; esac; done; true ;;
+  *) sed -n '2,5p' "$0"; exit 1 ;;
+esac

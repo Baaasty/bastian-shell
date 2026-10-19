@@ -1,0 +1,974 @@
+/* ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern.
+ * Vorlagen: theme/gen/thunderbird-css/ · neu erzeugen: python3 -I theme/gen/thunderbird.py */
+
+:root {
+  --desk-bg: #2A211B;
+  --desk-bg-deep: #2A211B;
+  --desk-surface: #382D26;
+  --desk-raised: #413229;
+  --desk-hover: #4A372C;
+  --desk-press: #573E31;
+  --desk-hover-bg: #342820;
+  --desk-hover-surface: #43332A;
+  --desk-hover-deep: #382A21;
+  --desk-select-unfocused: #3E2D24;
+  --desk-select-unfocused-surface: #47362B;
+  --desk-select-day: #32261E;
+  --desk-line: #4C4038;
+  --desk-line-bg: #3F352E;
+  --desk-line-strong: #605349;
+  --desk-text: #F6ECDD;
+  --desk-text-muted: #D2C2AE;
+  --desk-text-faint: #B5A591;
+  --desk-g15: #E4D7C6;
+  --desk-g20: #DDCFBC;
+  --desk-g50: #9B8572;
+  --desk-accent: #DB6B4C;
+  --desk-accent-text: #F2A58A;
+  --desk-accent-soft: #513126;
+  --desk-accent-soft-surface: #5C3B2E;
+  --desk-accent-muted: #A2553F;
+  --desk-wood: #6B4A38;
+  --desk-wood-light: #A07C5C;
+  --desk-success: #A3B083;
+  --desk-warning: #E0AE55;
+  --desk-warning-soft: #56442E;
+  --desk-error: #E0604F;
+  --desk-warning-line: #735A36;
+  --desk-error-soft: #50342C;
+  --desk-error-line: #733F34;
+  --desk-success-soft: #453D31;
+  --desk-success-line: #585442;
+  --desk-dim: rgba(24, 17, 13, 0.82);
+  --desk-today-bg: #30241D;
+  --desk-today-off-bg: #30241D;
+  --desk-weekend-bg: #2F241D;
+  --desk-other-month-bg: #2A211B;
+  --desk-offtime-bg: #2A211B;
+  --desk-selection: #582D25;
+  --desk-quote-1: #A07C5C;
+  --desk-quote-2: #B5A591;
+  --desk-quote-3: #A3B083;
+  --desk-quote-4: #E0AE55;
+  --desk-radius-xs: 6px;
+  --desk-radius-sm: 10px;
+  --desk-radius-md: 14px;
+  --desk-radius-lg: 18px;
+  --desk-font-ui: "Inter", system-ui, sans-serif;
+  --desk-font-mono: "JetBrainsMono Nerd Font", JetBrains Mono, monospace;
+}
+
+/* Thunderbird-Hauptfenster im desktop-Look (Vorlage für theme/gen/thunderbird.py).
+ * KEINE Farbwerte hier: nur var(--desk-*). Der Generator setzt Tokens und base.css an @@BASE@@ ein.
+ * Geprüft gegen Thunderbird 153.5 ESR (omni.ja).
+ */
+
+/* Gemeinsame Basis für Thunderbird im desktop-Look (Vorlage für theme/gen/thunderbird.py).
+ * KEINE Farbwerte hier: nur var(--desk-*). Wird in userChrome.css (Hauptfenster, Dialoge) UND in
+ * userContent.css (Inhalts-Tabs: about:addressbook, about:preferences, about:addons, Kontoeinstellungen …)
+ * eingesetzt – diese Seiten laufen in type="content"-Browsern, dort greift userChrome.css nicht.
+ *
+ * Prinzip: Thunderbirds eigene Variablen (Graustufen, --layout-*, Listen, Kalender, Toolkit-Tokens) auf die
+ * Palette biegen. !important ist nötig: Nutzer-Stile verlieren sonst gegen Thunderbirds Autor-Stile.
+ */
+
+/* ═════════ 1. Tokens von Thunderbird → Palette ═════════ */
+
+:root {
+  color-scheme: dark !important;
+  scrollbar-color: var(--desk-wood) transparent;
+
+  /* Graustufen (Thunderbird colors.css + Toolkit) als warme Rampe */
+  --color-white: var(--desk-text) !important;
+  --color-black: var(--desk-bg-deep) !important;
+  --color-gray-0: var(--desk-text) !important;
+  --color-gray-05: var(--desk-text) !important;
+  --color-gray-10: var(--desk-text) !important;
+  --color-gray-15: var(--desk-g15) !important;
+  --color-gray-20: var(--desk-g20) !important;
+  --color-gray-30: var(--desk-text-muted) !important;
+  --color-gray-40: var(--desk-text-faint) !important;
+  --color-gray-50: var(--desk-g50) !important;
+  --color-gray-60: var(--desk-press) !important;
+  --color-gray-65: var(--desk-press) !important;
+  --color-gray-70: var(--desk-hover) !important;
+  --color-gray-80: var(--desk-surface) !important;
+  --color-gray-90: var(--desk-bg) !important;
+  --color-gray-100: var(--desk-bg-deep) !important;
+  --color-neutral-200: var(--desk-line) !important;
+
+  /* Standard-Blau/Cyan → Glut-Familie, Ink (kaltes Schiefergrau) → Holz-Rampe */
+  --color-blue-0: var(--desk-accent-soft) !important;
+  --color-blue-10: var(--desk-accent-soft) !important;
+  --color-blue-20: var(--desk-accent-soft) !important;
+  --color-blue-30: var(--desk-accent-text) !important;
+  --color-blue-40: var(--desk-accent-text) !important;
+  --color-blue-50: var(--desk-accent) !important;
+  --color-blue-60: var(--desk-accent-muted) !important;
+  --color-blue-70: var(--desk-accent-muted) !important;
+  --color-blue-80: var(--desk-accent-soft) !important;
+  --color-blue-90: var(--desk-accent-soft) !important;
+  --color-blue-100: var(--desk-accent-soft) !important;
+  --color-blue-110: var(--desk-accent-soft) !important;
+  --color-cyan-0: var(--desk-accent-soft) !important;
+  --color-cyan-10: var(--desk-accent-soft) !important;
+  --color-cyan-20: var(--desk-accent-soft) !important;
+  --color-cyan-30: var(--desk-accent-text) !important;
+  --color-cyan-40: var(--desk-accent-text) !important;
+  --color-cyan-50: var(--desk-accent) !important;
+  --color-cyan-60: var(--desk-accent-muted) !important;
+  --color-cyan-70: var(--desk-accent-muted) !important;
+  --color-cyan-80: var(--desk-accent-soft) !important;
+  --color-cyan-90: var(--desk-accent-soft) !important;
+  --color-cyan-100: var(--desk-accent-soft) !important;
+  --color-cyan-110: var(--desk-accent-soft) !important;
+  --color-ink-10: var(--desk-text-muted) !important;
+  --color-ink-20: var(--desk-text-faint) !important;
+  --color-ink-30: var(--desk-text-faint) !important;
+  --color-ink-40: var(--desk-wood-light) !important;
+  --color-ink-50: var(--desk-wood) !important;
+  --color-ink-60: var(--desk-press) !important;
+  --color-ink-70: var(--desk-hover) !important;
+  --color-ink-80: var(--desk-surface) !important;
+  --color-ink-90: var(--desk-bg) !important;
+  --color-accent-blue-dark: var(--desk-accent-text) !important;
+  --color-accent-blue-light: var(--desk-accent) !important;
+  --color-accent-ink-dark: var(--desk-text-muted) !important;
+  --color-accent-ink-light: var(--desk-wood-light) !important;
+
+  /* Thunderbird-Layout-Ebenen (layout.css) */
+  --layout-background-0: var(--desk-bg) !important;
+  --layout-background-1: var(--desk-surface) !important;
+  --layout-background-2: var(--desk-raised) !important;
+  --layout-background-3: var(--desk-hover) !important;
+  --layout-background-4: var(--desk-press) !important;
+  --layout-color-0: var(--desk-text) !important;
+  --layout-color-1: var(--desk-text) !important;
+  --layout-color-2: var(--desk-text-muted) !important;
+  --layout-color-3: var(--desk-text-faint) !important;
+  --layout-border-0: var(--desk-line) !important;
+  --layout-border-1: var(--desk-line-strong) !important;
+  --layout-border-2: var(--desk-line-strong) !important;
+
+  /* Bolt-Farben (dunkle Hälfte, die light-dark() wählt) */
+  --color-surface-base-dark: var(--desk-bg) !important;
+  --color-surface-raised-dark: var(--desk-surface) !important;
+  --color-surface-subtle-dark: var(--desk-surface) !important;
+  --color-surface-lower-dark: var(--desk-bg-deep) !important;
+  --color-surface-deep-dark: var(--desk-hover) !important;
+  --color-surface-border-dark: var(--desk-line) !important;
+  --color-surface-border-intense-dark: var(--desk-line-strong) !important;
+  --color-primary-soft-dark: var(--desk-accent-soft) !important;
+  --color-primary-default-dark: var(--desk-accent-text) !important;
+  --color-primary-hover-dark: var(--desk-accent) !important;
+  --color-primary-pressed-dark: var(--desk-accent-muted) !important;
+  --color-secondary-default-dark: var(--desk-wood-light) !important;
+  --color-secondary-pressed-dark: var(--desk-wood-light) !important;
+  --color-success-default-dark: var(--desk-success) !important;
+  --color-success-hover-dark: var(--desk-success) !important;
+  --color-warning-default-dark: var(--desk-warning) !important;
+  --color-warning-hover-dark: var(--desk-wood-light) !important;
+  --color-warning-soft-dark: var(--desk-warning-soft) !important;
+  --color-critical-default-dark: var(--desk-error) !important;
+  --color-critical-soft-dark: var(--desk-accent-soft) !important;
+  --color-text-base-dark: var(--desk-text) !important;
+  --color-text-secondary-dark: var(--desk-text-muted) !important;
+  --color-text-muted-dark: var(--desk-text-faint) !important;
+  --color-text-brand-dark: var(--desk-accent-text) !important;
+  --color-text-highlight-dark: var(--desk-accent-text) !important;
+  --color-text-warning-dark: var(--desk-warning) !important;
+  --color-text-critical-dark: var(--desk-error) !important;
+  --color-text-success-dark: var(--desk-success) !important;
+
+  /* Auswahl & Akzent: gedämpftes Glutrot, nie Vollton auf großen Flächen */
+  --selected-item-color: var(--desk-accent-muted) !important;
+  --selected-item-text-color: var(--desk-text) !important;
+  --sidebar-highlight-background-color: var(--desk-accent-soft) !important;
+  --sidebar-highlight-text-color: var(--desk-text) !important;
+  --sidebar-highlight-border-color: var(--desk-line-strong) !important;
+  --focus-outline-color: var(--desk-accent) !important;
+  --item-focus-selected-border-color: var(--desk-accent-muted) !important;
+  --select-focus-background-color: var(--desk-accent-soft-surface) !important;
+  --select-focus-text-color: var(--desk-text) !important;
+  --autocomplete-popup-highlight-background: var(--desk-accent-soft-surface) !important;
+  --autocomplete-popup-highlight-color: var(--desk-text) !important;
+  --primary: var(--desk-wood-light) !important;
+  --default: var(--desk-text) !important;
+  --link-color: var(--desk-accent-text) !important;
+  --link-color-hover: var(--desk-accent-text) !important;
+  --link-color-active: var(--desk-accent) !important;
+  --link-color-visited: var(--desk-accent-text) !important;
+  --new-folder-color: var(--desk-accent-text) !important;
+  --new-focused-folder-color: var(--desk-text) !important;
+
+  /* Rahmen, Tabs, Toolbar: ein ruhiger dunkler Rahmen, Inhalte als Kacheln darin */
+  --lwt-accent-color: var(--desk-bg-deep) !important;
+  --lwt-text-color: var(--desk-text-muted) !important;
+  --lwt-selected-tab-background-color: var(--desk-surface) !important;
+  --lwt-tab-text: var(--desk-text) !important;
+  --lwt-tab-line-color: var(--desk-accent) !important;
+  --lwt-tabs-border-color: var(--desk-line) !important;
+  --lwt-background-tab-separator-color: transparent !important;
+  --tabline-color: var(--desk-accent) !important;
+  --tab-loading-fill: var(--desk-accent) !important;
+  --tabs-toolbar-background-color: transparent !important;
+  --tabs-toolbar-box-shadow: none !important;
+  --chrome-content-separator-color: transparent !important;
+  --toolbar-background-color: var(--desk-bg-deep) !important;
+  --toolbar-text-color: var(--desk-text) !important;
+  --toolbarseparator-color: var(--desk-line) !important;
+  --toolbarbutton-icon-fill: var(--desk-text-muted) !important;
+  --toolbarbutton-icon-fill-attention: var(--desk-accent-text) !important;
+  --lwt-toolbarbutton-icon-fill-attention: var(--desk-accent-text) !important;
+  --lwt-toolbarbutton-hover-background: var(--desk-hover) !important;
+  --lwt-toolbarbutton-active-background: var(--desk-press) !important;
+  --toolbarbutton-background-color-hover: var(--desk-hover) !important;
+  --toolbarbutton-background-color-active: var(--desk-press) !important;
+  --toolbarbutton-hover-bordercolor: transparent !important;
+  --toolbarbutton-active-bordercolor: transparent !important;
+  --toolbarbutton-header-bordercolor: transparent !important;
+  --toolbarbutton-active-boxshadow: none !important;
+  --toolbarbutton-checked-background: var(--desk-accent-soft-surface) !important;
+  --toolbar-button-hover-background-color: var(--desk-hover) !important;
+  --toolbar-button-hover-border-color: transparent !important;
+  --toolbar-button-hover-checked-color: var(--desk-accent-soft-surface) !important;
+  --toolbar-button-active-background-color: var(--desk-press) !important;
+  --toolbar-button-active-border-color: transparent !important;
+
+  /* Suchfelder */
+  --toolbar-field-background-color: var(--desk-surface) !important;
+  --toolbar-field-background-color-focus: var(--desk-surface) !important;
+  --toolbar-field-text-color: var(--desk-text) !important;
+  --toolbar-field-text-color-focus: var(--desk-text) !important;
+  --toolbar-field-color: var(--desk-text) !important;
+  --toolbar-field-border-color: var(--desk-line) !important;
+  --toolbar-field-border-color-focus: var(--desk-accent-muted) !important;
+  --toolbar-field-focus-border-color: var(--desk-accent-muted) !important;
+  --toolbar-field-highlight: var(--desk-accent-muted) !important;
+  --toolbar-field-highlight-color: var(--desk-text) !important;
+  --search-bar-color: var(--desk-text) !important;
+  --search-bar-background: var(--desk-surface) !important;
+  --search-bar-focus-background: var(--desk-surface) !important;
+  --search-bar-border-color: var(--desk-line) !important;
+  --search-field-placeholder: var(--desk-text-faint) !important;
+  --input-border-color: var(--desk-line-strong) !important;
+  --input-text-border-radius: var(--desk-radius-sm) !important;
+
+  /* Knöpfe */
+  --button-border-radius: var(--desk-radius-sm) !important;
+  --button-background-color: var(--desk-raised) !important;
+  --button-hover-background-color: var(--desk-hover) !important;
+  --button-active-background-color: var(--desk-press) !important;
+  --button-border-color: var(--desk-line) !important;
+  --button-text-color: var(--desk-text) !important;
+  --button-primary-background-color: var(--desk-accent-muted) !important;
+  --button-primary-hover-background-color: var(--desk-accent) !important;
+  --button-primary-active-background-color: var(--desk-accent-muted) !important;
+  --button-primary-text-color: var(--desk-text) !important;
+  --button-primary-border-color: transparent !important;
+  --button-primary-shadow: none !important;
+  --button-primary-hover-shadow: none !important;
+  --button-pressed-shadow: none !important;
+
+  /* Seitenleiste (Ordner, Adressbuch-Liste, Kalenderliste) */
+  --sidebar-background-color: var(--desk-surface) !important;
+  --sidebar-text-color: var(--desk-text) !important;
+  --sidebar-border-color: var(--desk-line) !important;
+  --sidebar-background: var(--desk-surface) !important;
+  --sidebar-color: var(--desk-text) !important;
+  --sidebar-border: var(--desk-line) !important;
+
+  /* Listen & Bäume (tree-listbox.css) */
+  --listbox-border-radius: var(--desk-radius-xs) !important;
+  --listbox-border-type: solid !important;
+  --listbox-hover: var(--desk-hover-bg) !important;
+  --listbox-selected-bg: var(--desk-select-unfocused) !important;
+  --listbox-focused-selected-bg: var(--desk-accent-soft) !important;
+  --listbox-selected-color: var(--desk-text) !important;
+  --listbox-focused-selected-color: var(--desk-text) !important;
+  --tree-view-bg: var(--desk-bg) !important;
+  --tree-view-color: var(--desk-text) !important;
+  --tree-pane-background: var(--desk-bg) !important;
+  --tree-view-header-hover-bg: var(--desk-hover) !important;
+  --tree-view-header-hover-active-bg: var(--desk-press) !important;
+  --tree-row-delete-button-color: var(--desk-error) !important;
+  --unread-color: var(--desk-text) !important;
+  --tree-card-background: var(--desk-surface) !important;
+  --tree-card-border: var(--desk-line-bg) !important;
+  --tree-card-border-hover: var(--desk-line-strong) !important;
+  --tree-card-border-focus: var(--desk-accent-muted) !important;
+  --tree-card-background-current: var(--desk-raised) !important;
+  --tree-card-background-selected: var(--desk-accent-soft) !important;
+  --tree-card-background-selected-current: var(--desk-accent-soft) !important;
+  --tree-card-border-selected: var(--desk-accent-muted) !important;
+  --tree-card-background-current-unfocused: var(--desk-raised) !important;
+  --tree-card-background-selected-unfocused: var(--desk-select-unfocused) !important;
+  --tree-card-background-selected-current-unfocused: var(--desk-select-unfocused) !important;
+  --tree-card-background-selected-current-unfocused-hover: var(--desk-hover) !important;
+  --tree-card-border-selected-unfocused: var(--desk-line-strong) !important;
+
+  /* Ordnerliste (about3Pane.css) */
+  --treeitem-background-hover: var(--desk-hover-surface) !important;
+  --treeitem-background-selected: var(--desk-select-unfocused-surface) !important;
+  --treeitem-background-active: var(--desk-accent-soft-surface) !important;
+  --treeitem-text-active: var(--desk-text) !important;
+  --folderpane-unread-count-background: var(--desk-wood) !important;
+  --folderpane-unread-count-text: var(--desk-text) !important;
+  --folderpane-total-count-background: var(--desk-raised) !important;
+  --folderpane-total-count-text: var(--desk-text-muted) !important;
+  --folderpane-unread-new-count-background: var(--desk-accent-muted) !important;
+
+  /* Ordnerfarben: Holz statt Bunt (passt zum Icon-Theme „Desktop-Icons“) */
+  --folder-color-inbox: var(--desk-wood-light) !important;
+  --folder-color-folder: var(--desk-wood-light) !important;
+  --folder-color-archive: var(--desk-wood-light) !important;
+  --folder-color-draft: var(--desk-text-muted) !important;
+  --folder-color-outbox: var(--desk-text-muted) !important;
+  --folder-color-sent: var(--desk-success) !important;
+  --folder-color-spam: var(--desk-error) !important;
+  --folder-color-trash: var(--desk-text-faint) !important;
+  --folder-color-template: var(--desk-text-faint) !important;
+  --folder-color-newsletter: var(--desk-text-faint) !important;
+  --folder-color-folder-filter: var(--desk-text-muted) !important;
+  --folder-color-rss: var(--desk-warning) !important;
+  --folder-color-folder-rss: var(--desk-warning) !important;
+  --folder-color-warning: var(--desk-error) !important;
+
+  /* Nachrichtenliste: Ungelesen = Glut, Fähnchen = Amber */
+  --thread-pane-unread-fill: var(--desk-accent) !important;
+  --thread-pane-unread-stroke: var(--desk-accent) !important;
+  --thread-pane-flag-fill: var(--desk-warning) !important;
+  --thread-pane-flag-stroke: var(--desk-warning) !important;
+  --thread-pane-spam-fill: var(--desk-error) !important;
+  --thread-pane-spam-stroke: var(--desk-error) !important;
+  --new-subject-color: var(--desk-accent-text) !important;
+  --new-color: var(--desk-accent-text) !important;
+  --thread-line-color: var(--desk-line-strong) !important;
+
+  /* Spaces-Leiste links */
+  --spaces-bg-color: var(--desk-bg-deep) !important;
+  --spaces-bg-image: none !important;
+  --spaces-button-text-color: var(--desk-text-muted) !important;
+  --spaces-button-active-bg-color: var(--desk-accent-soft-surface) !important;
+  --spaces-button-active-text-color: var(--desk-accent-text) !important;
+  --spaces-button-badge-bg-color: var(--desk-accent) !important;
+  --spaces-button-badge-text-color: var(--desk-text) !important;
+
+  /* Nachrichtenkopf */
+  --recipient-avatar-color: var(--desk-text-muted) !important;
+  --recipient-avatar-background-color: var(--desk-hover) !important;
+
+  /* Kalender-Ansichten (calendar-views.css) */
+  --viewColor: var(--desk-text) !important;
+  --viewBackground: var(--desk-bg) !important;
+  --viewBorderColor: var(--desk-line-bg) !important;
+  --viewCalendarHeaderBackground: transparent !important;
+  --viewHighlightBorderColor: var(--desk-line-strong) !important;
+  --viewTodayColor: var(--desk-accent-text) !important;
+  --viewTodayBackground: var(--desk-today-bg) !important;
+  --viewTodayLabelColor: var(--desk-text) !important;
+  --viewTodayLabelBackground: var(--desk-accent) !important;
+  --viewTodayOffBackground: var(--desk-today-off-bg) !important;
+  --viewTodayDayLabelBackground: transparent !important;
+  --viewTodayWeekendBackground: var(--desk-today-bg) !important;
+  --viewWeekendBackground: var(--desk-weekend-bg) !important;
+  --viewHeaderSelectedBackground: var(--desk-raised) !important;
+  --viewDayBoxSelectedBackground: var(--desk-select-day) !important;
+  --viewDayBoxOffSelectedBackground: var(--desk-select-day) !important;
+  --viewDayBoxOtherSelectedBackground: var(--desk-select-day) !important;
+  --viewMonthOtherBackground: var(--desk-other-month-bg) !important;
+  --viewMonthDayOtherBackground: var(--desk-other-month-bg) !important;
+  --viewMonthDayBoxSelectedColor: var(--desk-text) !important;
+  --viewMonthDayBoxLabelColor: var(--desk-text-muted) !important;
+  --viewMonthWeekLabelBackground: var(--desk-raised) !important;
+  --viewMonthDayOffLabelBackground: var(--desk-offtime-bg) !important;
+  --viewOffTimeBackground: var(--desk-offtime-bg) !important;
+  --viewTimeBoxColor: var(--desk-text-faint) !important;
+  --viewDayLabelSelectedColor: var(--desk-text) !important;
+  --viewDayLabelSelectedBackground: var(--desk-raised) !important;
+  --viewDragboxColor: var(--desk-text) !important;
+  --viewDragboxBackground: var(--desk-accent-muted) !important;
+  --viewDropshadowBackground: var(--desk-accent-muted) !important;
+  --calendar-view-toggle-background: var(--desk-raised) !important;
+  --calendar-view-toggle-hover-background: var(--desk-hover) !important;
+  --calendar-view-toggle-active-background: var(--desk-press) !important;
+  --calendar-view-toggle-selected-background: var(--desk-bg) !important;
+  --calendar-view-toggle-selected-hover-background: var(--desk-bg) !important;
+  --calendar-view-toggle-border-color: var(--desk-line) !important;
+  --calendar-view-toggle-shadow-color: transparent !important;
+
+  /* Einstellungen, Add-ons, Toolkit-Widgets (design-system tokens) */
+  --background-color-canvas: var(--desk-bg) !important;
+  --background-color-box: var(--desk-surface) !important;
+  --background-color-box-info: var(--desk-raised) !important;
+  --background-color-list-item-hover: var(--desk-hover) !important;
+  --text-color: var(--desk-text) !important;
+  --text-color-deemphasized: var(--desk-text-muted) !important;
+  --border-color: var(--desk-line-strong) !important;
+  --border-color-deemphasized: var(--desk-line) !important;
+  --border-color-interactive: var(--desk-line-strong) !important;
+  --border-color-card: var(--desk-line) !important;
+  --border-color-box-info: var(--desk-line) !important;
+  --color-accent-primary: var(--desk-accent-muted) !important;
+  --color-accent-primary-hover: var(--desk-accent) !important;
+  --color-accent-primary-active: var(--desk-accent-muted) !important;
+  --color-accent-primary-selected-unfocused: var(--desk-select-unfocused) !important;
+  --button-text-color-primary: var(--desk-text) !important;
+  --border-radius-small: var(--desk-radius-xs) !important;
+  --border-radius-medium: var(--desk-radius-sm) !important;
+  --in-content-page-background: var(--desk-bg) !important;
+  --in-content-page-color: var(--desk-text) !important;
+  --in-content-box-background: var(--desk-surface) !important;
+  --in-content-box-border-color: var(--desk-line) !important;
+  --in-content-border-color: var(--desk-line) !important;
+  --in-content-item-hover: var(--desk-hover) !important;
+  --in-content-item-selected: var(--desk-accent-muted) !important;
+  --in-content-item-selected-text: var(--desk-text) !important;
+  --in-content-accent-color: var(--desk-accent) !important;
+  --in-content-deemphasized-text: var(--desk-text-muted) !important;
+  --in-content-focus-outline-color: var(--desk-accent) !important;
+  --color-accent-primary-selected: var(--desk-accent-soft) !important;
+  --text-color-accent-primary-selected: var(--desk-text) !important;
+  --button-background-color-primary: var(--desk-accent-muted) !important;
+  --button-background-color-primary-hover: var(--desk-accent) !important;
+  --button-background-color-primary-active: var(--desk-accent-muted) !important;
+  --button-border-color-primary: transparent !important;
+  --button-text-color-primary-hover: var(--desk-text) !important;
+  --button-text-color-primary-active: var(--desk-text) !important;
+  --button-background-color-hover: var(--desk-hover) !important;
+  --button-background-color-active: var(--desk-press) !important;
+  --button-text-color-hover: var(--desk-text) !important;
+  --background-color-information: var(--desk-raised) !important;
+  --background-color-warning: var(--desk-warning-soft) !important;
+  --background-color-critical: var(--desk-error-soft) !important;
+  --background-color-success: var(--desk-success-soft) !important;
+  --icon-color-information: var(--desk-text-muted) !important;
+  --icon-color-warning: var(--desk-warning) !important;
+  --icon-color-critical: var(--desk-error) !important;
+  --icon-color-success: var(--desk-success) !important;
+
+  /* Adressbuch-/Listen-Karten (list-container.css) */
+  --list-container-border: transparent !important;
+  --list-container-background-selected: var(--desk-select-unfocused) !important;
+  --list-container-border-selected: transparent !important;
+  --list-container-background-selected-current: var(--desk-select-unfocused) !important;
+  --list-container-border-selected-current: var(--desk-line-strong) !important;
+  --list-container-background-hover: var(--desk-hover-bg) !important;
+  --list-container-border-hover: transparent !important;
+  --list-container-background-selected-focused: var(--desk-accent-soft) !important;
+  --list-container-border-selected-focused: transparent !important;
+  --list-container-background-selected-current-focused: var(--desk-accent-soft) !important;
+  --list-container-border-selected-current-focused: var(--desk-accent-muted) !important;
+  --ab-icons-color: var(--desk-text-muted) !important;
+}
+
+/* Menüs, Panels, Tooltips: opakes Surface, weiche Ecken */
+:is(menupopup, panel):not(.autoscroller) {
+  --panel-background-color: var(--desk-surface) !important;
+  --panel-text-color: var(--desk-text) !important;
+  --panel-border-color: var(--desk-line-strong) !important;
+  --panel-border-radius: var(--desk-radius-md) !important;
+  --panel-background-color-dimmed: var(--desk-hover) !important;
+  --panel-background-color-dimmed-further: var(--desk-press) !important;
+  --panel-background-color-dimmed-even-further: var(--desk-press) !important;
+  --menuitem-border-radius: var(--desk-radius-xs) !important;
+}
+menupopup :is(menuitem, menu)[_moz-menuactive]:not([disabled]) {
+  background-color: var(--desk-hover) !important;
+  color: var(--desk-text) !important;
+}
+tooltip {
+  background-color: var(--desk-surface) !important;
+  color: var(--desk-text) !important;
+  border: 1px solid var(--desk-line-strong) !important;
+  border-radius: var(--desk-radius-xs) !important;
+}
+
+/* Kalender-Minimonat (Variablen hängen am Element, nicht an :root) */
+calendar-minimonth {
+  --mmMainBackground: transparent !important;
+  --mmMainBorderColor: var(--desk-line) !important;
+  --mmMainBorderRadius: var(--desk-radius-md) !important;
+  --mmHighlightColor: var(--desk-text) !important;
+  --mmHighlightBackground: var(--desk-accent-soft) !important;
+  --mmHighlightBorderColor: var(--desk-accent-muted) !important;
+  --mmBoxBackground: var(--desk-raised) !important;
+  --mmBoxBorderColor: var(--desk-line) !important;
+  --mmBoxItemColor: var(--desk-text-faint) !important;
+  --mmDayColor: var(--desk-text) !important;
+  --mmDayOtherColor: var(--desk-text-faint) !important;
+  --mmDayWeekColor: var(--desk-text-faint) !important;
+  --mmDayTodayColor: var(--desk-accent-text) !important;
+  --mmDayTodayBackground: transparent !important;
+  --mmDayTodayBorderColor: var(--desk-accent) !important;
+  --mmDaySelectedColor: var(--desk-text) !important;
+  --mmDaySelectedBackground: var(--desk-accent-soft) !important;
+  --mmDaySelectedBorderColor: transparent !important;
+  --mmDaySelectedTodayBackground: var(--desk-accent-soft) !important;
+  --mmDaySelectedTodayBorderColor: var(--desk-accent) !important;
+  --mmDayBorderRadius: var(--desk-radius-xs) !important;
+  --mmDayBusyColor: var(--desk-wood-light) !important;
+}
+
+/* Kalender-Agenda (Heute-Bereich) */
+#agenda {
+  --selected-background: var(--desk-accent-soft-surface) !important;
+  --selected-foreground: var(--desk-text) !important;
+}
+
+/* ═════════ 2. Schrift ═════════ */
+
+:root,
+menupopup, panel, tooltip, menulist, button, input, textarea, select {
+  font-family: var(--desk-font-ui) !important;
+}
+:is(pre, code, kbd, samp, .monospace) {
+  font-family: var(--desk-font-mono) !important;
+}
+
+/* ═════════ 7. Dialoge & Fenster ═════════ */
+
+dialog,
+:root:not(#messengerWindow) > body > dialog {
+  background-color: var(--desk-surface) !important;
+  color: var(--desk-text) !important;
+}
+:root:is([windowtype], :has(> body > dialog)):not(#messengerWindow) {
+  background-color: var(--desk-surface) !important;
+  color: var(--desk-text) !important;
+}
+dialog :is(richlistbox, tree) {
+  background-color: var(--desk-bg) !important;
+  color: var(--desk-text) !important;
+  border-color: var(--desk-line) !important;
+  border-radius: var(--desk-radius-sm) !important;
+}
+dialog richlistbox > richlistitem[selected="true"] {
+  background-color: var(--desk-accent-soft) !important;
+  color: var(--desk-text) !important;
+}
+dialog :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea) {
+  background-color: var(--desk-bg) !important;
+  color: var(--desk-text) !important;
+  border: 1px solid var(--desk-line-strong) !important;
+  border-radius: var(--desk-radius-sm) !important;
+}
+dialog :is(input, textarea):focus-visible {
+  border-color: var(--desk-accent-muted) !important;
+}
+input[type="checkbox"], input[type="radio"] {
+  accent-color: var(--desk-accent) !important;
+}
+:root {
+  accent-color: var(--desk-accent) !important;
+}
+
+/* ═════════ Warnleisten (notification-message, moz-message-bar): Amber/Holz statt Neon-Gelb ═════════ */
+/* Die Farben stehen dort per :host im Schatten-DOM; Regeln am Element selbst gewinnen. */
+:is(notification-message, moz-message-bar) {
+  --message-bar-background-color: var(--desk-raised) !important;
+  --message-bar-text-color: var(--desk-text) !important;
+  --message-bar-border-color: var(--desk-line) !important;
+  --message-bar-border-radius: var(--desk-radius-sm) !important;
+  --message-bar-icon-color: var(--desk-text-muted) !important;
+  --icon-color: var(--desk-text-muted) !important;
+  --button-text-color: var(--desk-text) !important;
+  --button-text-color-hover: var(--desk-text) !important;
+  --button-text-color-active: var(--desk-text) !important;
+  --button-border-color: var(--desk-line-strong) !important;
+  --button-border-color-active: var(--desk-line-strong) !important;
+  --button-background-color: var(--desk-hover) !important;
+  --button-background-color-hover: var(--desk-press) !important;
+  --button-background-color-active: var(--desk-press) !important;
+  --background-color-box-info: var(--desk-raised) !important;
+  border-radius: var(--desk-radius-sm) !important;
+}
+:is(notification-message, moz-message-bar)[type="warning"] {
+  --message-bar-background-color: var(--desk-warning-soft) !important;
+  --message-bar-border-color: var(--desk-warning-line) !important;
+  --message-bar-icon-color: var(--desk-warning) !important;
+  --icon-color: var(--desk-warning) !important;
+  --icon-color-warning: var(--desk-warning) !important;
+}
+:is(notification-message, moz-message-bar):is([type="error"], [type="critical"]) {
+  --message-bar-background-color: var(--desk-error-soft) !important;
+  --message-bar-border-color: var(--desk-error-line) !important;
+  --message-bar-icon-color: var(--desk-error) !important;
+  --icon-color: var(--desk-error) !important;
+  --icon-color-critical: var(--desk-error) !important;
+}
+:is(notification-message, moz-message-bar)[type="success"] {
+  --message-bar-background-color: var(--desk-success-soft) !important;
+  --message-bar-border-color: var(--desk-success-line) !important;
+  --message-bar-icon-color: var(--desk-success) !important;
+  --icon-color: var(--desk-success) !important;
+  --icon-color-success: var(--desk-success) !important;
+}
+
+/* ═════════ Klassische XUL-Bäume (Termin-Suchliste, Filter, Konten-Dialoge): kein kaltes Grau ═════════ */
+tree {
+  appearance: none !important;
+  background-color: var(--desk-bg) !important;
+  color: var(--desk-text) !important;
+  border-color: var(--desk-line) !important;
+}
+treecols {
+  appearance: none !important;
+  background-color: var(--desk-surface) !important;
+  border-block-end: 1px solid var(--desk-line) !important;
+}
+treecol,
+treecolpicker {
+  appearance: none !important;
+  background-color: var(--desk-surface) !important;
+  color: var(--desk-text-faint) !important;
+  border: none !important;
+  border-inline-end: 1px solid var(--desk-line) !important;
+  padding-block: 4px !important;
+}
+treecol:hover,
+treecolpicker:hover {
+  background-color: var(--desk-hover) !important;
+  color: var(--desk-text) !important;
+}
+treechildren::-moz-tree-row(hover) {
+  background-color: var(--desk-hover-bg) !important;
+}
+treechildren::-moz-tree-row(selected) {
+  background-color: var(--desk-select-unfocused) !important;
+}
+treechildren::-moz-tree-row(selected, focus) {
+  background-color: var(--desk-accent-soft) !important;
+}
+treechildren::-moz-tree-cell-text(selected) {
+  color: var(--desk-text) !important;
+}
+
+/* Kalenderliste: ENABLE-Badge in Holz statt Stahlblau */
+#calendar-list > li > button.calendar-enable-button {
+  background: var(--desk-wood) !important;
+  color: var(--desk-text) !important;
+}
+#calendar-list > li > button.calendar-enable-button:is(:hover, :focus, :active) {
+  background: var(--desk-wood-light) !important;
+}
+#calendar-list > li {
+  border-radius: var(--desk-radius-xs) !important;
+}
+#calendar-list:focus-within > li.selected {
+  background-color: var(--desk-accent-soft-surface) !important;
+  color: var(--desk-text) !important;
+}
+
+/* Textauswahl */
+::selection {
+  background-color: var(--desk-selection) !important;
+  color: var(--desk-text) !important;
+}
+
+/* Zeitauswahl im Termin-Dialog (sonst Firefox-Blau #0a84ff) */
+timepicker-grids {
+  --tpMainColor: var(--desk-text) !important;
+  --tpMainBackground: var(--desk-surface) !important;
+  --tpBorderColor: var(--desk-line-strong) !important;
+  --tpSubColor: var(--desk-text) !important;
+  --tpSubBackground: var(--desk-raised) !important;
+  --tpFiveminColor: var(--desk-text-muted) !important;
+  --tpItemHoverColor: var(--desk-text) !important;
+  --tpItemHoverBackground: var(--desk-hover) !important;
+  --tbHighlightColor: var(--desk-text) !important;
+  --tbHighlightBackground: var(--desk-accent-muted) !important;
+}
+
+/* Einstellungen: Such-Treffer-Hinweis (sonst Neon-Gelb) */
+.search-tooltip {
+  background-color: var(--desk-warning-soft) !important;
+  color: var(--desk-text) !important;
+  border-color: var(--desk-warning-line) !important;
+  border-radius: var(--desk-radius-xs) !important;
+}
+.search-tooltip::before {
+  border-block-start-color: var(--desk-warning-line) !important;
+}
+.search-tooltip::after {
+  border-block-start-color: var(--desk-warning-soft) !important;
+}
+.highlighting-group {
+  --section-highlight-background-color: var(--desk-accent-soft) !important;
+}
+[selected="true"] .radio-icon {
+  stroke: var(--desk-accent) !important;
+}
+
+
+/* ═════════ 3. Rahmen: Tabs, Toolbar, Spaces ═════════ */
+
+#messengerWindow,
+#messengerWindow > body,
+#navigation-toolbox,
+#tabs-toolbar,
+#unifiedToolbarContainer,
+#unifiedToolbar,
+#spacesToolbar {
+  background-color: var(--desk-bg-deep) !important;
+  background-image: none !important;
+}
+#spacesToolbar {
+  border-inline-end: none !important;
+}
+#tabs-toolbar {
+  padding-block-start: 6px !important;
+  padding-inline: 8px !important;
+}
+.tabmail-tab {
+  border-radius: var(--desk-radius-sm) var(--desk-radius-sm) 0 0 !important;
+  margin-inline-end: 4px !important;
+  color: var(--desk-text-faint) !important;
+  box-shadow: none !important;
+}
+.tabmail-tab[selected="true"] {
+  color: var(--desk-text) !important;
+}
+.tabmail-tab .tab-background[selected="true"] {
+  background-color: var(--desk-surface) !important;
+  background-image: none !important;
+  border-radius: var(--desk-radius-sm) var(--desk-radius-sm) 0 0 !important;
+}
+.tabmail-tab:hover .tab-background:not([selected="true"]) {
+  background-color: var(--desk-hover-deep) !important;
+  border-radius: var(--desk-radius-sm) var(--desk-radius-sm) 0 0 !important;
+}
+.tab-line {
+  margin-inline: 14px !important;
+}
+.tab-line:not([selected="true"]) {
+  display: none !important;
+}
+
+/* ═════════ 4. Hauptansicht (about:3pane): drei Kacheln mit Luft ═════════ */
+
+/* about3Pane.xhtml – body ist ein Grid; Splitter werden zur 8-px-Fuge */
+body:has(> #folderPane) {
+  box-sizing: border-box !important;
+  padding: 0 8px 8px !important;
+  background-color: var(--desk-bg-deep) !important;
+}
+body:has(> #folderPane) > hr[is="pane-splitter"]:not(.splitter-collapsed) {
+  --splitter-content-size: 8px !important;
+  --splitter-occupy-size: 8px !important;
+  border-color: transparent !important;
+}
+#folderPane,
+#threadPane,
+#messagePane,
+#accountCentralBrowser {
+  border: 1px solid var(--desk-line) !important;
+  border-radius: var(--desk-radius-md) !important;
+  overflow: hidden !important;
+}
+#folderPane {
+  background-color: var(--desk-surface) !important;
+}
+#threadPane {
+  background-color: var(--desk-bg) !important;
+}
+#folderPaneHeaderBar,
+#threadPaneHeaderBar,
+#quick-filter-bar {
+  background-color: var(--desk-surface) !important;
+  border-color: var(--desk-line) !important;
+}
+#threadPaneHeaderBar {
+  padding-inline: 10px !important;
+}
+
+/* Ordnerliste: Zeilen als weiche Pillen mit Rand */
+#folderTree {
+  padding-inline: 6px !important;
+}
+#folderTree li > .container {
+  border-radius: var(--desk-radius-sm) !important;
+}
+#folderTree > li > .mode-container > .mode-name {
+  color: var(--desk-text-faint) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#folderTree > li:not(:first-of-type) > .mode-container {
+  border-block-start-color: var(--desk-line) !important;
+}
+#folderTree li[data-server-type] > .container > .icon {
+  --icon-color: var(--desk-text-muted) !important;
+}
+.folder-count-badge {
+  font-weight: 600 !important;
+}
+
+/* Nachrichtenliste (Tabellenansicht): gelesen gedämpft, ungelesen Creme + fett */
+#threadTree {
+  --tree-view-color: var(--desk-text-muted) !important;
+}
+#threadTree [is="tree-view-table-body"] > .table-layout > td:first-child {
+  border-start-start-radius: var(--desk-radius-xs);
+  border-end-start-radius: var(--desk-radius-xs);
+}
+#threadTree [is="tree-view-table-body"] > .table-layout > td:last-child {
+  border-start-end-radius: var(--desk-radius-xs);
+  border-end-end-radius: var(--desk-radius-xs);
+}
+/* Fokussierte Auswahl: leiser Glutgrund + feine Glutlinie links */
+#threadTree [is="tree-view-table-body"]:is(:focus, :focus-within) > .table-layout.selected > td:first-child {
+  box-shadow: inset 3px 0 0 var(--desk-accent) !important;
+}
+#threadTree thead[is="tree-view-table-header"] th {
+  background-color: var(--desk-surface) !important;
+  color: var(--desk-text-faint) !important;
+}
+#threadTree thead[is="tree-view-table-header"]::after {
+  border-block-end-color: var(--desk-line) !important;
+}
+
+/* Kartenansicht: Ungelesen-Punkt in Glut, Karten mit runden Ecken */
+#threadTree[rows="thread-card"] .card-layout[data-properties~="unread"] {
+  --read-status-fill: var(--desk-accent) !important;
+  --read-status-stroke: var(--desk-accent) !important;
+}
+#threadTree[rows="thread-card"] .card-layout[data-properties~="unread"][data-properties~="new"] {
+  --read-status-fill: var(--desk-accent-text) !important;
+  --read-status-stroke: var(--desk-accent) !important;
+}
+#threadTree[rows="thread-card"] .card-layout > td > .card-container {
+  border-radius: var(--desk-radius-sm) !important;
+}
+#threadTree[rows="thread-card"] .card-layout:is(.selected) > td > .card-container {
+  box-shadow: inset 3px 0 0 var(--desk-accent) !important;
+}
+
+/* ═════════ 5. Lesebereich (about:message) ═════════ */
+
+#messagepanebox {
+  background-color: var(--desk-bg) !important;
+  color: var(--desk-text) !important;
+}
+#messageHeader {
+  background-color: var(--desk-surface) !important;
+  border-block-end: 1px solid var(--desk-line) !important;
+  padding: 8px 12px !important;
+}
+#messageHeader .message-header-label {
+  color: var(--desk-text-faint) !important;
+}
+#messageHeader .message-header-datetime {
+  color: var(--desk-text-muted) !important;
+}
+#messageHeader .message-header-view-button {
+  border-radius: var(--desk-radius-sm) !important;
+}
+
+/* ═════════ 6. Kalender ═════════ */
+
+/* Wie die Mail-Ansicht: Seitenleiste und Ansicht als Kacheln mit Fuge */
+#calendarContent {
+  box-sizing: border-box !important;
+  padding: 0 8px 8px !important;
+  background-color: var(--desk-bg-deep) !important;
+}
+#calSidebar,
+#calendarDisplayBox {
+  border: 1px solid var(--desk-line) !important;
+  border-radius: var(--desk-radius-md) !important;
+  overflow: hidden !important;
+}
+#calSidebar {
+  background-color: var(--desk-surface) !important;
+}
+#calendarDisplayBox,
+#calendar-view-box,
+#view-box {
+  background-color: var(--desk-bg) !important;
+}
+#calsidebar_splitter {
+  appearance: none !important;
+  border: none !important;
+  background: transparent !important;
+  min-inline-size: 8px !important;
+}
+/* Termin-Suchliste oben („Events in the Next 7 Days“) */
+#unifinder-searchBox {
+  background-color: var(--desk-surface) !important;
+  background-image: none !important;
+  color: var(--desk-text) !important;
+  border-block-end: 1px solid var(--desk-line) !important;
+  padding: 6px 8px !important;
+}
+#unifinder-search-results-tree {
+  border: none !important;
+}
+#calendar-deactivated-notification-location-events notification-message {
+  margin: 8px !important;
+}
+#today-pane-panel {
+  background-color: var(--desk-surface) !important;
+  border-color: var(--desk-line) !important;
+}
+/* Heute: Wochentag-Kopf in Glut, Rest leise */
+.day-column-today .day-column-heading,
+calendar-day-label[relation="today"] {
+  color: var(--desk-accent-text) !important;
+}
+.day-column-selected:not(.day-column-today) .day-column-heading {
+  color: var(--desk-text) !important;
+}
+.calendar-month-day-box-date-label[relation="today"] {
+  color: var(--desk-text) !important;
+}
+/* Jetzt-Linie */
+.timeIndicator {
+  border-color: var(--desk-accent) !important;
+  opacity: 0.9 !important;
+}
+.multiday-timebar-now-indicator {
+  border-color: var(--desk-accent) !important;
+}
+/* Termine: Kalenderfarbe als Kante links, Fläche gedämpft auf Dunkel, Text Creme */
+.calendar-color-box {
+  border-radius: var(--desk-radius-xs) !important;
+  background-color: color-mix(in srgb, var(--item-backcolor) 38%, var(--desk-bg)) !important;
+  color: var(--desk-text) !important;
+  box-shadow: inset 3px 0 0 var(--item-backcolor) !important;
+}
+calendar-month-day-box calendar-month-day-box-item[allday="true"].calendar-color-box {
+  background-color: color-mix(in srgb, var(--item-backcolor) 45%, var(--desk-bg)) !important;
+  box-shadow: inset 3px 0 0 var(--item-backcolor) !important;
+}
+:is(calendar-month-day-box-item, calendar-event-box, calendar-editable-item)[selected="true"].calendar-color-box {
+  background-color: color-mix(in srgb, var(--item-backcolor) 48%, var(--desk-bg)) !important;
+  color: var(--desk-text) !important;
+  box-shadow: inset 3px 0 0 var(--item-backcolor), 0 0 0 1px var(--desk-text) !important;
+}
+.agenda-listitem-all-day .agenda-listitem-details {
+  background-color: color-mix(in srgb, var(--item-backcolor) 42%, var(--desk-surface)) !important;
+  color: var(--desk-text) !important;
+}
+.agenda-listitem-details {
+  border-radius: var(--desk-radius-xs) !important;
+}
+/* Ansichtsumschalter Tag/Woche/Monat */
+button.calview-toggle-item[role="tab"][aria-selected="true"] {
+  color: var(--desk-text) !important;
+  box-shadow: none !important;
+}
+button.calview-toggle-item[role="tab"][aria-selected="false"] {
+  color: var(--desk-text-muted) !important;
+}
+.view-header {
+  color: var(--desk-text) !important;
+  font-weight: 600 !important;
+}
+/* Monatsansicht: Zahlen leiser, Wochennummer-Pille im Holzton */
+.calendar-month-day-box-week-label {
+  color: var(--desk-text-faint) !important;
+}
+

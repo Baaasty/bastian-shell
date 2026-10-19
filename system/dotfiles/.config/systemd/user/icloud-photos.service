@@ -1,0 +1,12 @@
+[Unit]
+Description=iCloud Photos (nur lesen)
+After=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/rclone mount icloud-photos: %h/Data/iCloud/Photos --read-only --vfs-cache-mode full --vfs-cache-max-size 20G --cache-dir %h/Data/.cache/rclone --dir-cache-time 1h
+ExecStop=/usr/bin/fusermount3 -u %h/Data/iCloud/Photos
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

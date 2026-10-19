@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/bat.py -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>name</key><string>Desktop Hearth</string>
+<key>settings</key><array>
+<dict><key>settings</key><dict><key>background</key><string>#211A15</string><key>foreground</key><string>#F6ECDD</string><key>caret</key><string>#DB6B4C</string><key>selection</key><string>#5C392D</string><key>lineHighlight</key><string>#34261E</string><key>gutterForeground</key><string>#6D5540</string><key>guide</key><string>#553C2E</string><key>findHighlight</key><string>#E0AE55</string></dict></dict>
+<dict><key>name</key><string>Kommentar</string><key>scope</key><string>comment, punctuation.definition.comment</string><key>settings</key><dict><key>foreground</key><string>#B5A591</string><key>fontStyle</key><string>italic</string></dict></dict>
+<dict><key>name</key><string>String</string><key>scope</key><string>string, punctuation.definition.string</string><key>settings</key><dict><key>foreground</key><string>#8FA37B</string></dict></dict>
+<dict><key>name</key><string>Escape</string><key>scope</key><string>constant.character.escape, string.regexp</string><key>settings</key><dict><key>foreground</key><string>#7FA394</string></dict></dict>
+<dict><key>name</key><string>Zahl</string><key>scope</key><string>constant.numeric</string><key>settings</key><dict><key>foreground</key><string>#E0AE55</string></dict></dict>
+<dict><key>name</key><string>Konstante</string><key>scope</key><string>constant.language, constant.other, support.constant</string><key>settings</key><dict><key>foreground</key><string>#E0AE55</string></dict></dict>
+<dict><key>name</key><string>Schlüsselwort</string><key>scope</key><string>keyword, storage.type, storage.modifier</string><key>settings</key><dict><key>foreground</key><string>#DB6B4C</string></dict></dict>
+<dict><key>name</key><string>Operator</string><key>scope</key><string>keyword.operator, punctuation.separator, punctuation.terminator</string><key>settings</key><dict><key>foreground</key><string>#D2C2AE</string></dict></dict>
+<dict><key>name</key><string>Funktion</string><key>scope</key><string>entity.name.function, support.function, meta.function-call variable.function</string><key>settings</key><dict><key>foreground</key><string>#F2A58A</string></dict></dict>
+<dict><key>name</key><string>Typ/Klasse</string><key>scope</key><string>entity.name.type, entity.name.class, support.type, support.class, entity.other.inherited-class</string><key>settings</key><dict><key>foreground</key><string>#A07C5C</string></dict></dict>
+<dict><key>name</key><string>Tag</string><key>scope</key><string>entity.name.tag</string><key>settings</key><dict><key>foreground</key><string>#DB6B4C</string></dict></dict>
+<dict><key>name</key><string>Attribut</string><key>scope</key><string>entity.other.attribute-name</string><key>settings</key><dict><key>foreground</key><string>#A07C5C</string><key>fontStyle</key><string>italic</string></dict></dict>
+<dict><key>name</key><string>Variable</string><key>scope</key><string>variable, variable.other</string><key>settings</key><dict><key>foreground</key><string>#F6ECDD</string></dict></dict>
+<dict><key>name</key><string>Parameter</string><key>scope</key><string>variable.parameter</string><key>settings</key><dict><key>foreground</key><string>#B8788A</string><key>fontStyle</key><string>italic</string></dict></dict>
+<dict><key>name</key><string>Sprachvariable</string><key>scope</key><string>variable.language</string><key>settings</key><dict><key>foreground</key><string>#B8788A</string><key>fontStyle</key><string>italic</string></dict></dict>
+<dict><key>name</key><string>Schlüssel (JSON/YAML/TOML)</string><key>scope</key><string>meta.mapping.key string, support.type.property-name, entity.name.tag.yaml, meta.object-literal.key</string><key>settings</key><dict><key>foreground</key><string>#F2A58A</string></dict></dict>
+<dict><key>name</key><string>Klammern</string><key>scope</key><string>punctuation, meta.brace</string><key>settings</key><dict><key>foreground</key><string>#D2C2AE</string></dict></dict>
+<dict><key>name</key><string>Überschrift</string><key>scope</key><string>markup.heading, entity.name.section</string><key>settings</key><dict><key>foreground</key><string>#DB6B4C</string><key>fontStyle</key><string>bold</string></dict></dict>
+<dict><key>name</key><string>Fett</string><key>scope</key><string>markup.bold</string><key>settings</key><dict><key>foreground</key><string>#F6ECDD</string><key>fontStyle</key><string>bold</string></dict></dict>
+<dict><key>name</key><string>Kursiv</string><key>scope</key><string>markup.italic</string><key>settings</key><dict><key>foreground</key><string>#F6ECDD</string><key>fontStyle</key><string>italic</string></dict></dict>
+<dict><key>name</key><string>Code</string><key>scope</key><string>markup.raw, markup.inline.raw</string><key>settings</key><dict><key>foreground</key><string>#8FA37B</string></dict></dict>
+<dict><key>name</key><string>Link</string><key>scope</key><string>markup.underline.link, string.other.link</string><key>settings</key><dict><key>foreground</key><string>#7E8FA8</string><key>fontStyle</key><string>underline</string></dict></dict>
+<dict><key>name</key><string>Liste</string><key>scope</key><string>markup.list punctuation.definition.list</string><key>settings</key><dict><key>foreground</key><string>#DB6B4C</string></dict></dict>
+<dict><key>name</key><string>Zitat</string><key>scope</key><string>markup.quote</string><key>settings</key><dict><key>foreground</key><string>#D2C2AE</string><key>fontStyle</key><string>italic</string></dict></dict>
+<dict><key>name</key><string>Diff +</string><key>scope</key><string>markup.inserted</string><key>settings</key><dict><key>foreground</key><string>#A3B083</string></dict></dict>
+<dict><key>name</key><string>Diff -</string><key>scope</key><string>markup.deleted</string><key>settings</key><dict><key>foreground</key><string>#E0604F</string></dict></dict>
+<dict><key>name</key><string>Diff ~</string><key>scope</key><string>markup.changed</string><key>settings</key><dict><key>foreground</key><string>#E0AE55</string></dict></dict>
+<dict><key>name</key><string>Diff Kopf</string><key>scope</key><string>meta.diff.header, meta.diff.range</string><key>settings</key><dict><key>foreground</key><string>#7E8FA8</string></dict></dict>
+<dict><key>name</key><string>Fehler</string><key>scope</key><string>invalid</string><key>settings</key><dict><key>foreground</key><string>#E0604F</string><key>fontStyle</key><string>underline</string></dict></dict>
+</array></dict></plist>

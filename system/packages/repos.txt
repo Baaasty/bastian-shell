@@ -1,0 +1,27 @@
+# Zusätzliche Paketquellen (Stand 2026-10-18 abends, Fedora 44, Hyprland-Rechner)
+# Format: <id> | <wofür> | <Befehl>   – dieselben Befehle stehen (mit Prüfung) in system/bootstrap Schritt 1.
+# Jeder Befehl ist idempotent (prüft vorher, ob die Quelle schon da ist).
+# Basis-Repos (fedora, updates, fedora-cisco-openh264, flathub) bringen Fedora KDE und Workstation selbst mit.
+# Ist-Zustand geprüft mit `dnf copr list` und /etc/yum.repos.d/ (aktive COPRs: quickshell, hyprland, helium).
+
+rpmfusion | Free + Nonfree: ffmpeg (voll), NVIDIA-Treiber, Discord, Steam, lpf-spotify-client | rpm -q rpmfusion-free-release rpmfusion-nonfree-release >/dev/null 2>&1 || sudo dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+quickshell | COPR errornointernet/quickshell: Quickshell 0.3.2 (Fedoras 0.2.1 kann keinen Blur) | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/errornointernet/quickshell$' || sudo dnf copr enable -y errornointernet/quickshell
+hyprland | COPR sdegler/hyprland: Hyprland 0.56, uwsm, hypridle, hyprlock, hyprsunset, xdg-desktop-portal-hyprland (die Sitzung selbst; Plasma bleibt als Rückfall) | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/sdegler/hyprland$' || sudo dnf copr enable -y sdegler/hyprland
+helium | COPR imput/helium: Helium-Browser (Chrome entfernt) | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/imput/helium$' || sudo dnf copr enable -y imput/helium
+vscode | Visual Studio Code (natives RPM, nicht Flatpak – sonst kommen die Claude-Hooks nicht an) | test -f /etc/yum.repos.d/vscode.repo || { sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc && printf '[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc\n' | sudo tee /etc/yum.repos.d/vscode.repo >/dev/null; }
+lazygit | COPR atim/lazygit: lazygit (Git im Terminal, `lg`) – nicht in Fedora | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/atim/lazygit$' || sudo dnf copr enable -y atim/lazygit
+yazi | COPR lihaohong/yazi: yazi (Dateimanager im Terminal, `y`) – nicht in Fedora | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/lihaohong/yazi$' || sudo dnf copr enable -y lihaohong/yazi
+
+# Vorhanden, aber AUS bzw. nicht (mehr) gebraucht – nur Gedächtnis, bootstrap fasst sie nicht an:
+#   COPR phracek/PyCharm (disabled)                            kommt mit fedora-workstation-repositories
+#   rpmfusion-nonfree-nvidia-driver, rpmfusion-nonfree-steam   kommen mit fedora-workstation-repositories (aus)
+#   google-chrome.repo  ENTFERNT/OPTIONAL   Chrome ist deinstalliert (2026-10-18); die Repo-Datei liegt noch in /etc/yum.repos.d
+#                                           (enabled=1, schadet nur durch Update-Abfragen) → optional: sudo rm /etc/yum.repos.d/google-chrome.repo
+#   brave-browser.repo  OPTIONAL            Brave ist nicht installiert; Repo-Datei liegt noch da (gleiches Spiel)
+# NVIDIA braucht kein eigenes Repo: akmod-nvidia kommt aus rpmfusion-nonfree-updates.
+#
+# Außerhalb von dnf-Repos (RPM-Dateien aus GitHub-Releases, ohne Repo → kein automatisches Update; siehe other.txt):
+#   GoXLR Utility  – GoXLR-on-Linux/goxlr-utility (die Nicht-SUSE-Datei)
+#   Equibop        – Equicord/Equibop, equibop-<version>.x86_64.rpm (Quelle bestätigt: Packager contact@equicord.org, URL equicord.org;
+#                    Bastian installierte v3.3.1 per `dnf install https://github.com/Equicord/Equibop/releases/download/v3.3.1/equibop-3.3.1.x86_64.rpm`)
+#   Claude Desktop – apt-Repo https://downloads.claude.ai/claude-desktop/apt/stable (nur in der distrobox "ubuntu")

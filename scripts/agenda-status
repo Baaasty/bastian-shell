@@ -1,0 +1,528 @@
+#!/usr/bin/python3 -I
+"""Termine (Anfang Vormonat bis Ende übernächster Monat) und offene Todos per CalDAV
+-> ~/.cache/desktop/agenda.json. Der lange Zeitraum ist für den Monatskalender im Dashboard,
+die Shell schneidet sich "heute + 7 Tage" selbst heraus.
+
+Ohne Zusatzpakete (urllib + eigener kleiner iCalendar-Leser). Konten wie bei mail-status:
+secrets.json im Repo-Root, Abschnitt "accounts", inkl. app-spezifischem Passwort
+(bleibt im Speicher, nie in argv, Log oder Ausgabe).
+
+Ablauf pro Konto: current-user-principal -> calendar-home-set -> Kalender (Depth 1),
+dann je Kalender ein calendar-query-REPORT: VEVENT mit time-range (Server soll expandieren,
+sonst expandiert das Script einfache RRULEs selbst) und VTODO ohne COMPLETED.
+Apple-Erinnerungen (neue Reminders) sind per CalDAV nicht erreichbar – nur echte VTODO-Kalender.
+
+Ausgabe:
+{ "updated": ms, "status": "ok" | "no-config" | "config-error", "range": { "from", "to" (ms, to exklusiv) },
+  "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "auth" | "error", "error" }],
+  "events": [{ "title", "start", "end" (ms), "allDay", "location", "calendar", "color", "account" }],
+  "todos":  [{ "title", "due" (ms, 0 = ohne), "allDay", "priority", "calendar", "account" }] }
+"""
+import base64
+import datetime as dt
+import json
+import os
+import re
+import socket
+import ssl
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+import zoneinfo
+
+CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "secrets.json")
+CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "desktop")
+OUT = os.path.join(CACHE_DIR, "agenda.json")
+MONTHS_BACK = 1     # Zeitraum: ab dem 1. des Vormonats …
+MONTHS_AHEAD = 3    # … bis vor den 1. in drei Monaten (= Ende übernächster Monat)
+TIMEOUT = 20
+MAX_TODOS = 60
+NS = {"d": "DAV:", "c": "urn:ietf:params:xml:ns:caldav", "a": "http://apple.com/ns/ical/"}
+UTC = dt.timezone.utc
+
+
+# ---------------------------------------------------------------- Konten
+
+def load_accounts():
+    try:
+        with open(CONFIG, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return "no-config", []
+    except (OSError, ValueError):
+        return "config-error", []
+    accounts = data.get("accounts") if isinstance(data, dict) else None
+    accounts = [a for a in accounts if isinstance(a, dict) and a.get("name")] if isinstance(accounts, list) else []
+    return ("ok" if accounts else "no-config"), accounts
+
+
+def password(acc):
+    """App-spezifisches Passwort aus dem Konto-Eintrag oder None."""
+    pw = acc.get("password")
+    return pw if isinstance(pw, str) and pw else None
+
+
+# ---------------------------------------------------------------- HTTP / WebDAV
+
+class AuthError(Exception):
+    pass
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    # Weiterleitungen selbst behandeln (urllib leitet PROPFIND/REPORT nicht weiter)
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OPENER = urllib.request.build_opener(NoRedirect, urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+
+
+def base_domain(url):
+    host = urllib.parse.urlsplit(url).hostname or ""
+    return ".".join(host.split(".")[-2:])
+
+
+class Dav:
+    def __init__(self, url, user, password):
+        self.url = url
+        self.domain = base_domain(url)
+        self.auth = "Basic " + base64.b64encode((user + ":" + password).encode()).decode()
+
+    def request(self, method, url, body, depth):
+        for _ in range(5):
+            if urllib.parse.urlsplit(url).scheme != "https":
+                raise urllib.error.URLError("https only")
+            headers = {"Content-Type": "application/xml; charset=utf-8", "Depth": str(depth)}
+            # Zugangsdaten nur an dieselbe Domain (iCloud verteilt auf pXX-caldav.icloud.com)
+            if base_domain(url) == self.domain:
+                headers["Authorization"] = self.auth
+            req = urllib.request.Request(url, data=body.encode(), method=method, headers=headers)
+            try:
+                with OPENER.open(req, timeout=TIMEOUT) as r:
+                    return r.geturl(), r.read()
+            except urllib.error.HTTPError as e:
+                if e.code in (301, 302, 303, 307, 308) and e.headers.get("Location"):
+                    url = urllib.parse.urljoin(url, e.headers["Location"])
+                    continue
+                if e.code in (401, 403):
+                    raise AuthError() from None
+                raise
+        raise urllib.error.URLError("too many redirects")
+
+    def propfind(self, url, props, depth=0):
+        body = ('<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" '
+                'xmlns:c="urn:ietf:params:xml:ns:caldav" xmlns:a="http://apple.com/ns/ical/"><d:prop>'
+                + props + "</d:prop></d:propfind>")
+        final, data = self.request("PROPFIND", url, body, depth)
+        return final, ET.fromstring(data)
+
+    def report(self, url, body):
+        _, data = self.request("REPORT", url, body, 1)
+        return ET.fromstring(data)
+
+
+def href_of(root, path):
+    el = root.find(".//d:response/d:propstat/d:prop/" + path + "/d:href", NS)
+    return el.text.strip() if el is not None and el.text else None
+
+
+def calendars(dav, acc_cfg):
+    """[(url, name, color, comps)] – comps: Menge aus VEVENT/VTODO."""
+    start = acc_cfg.get("url", "")
+    final, root = dav.propfind(start, "<d:current-user-principal/>")
+    principal = href_of(root, "d:current-user-principal")
+    if not principal:
+        final, root = dav.propfind(urllib.parse.urljoin(start, "/.well-known/caldav"), "<d:current-user-principal/>")
+        principal = href_of(root, "d:current-user-principal")
+    if not principal:
+        raise urllib.error.URLError("no principal")
+    principal = urllib.parse.urljoin(final, principal)
+    final, root = dav.propfind(principal, "<c:calendar-home-set/>")
+    home = href_of(root, "c:calendar-home-set")
+    if not home:
+        raise urllib.error.URLError("no calendar home")
+    home = urllib.parse.urljoin(final, home)
+    final, root = dav.propfind(home, "<d:resourcetype/><d:displayname/><a:calendar-color/>"
+                                     "<c:supported-calendar-component-set/>", depth=1)
+    wanted = set(acc_cfg.get("calendars") or [])
+    out = []
+    for resp in root.findall("d:response", NS):
+        href = resp.findtext("d:href", default="", namespaces=NS).strip()
+        prop = None
+        for ps in resp.findall("d:propstat", NS):
+            if "200" in (ps.findtext("d:status", default="", namespaces=NS)):
+                prop = ps.find("d:prop", NS)
+        if prop is None or prop.find("d:resourcetype/c:calendar", NS) is None:
+            continue
+        name = (prop.findtext("d:displayname", default="", namespaces=NS) or "").strip()
+        if wanted and name not in wanted:
+            continue
+        comps = {c.get("name") for c in prop.findall("c:supported-calendar-component-set/c:comp", NS)}
+        color = (prop.findtext("a:calendar-color", default="", namespaces=NS) or "").strip()
+        out.append((urllib.parse.urljoin(final, href), name, color[:7] if color.startswith("#") else "",
+                    comps or {"VEVENT", "VTODO"}))
+    return out
+
+
+def ical_blobs(root):
+    return [el.text for el in root.findall(".//c:calendar-data", NS) if el.text]
+
+
+# ---------------------------------------------------------------- iCalendar
+
+def unfold(text):
+    return re.sub(r"\r?\n[ \t]", "", text).splitlines()
+
+
+def parse_ical(text):
+    """Minimaler Leser: Liste von Komponenten {name, props: {NAME: [(params, value)]}}, nur VEVENT/VTODO."""
+    comps, stack = [], []
+    for line in unfold(text):
+        if not line:
+            continue
+        m = re.match(r"([A-Za-z0-9-]+)((?:;[^:]*)?):(.*)", line)
+        if not m:
+            continue
+        name, rawparams, value = m.group(1).upper(), m.group(2), m.group(3)
+        if name == "BEGIN":
+            stack.append({"name": value.upper(), "props": {}})
+            continue
+        if name == "END":
+            # VALARM & Co. landen in eigenen Einträgen und fallen hier einfach weg
+            if stack:
+                c = stack.pop()
+                if c["name"] in ("VEVENT", "VTODO"):
+                    comps.append(c)
+            continue
+        if not stack:
+            continue
+        params = {}
+        for p in re.findall(r';([^=;]+)=("[^"]*"|[^;]*)', rawparams):
+            params[p[0].upper()] = p[1].strip('"')
+        stack[-1]["props"].setdefault(name, []).append((params, value))
+    return comps
+
+
+def first(comp, name):
+    v = comp["props"].get(name)
+    return v[0] if v else (None, None)
+
+
+def text_value(v):
+    if v is None:
+        return ""
+    return re.sub(r"\\(.)", lambda m: "\n" if m.group(1) in "nN" else m.group(1), v).strip()
+
+
+def parse_dt(params, value):
+    """-> (datetime, all_day). Ganztägig/floating = naiv (lokal), TZID = zoneinfo, Z = UTC."""
+    if not value:
+        return None, False
+    value = value.strip()
+    if (params or {}).get("VALUE") == "DATE" or re.fullmatch(r"\d{8}", value):
+        return dt.datetime.strptime(value[:8], "%Y%m%d"), True
+    utc = value.endswith("Z")
+    d = dt.datetime.strptime(value.rstrip("Z")[:15], "%Y%m%dT%H%M%S")
+    if utc:
+        return d.replace(tzinfo=UTC), False
+    tzid = (params or {}).get("TZID")
+    if tzid:
+        try:
+            return d.replace(tzinfo=zoneinfo.ZoneInfo(tzid.strip())), False
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+            pass
+    return d, False
+
+
+def ms(d):
+    return int(d.timestamp() * 1000)   # naiv = lokale Zeit (inkl. Sommerzeit)
+
+
+def parse_duration(v):
+    m = re.fullmatch(r"([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", (v or "").strip())
+    if not m:
+        return None
+    sign = -1 if m.group(1) == "-" else 1
+    w, d, h, mi, s = (int(x or 0) for x in m.groups()[1:])
+    return sign * dt.timedelta(weeks=w, days=d, hours=h, minutes=mi, seconds=s)
+
+
+WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+
+def add_months(d, n):
+    y, m = divmod(d.month - 1 + n, 12)
+    try:
+        return d.replace(year=d.year + y, month=m + 1)
+    except ValueError:
+        return None   # z. B. 31. im kurzen Monat -> fällt aus (wie RFC 5545)
+
+
+def nth_weekday(year, month, spec, like):
+    """BYDAY=2MO / -1FR im Monat -> datetime (Uhrzeit wie like) oder None."""
+    m = re.fullmatch(r"([+-]?\d+)?([A-Z]{2})", spec)
+    if not m or m.group(2) not in WEEKDAYS:
+        return None
+    n, wd = int(m.group(1) or 0), WEEKDAYS.index(m.group(2))
+    days = [day for day in range(1, 32) if _valid(year, month, day) and dt.date(year, month, day).weekday() == wd]
+    if not n or abs(n) > len(days):
+        return None
+    return like.replace(year=year, month=month, day=days[n - 1 if n > 0 else n])
+
+
+def _valid(y, m, d):
+    try:
+        dt.date(y, m, d)
+        return True
+    except ValueError:
+        return False
+
+
+def expand(start, rrule, lo, hi, exdates):
+    """Einfache RRULE-Expansion (DAILY/WEEKLY/MONTHLY/YEARLY, INTERVAL, COUNT, UNTIL, BYDAY).
+    Liefert Starts mit lo <= start(ms) < hi; für Server, die calendar-query nicht expandieren."""
+    rule = dict(p.split("=", 1) for p in rrule.split(";") if "=" in p)
+    freq = rule.get("FREQ", "")
+    interval = max(1, int(rule.get("INTERVAL", "1") or 1))
+    count = int(rule["COUNT"]) if rule.get("COUNT", "").isdigit() else None
+    until = None
+    if rule.get("UNTIL"):
+        u, _ = parse_dt({}, rule["UNTIL"])
+        until = ms(u) if u else None
+    byday = [b for b in rule.get("BYDAY", "").split(",") if b]
+    out, n, step = [], 0, 0
+
+    def emit(d):
+        nonlocal n
+        t = ms(d)
+        if until is not None and t > until:
+            return False
+        if count is not None and n >= count:
+            return False
+        n += 1
+        if lo <= t < hi and t not in exdates:
+            out.append(d)
+        return t < hi
+
+    while step < 3000:
+        if freq == "DAILY":
+            cands = [start + dt.timedelta(days=step * interval)]
+        elif freq == "WEEKLY":
+            base = start + dt.timedelta(weeks=step * interval)
+            if byday:
+                monday = base - dt.timedelta(days=base.weekday())
+                cands = sorted(monday + dt.timedelta(days=WEEKDAYS.index(b[-2:])) for b in byday if b[-2:] in WEEKDAYS)
+                cands = [c for c in cands if c >= start]
+            else:
+                cands = [base]
+        elif freq == "MONTHLY":
+            base = add_months(start.replace(day=1), step * interval)
+            if byday:
+                cands = sorted(c for c in (nth_weekday(base.year, base.month, b, start) for b in byday) if c and c >= start)
+            else:
+                c = add_months(start, step * interval)
+                cands = [c] if c else []
+        elif freq == "YEARLY":
+            c = add_months(start, 12 * step * interval)
+            cands = [c] if c else []
+        else:
+            return [start] if lo <= ms(start) < hi else []
+        for c in cands:
+            if not emit(c):
+                return out
+        step += 1
+    return out
+
+
+# ---------------------------------------------------------------- Abfragen
+
+def fmt_utc(d):
+    return d.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def query_events(dav, url, lo_dt, hi_dt):
+    rng = 'start="%s" end="%s"' % (fmt_utc(lo_dt), fmt_utc(hi_dt))
+    body = ('<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            '<d:prop><c:calendar-data><c:expand ' + rng + '/></c:calendar-data></d:prop>'
+            '<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT">'
+            '<c:time-range ' + rng + '/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>')
+    return ical_blobs(dav.report(url, body))
+
+
+def query_todos(dav, url):
+    body = ('<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">'
+            '<d:prop><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR">'
+            '<c:comp-filter name="VTODO"><c:prop-filter name="COMPLETED"><c:is-not-defined/></c:prop-filter>'
+            '</c:comp-filter></c:comp-filter></c:filter></c:calendar-query>')
+    return ical_blobs(dav.report(url, body))
+
+
+def events_from(blobs, lo, hi, meta):
+    """VEVENTs -> Einträge im Fenster [lo, hi). Überschreibungen (RECURRENCE-ID) ersetzen Instanzen."""
+    out, overrides, masters = [], {}, []
+    for blob in blobs:
+        for c in parse_ical(blob):
+            if c["name"] != "VEVENT":
+                continue
+            uid = text_value(first(c, "UID")[1])
+            rid = first(c, "RECURRENCE-ID")
+            if rid[1]:
+                d, _ = parse_dt(*rid)
+                if d:
+                    overrides.setdefault(uid, set()).add(ms(d))
+            masters.append(c)
+    for c in masters:
+        if text_value(first(c, "STATUS")[1]).upper() == "CANCELLED":
+            continue
+        start, all_day = parse_dt(*first(c, "DTSTART"))
+        if start is None:
+            continue
+        end, _ = parse_dt(*first(c, "DTEND"))
+        if end is None:
+            dur = parse_duration(first(c, "DURATION")[1])
+            end = start + (dur if dur is not None else dt.timedelta(days=1 if all_day else 0))
+        length = end - start
+        uid = text_value(first(c, "UID")[1])
+        rrule = first(c, "RRULE")[1]
+        if rrule and not first(c, "RECURRENCE-ID")[1]:
+            ex = set(overrides.get(uid, set()))
+            for p, v in c["props"].get("EXDATE", []):
+                for part in v.split(","):
+                    d, _ = parse_dt(p, part)
+                    if d:
+                        ex.add(ms(d))
+            starts = expand(start, rrule, lo - int(length.total_seconds() * 1000), hi, ex)
+        else:
+            starts = [start]
+        for s in starts:
+            s_ms, e_ms = ms(s), ms(s + length)
+            # im Fenster: beginnt vor hi und endet nach lo (Termine ohne Dauer zählen ab lo)
+            if s_ms >= hi or (e_ms <= lo and s_ms < lo):
+                continue
+            out.append({"title": text_value(first(c, "SUMMARY")[1]) or "(no title)", "start": s_ms,
+                        "end": max(e_ms, s_ms), "allDay": all_day,
+                        "location": text_value(first(c, "LOCATION")[1]).split("\n")[0], **meta})
+    return out
+
+
+def todos_from(blobs, meta):
+    out = []
+    for blob in blobs:
+        for c in parse_ical(blob):
+            if c["name"] != "VTODO" or first(c, "COMPLETED")[1]:
+                continue
+            if text_value(first(c, "STATUS")[1]).upper() in ("COMPLETED", "CANCELLED"):
+                continue
+            due, all_day = parse_dt(*first(c, "DUE"))
+            if due is not None and all_day:
+                due = due.replace(hour=23, minute=59)   # fällig "am Tag" = bis Tagesende
+            prio = first(c, "PRIORITY")[1]
+            out.append({"title": text_value(first(c, "SUMMARY")[1]) or "(no title)",
+                        "due": ms(due) if due is not None else 0, "allDay": all_day,
+                        "priority": int(prio) if prio and prio.strip().isdigit() else 0, **meta})
+    return out
+
+
+def reason(e):
+    if isinstance(e, urllib.error.HTTPError):
+        return "HTTP %d" % e.code
+    if isinstance(e, urllib.error.URLError):
+        r = e.reason
+        if isinstance(r, socket.gaierror):
+            return "Offline"
+        if isinstance(r, (TimeoutError, socket.timeout)):
+            return "Timeout"
+        return str(r)[:120] if isinstance(r, str) else type(r).__name__
+    if isinstance(e, TimeoutError):
+        return "Timeout"
+    if isinstance(e, ET.ParseError):
+        return "Bad server reply"
+    return type(e).__name__
+
+
+def check(acc, lo_dt, hi_dt):
+    info = {"name": acc["name"], "label": acc.get("label") or acc["name"], "status": "ok", "error": ""}
+    cfg = acc.get("caldav") or {}
+    user = cfg.get("user") or acc.get("user") or ""
+    if not user:
+        info["status"] = "no-user"
+        return info, [], []
+    pw = password(acc)
+    if pw is None:
+        info["status"] = "no-password"
+        return info, [], []
+    dav = Dav(cfg.get("url", ""), user, pw)
+    pw = None
+    events, todos = [], []
+    lo, hi = ms(lo_dt), ms(hi_dt)
+    try:
+        for url, name, color, comps in calendars(dav, cfg):
+            meta = {"calendar": name, "color": color, "account": info["label"]}
+            try:
+                if "VEVENT" in comps:
+                    events += events_from(query_events(dav, url, lo_dt, hi_dt), lo, hi, meta)
+                if "VTODO" in comps:
+                    todos += todos_from(query_todos(dav, url), meta)
+            except (urllib.error.HTTPError, ET.ParseError):
+                continue   # einzelner Kalender zickt -> die anderen trotzdem
+    except AuthError:
+        info["status"] = "auth"
+        info["error"] = "Login failed"
+    except (OSError, ET.ParseError, ValueError) as e:
+        info["status"] = "error"
+        info["error"] = reason(e)
+    return info, events, todos
+
+
+def write(result):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=CACHE_DIR, prefix=".agenda.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, OUT)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def month_start(d, n):
+    """1. des Monats n Monate von d entfernt, 00:00 lokal (naiv)."""
+    y, m = divmod(d.month - 1 + n, 12)
+    return dt.datetime(d.year + y, m + 1, 1)
+
+
+def main():
+    status, accounts = load_accounts()
+    today = dt.date.today()
+    lo_dt = month_start(today, -MONTHS_BACK).astimezone()
+    hi_dt = month_start(today, MONTHS_AHEAD).astimezone()
+    infos, events, todos = [], [], []
+    for acc in accounts:
+        if not acc.get("caldav"):
+            continue
+        i, e, t = check(acc, lo_dt, hi_dt)
+        infos.append(i)
+        events += e
+        todos += t
+    if status == "ok" and not infos:
+        status = "no-config"
+    # doppelte (gleicher Titel + Start, z. B. Kalender in zwei Konten) nur einmal
+    seen, uniq = set(), []
+    for ev in sorted(events, key=lambda x: (x["start"], not x["allDay"], x["title"])):
+        key = (ev["title"], ev["start"], ev["allDay"])
+        if key not in seen:
+            seen.add(key)
+            uniq.append(ev)
+    todos.sort(key=lambda x: (x["due"] == 0, x["due"], x["priority"] or 10, x["title"]))
+    write({"updated": int(time.time() * 1000), "status": status, "range": {"from": ms(lo_dt), "to": ms(hi_dt)},
+           "accounts": infos,
+           "events": uniq, "todos": todos[:MAX_TODOS]})
+
+
+if __name__ == "__main__":
+    main()

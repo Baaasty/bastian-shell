@@ -1,0 +1,278 @@
+/* Thunderbird-Hauptfenster im desktop-Look (Vorlage für theme/gen/thunderbird.py).
+ * KEINE Farbwerte hier: nur var(--desk-*). Der Generator setzt Tokens und base.css an @@BASE@@ ein.
+ * Geprüft gegen Thunderbird 153.5 ESR (omni.ja).
+ */
+
+/* @@BASE@@ */
+
+/* ═════════ 3. Rahmen: Tabs, Toolbar, Spaces ═════════ */
+
+#messengerWindow,
+#messengerWindow > body,
+#navigation-toolbox,
+#tabs-toolbar,
+#unifiedToolbarContainer,
+#unifiedToolbar,
+#spacesToolbar {
+  background-color: var(--desk-bg-deep) !important;
+  background-image: none !important;
+}
+#spacesToolbar {
+  border-inline-end: none !important;
+}
+#tabs-toolbar {
+  padding-block-start: 6px !important;
+  padding-inline: 8px !important;
+}
+.tabmail-tab {
+  border-radius: var(--desk-radius-sm) var(--desk-radius-sm) 0 0 !important;
+  margin-inline-end: 4px !important;
+  color: var(--desk-text-faint) !important;
+  box-shadow: none !important;
+}
+.tabmail-tab[selected="true"] {
+  color: var(--desk-text) !important;
+}
+.tabmail-tab .tab-background[selected="true"] {
+  background-color: var(--desk-surface) !important;
+  background-image: none !important;
+  border-radius: var(--desk-radius-sm) var(--desk-radius-sm) 0 0 !important;
+}
+.tabmail-tab:hover .tab-background:not([selected="true"]) {
+  background-color: var(--desk-hover-deep) !important;
+  border-radius: var(--desk-radius-sm) var(--desk-radius-sm) 0 0 !important;
+}
+.tab-line {
+  margin-inline: 14px !important;
+}
+.tab-line:not([selected="true"]) {
+  display: none !important;
+}
+
+/* ═════════ 4. Hauptansicht (about:3pane): drei Kacheln mit Luft ═════════ */
+
+/* about3Pane.xhtml – body ist ein Grid; Splitter werden zur 8-px-Fuge */
+body:has(> #folderPane) {
+  box-sizing: border-box !important;
+  padding: 0 8px 8px !important;
+  background-color: var(--desk-bg-deep) !important;
+}
+body:has(> #folderPane) > hr[is="pane-splitter"]:not(.splitter-collapsed) {
+  --splitter-content-size: 8px !important;
+  --splitter-occupy-size: 8px !important;
+  border-color: transparent !important;
+}
+#folderPane,
+#threadPane,
+#messagePane,
+#accountCentralBrowser {
+  border: 1px solid var(--desk-line) !important;
+  border-radius: var(--desk-radius-md) !important;
+  overflow: hidden !important;
+}
+#folderPane {
+  background-color: var(--desk-surface) !important;
+}
+#threadPane {
+  background-color: var(--desk-bg) !important;
+}
+#folderPaneHeaderBar,
+#threadPaneHeaderBar,
+#quick-filter-bar {
+  background-color: var(--desk-surface) !important;
+  border-color: var(--desk-line) !important;
+}
+#threadPaneHeaderBar {
+  padding-inline: 10px !important;
+}
+
+/* Ordnerliste: Zeilen als weiche Pillen mit Rand */
+#folderTree {
+  padding-inline: 6px !important;
+}
+#folderTree li > .container {
+  border-radius: var(--desk-radius-sm) !important;
+}
+#folderTree > li > .mode-container > .mode-name {
+  color: var(--desk-text-faint) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#folderTree > li:not(:first-of-type) > .mode-container {
+  border-block-start-color: var(--desk-line) !important;
+}
+#folderTree li[data-server-type] > .container > .icon {
+  --icon-color: var(--desk-text-muted) !important;
+}
+.folder-count-badge {
+  font-weight: 600 !important;
+}
+
+/* Nachrichtenliste (Tabellenansicht): gelesen gedämpft, ungelesen Creme + fett */
+#threadTree {
+  --tree-view-color: var(--desk-text-muted) !important;
+}
+#threadTree [is="tree-view-table-body"] > .table-layout > td:first-child {
+  border-start-start-radius: var(--desk-radius-xs);
+  border-end-start-radius: var(--desk-radius-xs);
+}
+#threadTree [is="tree-view-table-body"] > .table-layout > td:last-child {
+  border-start-end-radius: var(--desk-radius-xs);
+  border-end-end-radius: var(--desk-radius-xs);
+}
+/* Fokussierte Auswahl: leiser Glutgrund + feine Glutlinie links */
+#threadTree [is="tree-view-table-body"]:is(:focus, :focus-within) > .table-layout.selected > td:first-child {
+  box-shadow: inset 3px 0 0 var(--desk-accent) !important;
+}
+#threadTree thead[is="tree-view-table-header"] th {
+  background-color: var(--desk-surface) !important;
+  color: var(--desk-text-faint) !important;
+}
+#threadTree thead[is="tree-view-table-header"]::after {
+  border-block-end-color: var(--desk-line) !important;
+}
+
+/* Kartenansicht: Ungelesen-Punkt in Glut, Karten mit runden Ecken */
+#threadTree[rows="thread-card"] .card-layout[data-properties~="unread"] {
+  --read-status-fill: var(--desk-accent) !important;
+  --read-status-stroke: var(--desk-accent) !important;
+}
+#threadTree[rows="thread-card"] .card-layout[data-properties~="unread"][data-properties~="new"] {
+  --read-status-fill: var(--desk-accent-text) !important;
+  --read-status-stroke: var(--desk-accent) !important;
+}
+#threadTree[rows="thread-card"] .card-layout > td > .card-container {
+  border-radius: var(--desk-radius-sm) !important;
+}
+#threadTree[rows="thread-card"] .card-layout:is(.selected) > td > .card-container {
+  box-shadow: inset 3px 0 0 var(--desk-accent) !important;
+}
+
+/* ═════════ 5. Lesebereich (about:message) ═════════ */
+
+#messagepanebox {
+  background-color: var(--desk-bg) !important;
+  color: var(--desk-text) !important;
+}
+#messageHeader {
+  background-color: var(--desk-surface) !important;
+  border-block-end: 1px solid var(--desk-line) !important;
+  padding: 8px 12px !important;
+}
+#messageHeader .message-header-label {
+  color: var(--desk-text-faint) !important;
+}
+#messageHeader .message-header-datetime {
+  color: var(--desk-text-muted) !important;
+}
+#messageHeader .message-header-view-button {
+  border-radius: var(--desk-radius-sm) !important;
+}
+
+/* ═════════ 6. Kalender ═════════ */
+
+/* Wie die Mail-Ansicht: Seitenleiste und Ansicht als Kacheln mit Fuge */
+#calendarContent {
+  box-sizing: border-box !important;
+  padding: 0 8px 8px !important;
+  background-color: var(--desk-bg-deep) !important;
+}
+#calSidebar,
+#calendarDisplayBox {
+  border: 1px solid var(--desk-line) !important;
+  border-radius: var(--desk-radius-md) !important;
+  overflow: hidden !important;
+}
+#calSidebar {
+  background-color: var(--desk-surface) !important;
+}
+#calendarDisplayBox,
+#calendar-view-box,
+#view-box {
+  background-color: var(--desk-bg) !important;
+}
+#calsidebar_splitter {
+  appearance: none !important;
+  border: none !important;
+  background: transparent !important;
+  min-inline-size: 8px !important;
+}
+/* Termin-Suchliste oben („Events in the Next 7 Days“) */
+#unifinder-searchBox {
+  background-color: var(--desk-surface) !important;
+  background-image: none !important;
+  color: var(--desk-text) !important;
+  border-block-end: 1px solid var(--desk-line) !important;
+  padding: 6px 8px !important;
+}
+#unifinder-search-results-tree {
+  border: none !important;
+}
+#calendar-deactivated-notification-location-events notification-message {
+  margin: 8px !important;
+}
+#today-pane-panel {
+  background-color: var(--desk-surface) !important;
+  border-color: var(--desk-line) !important;
+}
+/* Heute: Wochentag-Kopf in Glut, Rest leise */
+.day-column-today .day-column-heading,
+calendar-day-label[relation="today"] {
+  color: var(--desk-accent-text) !important;
+}
+.day-column-selected:not(.day-column-today) .day-column-heading {
+  color: var(--desk-text) !important;
+}
+.calendar-month-day-box-date-label[relation="today"] {
+  color: var(--desk-text) !important;
+}
+/* Jetzt-Linie */
+.timeIndicator {
+  border-color: var(--desk-accent) !important;
+  opacity: 0.9 !important;
+}
+.multiday-timebar-now-indicator {
+  border-color: var(--desk-accent) !important;
+}
+/* Termine: Kalenderfarbe als Kante links, Fläche gedämpft auf Dunkel, Text Creme */
+.calendar-color-box {
+  border-radius: var(--desk-radius-xs) !important;
+  background-color: color-mix(in srgb, var(--item-backcolor) 38%, var(--desk-bg)) !important;
+  color: var(--desk-text) !important;
+  box-shadow: inset 3px 0 0 var(--item-backcolor) !important;
+}
+calendar-month-day-box calendar-month-day-box-item[allday="true"].calendar-color-box {
+  background-color: color-mix(in srgb, var(--item-backcolor) 45%, var(--desk-bg)) !important;
+  box-shadow: inset 3px 0 0 var(--item-backcolor) !important;
+}
+:is(calendar-month-day-box-item, calendar-event-box, calendar-editable-item)[selected="true"].calendar-color-box {
+  background-color: color-mix(in srgb, var(--item-backcolor) 48%, var(--desk-bg)) !important;
+  color: var(--desk-text) !important;
+  box-shadow: inset 3px 0 0 var(--item-backcolor), 0 0 0 1px var(--desk-text) !important;
+}
+.agenda-listitem-all-day .agenda-listitem-details {
+  background-color: color-mix(in srgb, var(--item-backcolor) 42%, var(--desk-surface)) !important;
+  color: var(--desk-text) !important;
+}
+.agenda-listitem-details {
+  border-radius: var(--desk-radius-xs) !important;
+}
+/* Ansichtsumschalter Tag/Woche/Monat */
+button.calview-toggle-item[role="tab"][aria-selected="true"] {
+  color: var(--desk-text) !important;
+  box-shadow: none !important;
+}
+button.calview-toggle-item[role="tab"][aria-selected="false"] {
+  color: var(--desk-text-muted) !important;
+}
+.view-header {
+  color: var(--desk-text) !important;
+  font-weight: 600 !important;
+}
+/* Monatsansicht: Zahlen leiser, Wochennummer-Pille im Holzton */
+.calendar-month-day-box-week-label {
+  color: var(--desk-text-faint) !important;
+}
+

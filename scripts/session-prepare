@@ -1,0 +1,269 @@
+#!/usr/bin/env -S python3 -I
+"""Sitzungs-Vorbereitung für scripts/session (hyprflow-Backend). Nutzt nur die Standardbibliothek.
+
+  session-prepare prepare [--name N] [--write]   passende gespeicherte Sitzung wählen und bereinigen
+  session-prepare guard                          darf der Autosave jetzt speichern? (Exit 0 = ja, 1 = nein)
+  session-prepare conf KEY DEFAULT               Wert aus [desktop]
+  session-prepare count                          Zahl der wiederherstellbaren Fenster jetzt
+
+Warum nicht hyprflow direkt? hyprflow startet jeden Fensterklasse-Namen als Programm (ohne Positivliste), setzt
+Vollbild auf das *fokussierte* Fenster und startet nicht über uwsm. Deshalb liest scripts/session hyprflow nur eine
+bereinigte Kopie in $XDG_RUNTIME_DIR (tmpfs): Positivliste aus config.toml, Klassen/Programmnamen nur [A-Za-z0-9._-],
+Startordner nur als absoluter existierender Pfad, Vollbild/Schweben/Brave aus, "once"-Apps nur einmal, und pro
+Programm ein Startskript (Shim), das über `uwsm app --` startet. Die Originale in ~/.local/share/hyprflow bleiben
+unverändert.
+"""
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import tomllib
+from datetime import datetime, timezone
+from pathlib import Path
+
+HOME = Path.home()
+CONF = Path(os.environ.get("XDG_CONFIG_HOME", HOME / ".config")) / "hyprflow" / "config.toml"
+SESS = Path(os.environ.get("XDG_DATA_HOME", HOME / ".local/share")) / "hyprflow" / "sessions"
+RUNDIR = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+RT = RUNDIR / "desktop-session"
+NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+SESSION_FILE_RE = re.compile(r"^(latest|autosave-\d{8}T\d{6}|[A-Za-z0-9_-]{1,40})\.json$")
+
+
+def load_conf():
+    try:
+        with open(CONF, "rb") as f:
+            return tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        sys.exit(f"Konfiguration nicht lesbar ({CONF}): {e}")
+
+
+def parse_ts(s):
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def is_int(x):
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def ints2(x):
+    return isinstance(x, list) and len(x) == 2 and all(is_int(i) for i in x)
+
+
+def clean_path(p):
+    return (isinstance(p, str) and p.startswith("/") and "\0" not in p and "\n" not in p
+            and not any(ord(c) < 32 for c in p) and os.path.isdir(p))
+
+
+def real_which(cmd):
+    """Programm im echten PATH suchen (ohne Shim-Ordner)."""
+    path = os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep) if p and Path(p) != RT / "shims")
+    return shutil.which(cmd, path=path)
+
+
+def clean_path_env():
+    return os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep) if p and Path(p) != RT / "shims")
+
+
+def sanitize(session, conf):
+    """-> (neue Sitzung, [Meldungen]). Meldungen = was weggelassen wurde und warum."""
+    apps = conf.get("apps", {})
+    extra = conf.get("desktop", {}).get("apps", {})
+    notes, out, seen_once = [], [], set()
+    for c in session.get("clients", []):
+        cls = c.get("class") if isinstance(c, dict) else None
+        if not isinstance(cls, str) or not NAME_RE.match(cls):
+            notes.append(f"unzulässige Klasse {str(cls)[:30]!r}")
+            continue
+        if cls not in apps:
+            notes.append(f"{cls}: nicht in der Positivliste")
+            continue
+        ws, at, size = c.get("workspace"), c.get("at"), c.get("size")
+        if not is_int(ws) or not 1 <= ws <= 299 or not ints2(at) or not ints2(size):
+            notes.append(f"{cls}: Platz/Workspace unzulässig ({ws})")
+            continue
+        binary = apps[cls].get("binary", cls)
+        if not isinstance(binary, str) or not NAME_RE.match(binary):
+            notes.append(f"{cls}: binary {binary!r} unzulässig")
+            continue
+        if not real_which(binary):
+            notes.append(f"{cls}: Programm '{binary}' nicht installiert")
+            continue
+        opts = extra.get(cls, {})
+        if opts.get("once") and cls in seen_once:
+            notes.append(f"{cls}: weiteres Fenster (once)")
+            continue
+        seen_once.add(cls)
+        args = []
+        la = (c.get("launch") or {}).get("args") or []
+        flag = opts.get("cwd_flag", "--directory")
+        if (isinstance(la, list) and len(la) == 2 and la[0] == "--directory"
+                and apps[cls].get("capture_cwd") and clean_path(la[1])):
+            args = [flag, la[1]]
+        out.append({
+            "class": cls, "title": "", "workspace": ws, "monitor": str(c.get("monitor", ""))[:32],
+            "at": at, "size": size, "floating": False, "fullscreen": 0,
+            "focus_history_id": 0,
+            "launch": {"command": binary, "args": args, "hint": None},
+        })
+    new = {
+        "name": "latest", "created_at": session["created_at"],
+        "hyprland_version": str(session.get("hyprland_version", "")), "monitors": [],
+        "clients": out, "brave_profiles": [],
+    }
+    return new, notes
+
+
+def candidates():
+    """Alle lesbaren gespeicherten Sitzungen, neueste zuerst."""
+    res = []
+    if not SESS.is_dir():
+        return res
+    for p in SESS.glob("*.json"):
+        if not SESSION_FILE_RE.match(p.name):
+            continue
+        try:
+            d = json.loads(p.read_text())
+            ts = parse_ts(d["created_at"])
+            if ts is None or not isinstance(d["clients"], list):
+                continue
+            res.append((ts, p.stem, d))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    res.sort(key=lambda t: t[0], reverse=True)
+    return res
+
+
+def hyprctl_clients():
+    env = dict(os.environ)
+    if not env.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        socks = sorted((RUNDIR / "hypr").glob("*/.socket.sock"), key=lambda p: p.stat().st_mtime) \
+            if (RUNDIR / "hypr").is_dir() else []
+        if not socks:
+            return None
+        env["HYPRLAND_INSTANCE_SIGNATURE"] = socks[-1].parent.name
+    try:
+        r = subprocess.run(["hyprctl", "clients", "-j"], capture_output=True, text=True, timeout=10, env=env)
+        return json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def count_allowed(clients, conf):
+    apps = conf.get("apps", {})
+    return sum(1 for c in clients if c.get("class") in apps)
+
+
+def cmd_count(conf):
+    cl = hyprctl_clients()
+    if cl is None:
+        print("hyprctl nicht erreichbar", file=sys.stderr)
+        return 2
+    print(count_allowed(cl, conf))
+    return 0
+
+
+def cmd_guard(conf):
+    cl = hyprctl_clients()
+    if cl is None:
+        print("skip: Hyprland nicht erreichbar")
+        return 1
+    pend = RT / "pending"
+    if pend.exists() and time.time() - pend.stat().st_mtime < 20 * 60:
+        print("skip: Wiederherstellung läuft/steht an")
+        return 1
+    n = count_allowed(cl, conf)
+    if n == 0:
+        print("skip: keine wiederherstellbaren Fenster offen")
+        return 1
+    autos = [(ts, name, d) for ts, name, d in candidates() if name.startswith("autosave-")]
+    if autos:
+        ts, _, d = autos[0]
+        old = count_allowed(d.get("clients", []), conf)
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+        if age < 30 * 60 and n * 2 < old:
+            print(f"skip: nur {n} Fenster statt {old} (letzter Stand {int(age // 60)} min alt) – vermutlich Absturz/Neustart")
+            return 1
+    print("ok")
+    return 0
+
+
+def cmd_prepare(conf, name, write):
+    cands = candidates()
+    if name:
+        cands = [t for t in cands if t[1] == name]
+        if not cands:
+            print(f"Sitzung '{name}' nicht gefunden.")
+            return 3
+    best = None
+    for ts, nm, d in cands:
+        new, notes = sanitize(d, conf)
+        if new["clients"]:
+            best = (nm, new, notes, ts)
+            break
+    if not best:
+        print("Keine gespeicherte Sitzung mit wiederherstellbaren Fenstern.")
+        return 3
+    nm, new, notes, ts = best
+    age = datetime.now(timezone.utc) - ts
+    print(f"Sitzung: {nm} ({ts.astimezone().strftime('%d.%m. %H:%M')}, {int(age.total_seconds() // 60)} min alt)")
+    print(f"Wiederherstellbar: {len(new['clients'])} Fenster")
+    for c in new["clients"]:
+        d = f" in {c['launch']['args'][1]}" if c["launch"]["args"] else ""
+        print(f"  ws {c['workspace']:>3}  {c['class']} -> {c['launch']['command']}{d}")
+    for n in sorted(set(notes)):
+        print(f"  (weggelassen: {n})")
+    if not write:
+        return 0
+    # Laufzeitbaum: Sitzungskopie + Startskripte
+    for sub in ("data/hyprflow/sessions", "shims"):
+        shutil.rmtree(RT / sub, ignore_errors=True)
+    RT.mkdir(mode=0o700, exist_ok=True)
+    sd = RT / "data/hyprflow/sessions"
+    sd.mkdir(mode=0o700, parents=True)
+    (sd / "latest.json").write_text(json.dumps(new, indent=2))
+    os.chmod(sd / "latest.json", 0o600)
+    shims = RT / "shims"
+    shims.mkdir(mode=0o700)
+    for cmd in sorted({c["launch"]["command"] for c in new["clients"]}):
+        real = real_which(cmd)
+        sh = shims / cmd
+        # hyprflow läuft mit umgebogenem XDG_DATA_HOME/PATH; die App soll davon nichts erben
+        env_fix = "".join(
+            f"export {k}={shlex.quote(v)}\n" if v is not None else f"unset {k}\n"
+            for k, v in (("XDG_DATA_HOME", os.environ.get("XDG_DATA_HOME")), ("PATH", clean_path_env())))
+        sh.write_text(f"#!/bin/sh\n{env_fix}exec uwsm app -- {shlex.quote(real)} \"$@\"\n")
+        os.chmod(sh, 0o700)
+    print(f"Bereit: {sd / 'latest.json'}")
+    return 0
+
+
+def main():
+    a = sys.argv[1:]
+    if not a:
+        sys.exit(__doc__)
+    conf = load_conf()
+    if a[0] == "conf" and len(a) == 3:  # conf <schlüssel> <standard>
+        print(conf.get("desktop", {}).get(a[1], a[2]))
+        return 0
+    if a[0] == "count":
+        return cmd_count(conf)
+    if a[0] == "guard":
+        return cmd_guard(conf)
+    if a[0] == "prepare":
+        name = a[a.index("--name") + 1] if "--name" in a else None
+        if name and not NAME_RE.match(name):
+            sys.exit("Sitzungsname unzulässig")
+        return cmd_prepare(conf, name, "--write" in a)
+    sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

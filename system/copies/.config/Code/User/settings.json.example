@@ -1,0 +1,122 @@
+// BEISPIEL (system/copies/…/settings.json ist lokal, gitignored). system/bootstrap kopiert diese Datei nur,
+// wenn es weder die eigene Kopie im Repo noch ~/.config/Code/User/settings.json gibt.
+{
+  // ── Look & Feel ─────────────────────────────────────────
+  "window.commandCenter": false, // Suchleiste oben braucht keiner
+  "workbench.browser.openLocalhostLinks": false,
+  "workbench.colorTheme": "Desktop",
+  "workbench.editorAssociations": {
+    "*.webp": "imagePreview.previewEditor",
+  },
+  "workbench.externalBrowser": "chrome",
+  "workbench.iconTheme": "material-icon-theme",
+  "workbench.layoutControl.enabled": false,
+  "workbench.list.smoothScrolling": true,
+  "workbench.productIconTheme": "material-product-icons",
+  "workbench.sideBar.location": "right", // Sidebar rechts, Code bleibt ruhig stehen
+  "workbench.startupEditor": "none", // kein Welcome-Tab
+  "workbench.tree.indent": 16,
+
+  // ── Editor ──────────────────────────────────────────────
+  "diffEditor.ignoreTrimWhitespace": false, // auch Whitespace-Diffs zeigen
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always",
+  },
+  "editor.cursorBlinking": "phase",
+  "editor.cursorSmoothCaretAnimation": "on",
+  "editor.defaultFormatter": "esbenp.prettier-vscode", // Fallback, TS macht Biome
+  "editor.fontSize": 14,
+  "editor.formatOnPaste": false,
+  "editor.formatOnSave": false,
+  "editor.formatOnSaveMode": "file",
+  "editor.formatOnType": false,
+  "editor.gotoLocation.multipleDefinitions": "goto", // direkt hin statt Peek-Fenster
+  "editor.smoothScrolling": true,
+  "editor.stickyScroll.enabled": false,
+  "editor.unicodeHighlight.allowedLocales": {
+    "de": true, // Umlaute sind kein Angriff
+  },
+
+  // ── Formatter pro Sprache ───────────────────────────────
+  "[prisma]": {
+    "editor.defaultFormatter": "Prisma.prisma",
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "biomejs.biome",
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome",
+  },
+  "prettier.endOfLine": "auto",
+  "prettier.singleQuote": true,
+
+  // ── Files & Explorer ────────────────────────────────────
+  "explorer.confirmDelete": false, // wir leben gefährlich
+  "explorer.confirmDragAndDrop": false,
+  "explorer.confirmPasteNative": false,
+  "files.autoSave": "onFocusChange",
+
+  // ── Git ─────────────────────────────────────────────────
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true,
+  "git.ignoreRebaseWarning": true,
+  "git.openRepositoryInParentFolders": "never",
+
+  // ── Terminal ────────────────────────────────────────────
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.defaultProfile.windows": "Windows PowerShell",
+  "terminal.integrated.enableMultiLinePasteWarning": "never",
+  "terminal.integrated.env.windows": {},
+  "terminal.integrated.smoothScrolling": true,
+  "terminal.integrated.profiles.windows": {
+    "bash": {
+      "path": "host-spawn",
+      "args": ["bash"],
+      "icon": "terminal-bash",
+      "overrideName": true,
+    },
+  },
+
+  // ── AI ──────────────────────────────────────────────────
+  "chat.editing.confirmEditRequestRemoval": false,
+  "claudeCode.hideOnboarding": true,
+  "claudeCode.preferredLocation": "sidebar",
+  "github.copilot.nextEditSuggestions.enabled": true,
+
+  // ── Extensions ──────────────────────────────────────────
+  "dokploy.connections": [
+    {
+      "name": "My Dokploy",
+      "url": "https://dokploy.example.com/",
+    },
+  ],
+  "godotTools.editorPath.godot4": "/home/<user>/.local/opt/godot/Godot_v4.7.2-stable_linux.x86_64", // eigener Pfad zur Godot-Binary
+  "i18n-ally.displayLanguage": "de",
+  "todo-tree.ripgrep.ripgrep": "/usr/share/code/resources/app/node_modules.asar.unpacked/@vscode/ripgrep-universal/bin/linux-x64/rg", // ripgrep von VS Code selbst (nach VS-Code-Update ggf. Pfad prüfen)
+  "vscode-pets.petSize": "small",
+  "vscode-pets.theme": "forest",
+  "vscode-pets.throwBallWithMouse": true, // essenziell
+
+  // ── JSON Schemas ────────────────────────────────────────
+  "json.schemaDownload.trustedDomains": {
+    "https://biomejs.dev": true,
+    "https://developer.microsoft.com/json-schemas/": true,
+    "https://json-schema.org/": true,
+    "https://json.schemastore.org/": true,
+    "https://raw.githubusercontent.com/devcontainers/spec/": true,
+    "https://raw.githubusercontent.com/microsoft/vscode/": true,
+    "https://schemastore.azurewebsites.net/": true,
+    "https://www.schemastore.org/": true,
+  },
+
+  // ── Updates ─────────────────────────────────────────────
+  "extensions.autoCheckUpdates": false,
+  "update.showReleaseNotes": false,
+  "terminal.integrated.initialHint": false,
+  "redhat.telemetry.enabled": true,
+
+  // ── Proxy (bei Bedarf einkommentieren) ──────────────────
+  // "http.proxy": "http://127.0.0.1:9000",
+  // "http.proxyStrictSSL": false,
+}

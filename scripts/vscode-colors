@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# VS Code: Theme „Desktop“ an/aus + eine Akzentfarbe pro Projekt (Logik: theme/gen/vscode_projects.py).
+# Übersicht: scripts/vscode-colors · Hilfe: scripts/vscode-colors hilfe
+exec python3 -I "$(dirname "$(readlink -f "$0")")/../theme/gen/vscode_projects.py" "$@"

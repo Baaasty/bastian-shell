@@ -1,0 +1,41 @@
+#!/bin/sh
+# Text aus einem Bild (OCR) -> Zwischenablage. Aufruf: snip-ocr BILD.png
+# Offline (tesseract), schreibt nichts außer BILD selbst (das ruft der Aufrufer wieder weg).
+# Ausgabe (eine Zeile, nie der Text selbst):
+#   OK <Zeichen>      Text steht in der Zwischenablage
+#   EMPTY             nichts erkannt
+#   NOTOOL            tesseract fehlt (Installationsbefehl liegt dann in der Zwischenablage)
+#   NOLANG            weder deu noch eng installiert
+#   ERR               sonstiger Fehler
+img=$1
+[ -r "$img" ] || { echo ERR; exit 1; }
+
+INSTALL='sudo dnf install tesseract tesseract-langpack-deu tesseract-langpack-eng'
+if ! command -v tesseract >/dev/null 2>&1; then
+    printf '%s' "$INSTALL" | wl-copy >/dev/null 2>&1
+    echo NOTOOL
+    exit 2
+fi
+
+# Sprachen: deu+eng, soweit installiert
+langs=$(tesseract --list-langs 2>/dev/null | grep -x -e deu -e eng | paste -sd+ -)
+[ -n "$langs" ] || { printf '%s' "$INSTALL" | wl-copy >/dev/null 2>&1; echo NOLANG; exit 3; }
+
+# Vorbereiten: Graustufen, doppelt so groß (kleine Schrift), heller Text auf dunklem Grund umdrehen
+prep="${img%.*}.prep.png"
+trap 'rm -f "$prep"' EXIT
+mean=$(magick "$img" -colorspace Gray -format '%[fx:mean]' info: 2>/dev/null)
+inv=
+awk -v m="${mean:-1}" 'BEGIN { exit !(m < 0.45) }' && inv=-negate
+magick "$img" -colorspace Gray $inv -resize 200% -normalize "$prep" 2>/dev/null || cp "$img" "$prep"
+
+text=$(tesseract "$prep" stdout -l "$langs" --psm 3 2>/dev/null)
+# einzelne Zeilen erkennt psm 3 manchmal nicht
+[ -n "$(printf '%s' "$text" | tr -d '[:space:]')" ] || text=$(tesseract "$prep" stdout -l "$langs" --psm 6 2>/dev/null)
+text=$(printf '%s\n' "$text" | sed -e 's/[[:space:]]*$//' | cat -s)
+if [ -z "$(printf '%s' "$text" | tr -d '[:space:]')" ]; then
+    echo EMPTY
+    exit 4
+fi
+printf '%s' "$text" | wl-copy >/dev/null 2>&1
+echo "OK $(printf '%s' "$text" | wc -m)"

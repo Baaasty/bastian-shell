@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Erzeugt docs/HOTKEYS.md aus hypr/binds.conf (Abschnitte '# ---- Name ----' + Inline-Titel '# Titel').
+
+Nie von Hand in HOTKEYS.md ändern: Kürzel in hypr/binds.conf ändern, dann `scripts/hotkeys-md`.
+Live ansehen: Super+K (Keybind-Viewer der Shell, liest dieselbe Datei zur Laufzeit).
+"""
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+CONF = ROOT / "hypr" / "binds.conf"
+OUT = ROOT / "docs" / "HOTKEYS.md"
+
+SECTION = re.compile(r"^#\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
+BIND = re.compile(r"^(bind[a-z]*)\s*=\s*(.*?)\s+#\s+(\S.*)$")
+MODS = {"SUPER": "Super", "ALT": "Alt", "SHIFT": "Shift", "CTRL": "Ctrl"}
+KEYS = {"Return": "Enter", "Escape": "Esc", "Delete": "Del", "period": "·", "Left": "←", "Right": "→", "Up": "↑",
+        "Down": "↓", "space": "Space", "mouse:272": "Mouse left", "mouse:273": "Mouse right", "code:49": "^",
+        "Print": "Print"}
+ORDER = ["Super", "Ctrl", "Alt", "Shift"]
+
+
+# Fester Abschnitt am Ende (App-Kürzel kommen nicht aus binds.conf, sondern aus config/appkeys/)
+APPKEYS = """## App-Kürzel und Cheat-Sheet (Super+K)
+
+Super+K ist ein Nachschlagewerk für alles: oben die App, die beim Öffnen fokussiert war (*focused app*; Kitty mit yazi/lazygit
+zeigt beides), dann die Shell (live aus `hypr/binds.conf` + Anleitungen zu Bar, Popouts, Workspace-Modus, Launcher), darunter
+alle Programme. Sofort tippen = Suche über App-Name, Tasten und Beschreibung (`upload`, `discord mute`, `ctrl+shift+u`).
+↑/↓ und Bild↑/↓ scrollen, Tab/Shift+Tab springt zur nächsten/vorigen App, Esc schließt.
+
+Drin: Helium (+ Vimium C), Discord, VS Code, Dolphin, Kitty, sshs, yazi, lazygit, Thunderbird, Spotify.
+Eine Datei pro Programm in `config/appkeys/<app>.json`, von Hand pflegbar (nach dem Speichern reicht erneut Super+K):
+
+```json
+{ "name": "Discord", "about": "kurzer Hinweis", "order": 20,
+  "match": { "class": ["discord"], "title": "^optional-regex" },
+  "sections": [ { "name": "Navigate", "keys": [
+      { "keys": "Ctrl+K", "title": "Quick switcher", "note": "optional" } ] } ] }
+```
+
+- `match.class`: Hyprland-Klasse, klein geschrieben (`hyprctl clients -j` → `class`). `match.title`: Regex auf den Fenstertitel
+  (yazi/lazygit laufen in Kitty). Mehrere Treffer: Titel-Treffer zuerst, dann die App, deren Klassenliste die Klasse weiter vorn hat.
+- Tasten: `Ctrl+Shift+M` · Alternativen als Liste `["Ctrl+Tab", "Ctrl+PgDn"]` · Leerzeichen = mehrere Tasten (`g g`, `Alt+↑ ↓`) ·
+  `Ctrl+Plus` für + · `Alt (tap)` = Modifier allein antippen.
+- `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel. Abschnitte mit `"auto"` füllt
+  `shell/modules/keys/appkeys.py` selbst: `barLetters` (`shell/services/BarKeys.qml`), `launcherPrefixes`
+  (`shell/modules/launcher/Launcher.qml`), `webShortcuts` (`config/launcher/web.json`).
+- Kaputte Datei: nur sie fehlt, der Grund steht im Log (`qs log -p … | grep appkeys`).
+- Testen ohne Fokuswechsel: `qs ipc --any-display -p <shell> call keys app discord ""` (tut so, als wäre Discord fokussiert).
+"""
+
+
+def key_name(k):
+    m = re.fullmatch(r"code:(\d+)", k)
+    if m and 10 <= int(m.group(1)) <= 18:
+        return str(int(m.group(1)) - 9)
+    if k.startswith("XF86"):
+        return k[4:]
+    return KEYS.get(k, k.upper() if len(k) == 1 else k)
+
+
+def combo(mods, key):
+    names = sorted({MODS[m] for m in mods.split() if m in MODS}, key=ORDER.index)
+    return names, key_name(key)
+
+
+def collapse(items):
+    """items: [(mods-liste, taste)] → eine Zeile je Modifier-Gruppe, Ziffern 1…n, Pfeile gebündelt."""
+    groups = {}
+    for names, k in items:
+        groups.setdefault(tuple(names), []).append(k)
+    lines = []
+    for names, ks in groups.items():
+        ks = list(dict.fromkeys(ks))
+        if len(ks) > 1 and all(k.isdigit() for k in ks):
+            k = f"{ks[0]}…{ks[-1]}"
+        elif set(ks) == {"←", "→", "↑", "↓"}:
+            k = "←↑↓→"
+        else:
+            k = " / ".join(ks)
+        lines.append(" + ".join([*names, k]) if k else " + ".join(names))
+    return lines
+
+
+def main():
+    sections, current = [], None
+    for raw in CONF.read_text().splitlines():
+        line = raw.strip()
+        m = SECTION.match(line)
+        if m:
+            current = (m.group(1), {})
+            sections.append(current)
+            continue
+        b = BIND.match(line)
+        if not b or current is None:
+            continue
+        kind, rest, title = b.groups()
+        parts = [p.strip() for p in rest.split(",", 2)]
+        if len(parts) < 2:
+            continue
+        mods, key = parts[0], parts[1]
+        # Modifier allein antippen (bindr = SUPER, SUPER_L / bindr = ALT, ALT_L)
+        tap = {"SUPER_L": "Super", "ALT_L": "Alt"}.get(key)
+        if tap and kind == "bindr":
+            current[1].setdefault(title, []).append(([tap], "tippen"))
+            continue
+        current[1].setdefault(title, []).append(combo(mods, key))
+
+    out = [
+        "# Tastenkürzel",
+        "",
+        "_Erzeugt aus `hypr/binds.conf` mit `scripts/hotkeys-md` – nicht von Hand ändern._",
+        "",
+        "**Live ansehen: Super+K** (Keybind-Viewer, liest die Konfiguration bei jedem Öffnen; Suche tippt sofort).",
+        "",
+        "## Schema",
+        "",
+        "| Taste | Zuständig für |",
+        "|---|---|",
+        "| **Super** | Fenster, Monitore, Shell (Dashboard, Apps) |",
+        "| **Alt** | Workspaces (Alt+1…9, Alt+←/→); dazu Alt+Tab und Alt+F4 wie üblich |",
+        "| **Super+Alt** | Zusatzwerkzeuge der Shell (Zwischenablage, Fokus-Modus) |",
+        "| **Strg+Alt (+Shift)** | Notbremsen (Not-Aus, Power-Menü ohne Shell) |",
+        "",
+        "Super allein antippen öffnet das Dashboard mit Suche (nur, wenn keine andere Taste dazwischen war).",
+        "Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leiste.",
+        "",
+        "## Modi (Tasten innerhalb der Shell)",
+        "",
+        "| Modus | Tasten |",
+        "|---|---|",
+        "| **Bar-Modus** (Super+B) | Buchstabe an den Chips öffnet das Popout: S Sound · N Netz · L Licht · R Ressourcen · D Downloads · "
+        "V Dev · M Musik · C Chat · T Tray · U Updates · H Server · A Claude · O To-dos · F Fokus · Z Benachrichtigungen. "
+        "Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+B = zu; Esc im Popout = zurück zum Chip |",
+        "| **In Popouts** | Pfeile/Tab wählen (Glut-Rahmen), Enter/Leertaste löst aus, Regler: Enter, dann ←/→, Esc zu. "
+        "Per Taste geöffnet: Tastaturfokus, schließt nicht durch Weghovern |",
+        "| **Tray** (Bar-Modus T) | ↑↓ Symbol, → zum Menü-Knopf (⋮) oder Auge, Enter; im Menü ↑↓, Enter/→ öffnet Untermenü, ←/Rücktaste zurück |",
+        "| **Benachrichtigungen** (Super+Alt+Z) | ↑↓ Karte, Enter öffnen, 1–3 Knöpfe, S später erinnern (dann 1–4), Entf/X wegklicken, Shift+A alle weg, Esc zu |",
+        "| **Workspace-Modus** (Alt antippen) | 1–9, ←/→, Enter, Entf, N, R, T, Q (Quicklinks + Git der Kachel), Esc |",
+        "",
+    ]
+    for name, binds in sections:
+        if not binds:
+            continue
+        title = name.split("(")[0].strip()
+        out += [f"## {title}", "", "| Taste | Aktion |", "|---|---|"]
+        for t, items in binds.items():
+            keys = "<br>".join(f"`{c}`" for c in collapse(items))
+            out.append(f"| {keys} | {t} |")
+        out.append("")
+    out += APPKEYS.splitlines() + [""]
+    OUT.write_text("\n".join(out))
+    print(f"geschrieben: {OUT}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

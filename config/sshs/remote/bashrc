@@ -1,0 +1,21 @@
+# sshs: Startdatei der Bash auf dem Server (aus config/sshs/remote, kopiert bei jeder Verbindung).
+# Erst alles wie bei einer normalen Anmeldung, dann kittys Shell-Integration (Ordner fürs Umschalten auf Dateien),
+# dann eza als ls – nur wenn es dort läuft, sonst bleibt das ls des Servers.
+[ -n "$KITTY_BASH_UNEXPORT_HISTFILE" ] && export -n HISTFILE
+unset KITTY_BASH_UNEXPORT_HISTFILE
+[ -r /etc/profile ] && . /etc/profile
+for _f in ~/.bash_profile ~/.bash_login ~/.profile; do
+    [ -r "$_f" ] && { . "$_f"; break; }
+done
+[ -r "$SSHS_KSI" ] && . "$SSHS_KSI"
+unset _f SSHS_KSI
+
+_eza=~/.local/share/sshs/bin/eza
+if [ -x "$_eza" ] && "$_eza" --version >/dev/null 2>&1; then
+    unalias ls ll la lt 2>/dev/null
+    alias ls="$_eza --icons=auto --group-directories-first"
+    alias ll="$_eza -l --icons=auto --group-directories-first --time-style=relative"
+    alias la="$_eza -la --icons=auto --group-directories-first --time-style=relative"
+    alias lt="$_eza --tree --level=2 --icons=auto --group-directories-first"
+fi
+unset _eza

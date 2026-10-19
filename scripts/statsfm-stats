@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""stats.fm-Zahlen für die Stats-Kachel -> JSON auf stdout. Öffentliche API, kein Token, kein Plus nötig.
+
+Nutzer: secrets.json -> "statsfm": { "user": "<Nutzername oder ID>" } (leer/fehlt = aus).
+Zum Testen geht auch STATSFM_USER=… in der Umgebung.
+
+Ohne Plus liefert stats.fm (geprüft 2026-10): Streams + Minuten für beliebige Zeiträume (after=ms),
+Top-Tracks/-Artists ebenso – aber nur ab Verknüpfung (Live-Tracking), kein importierter Verlauf.
+Minuten = volle Songlänge pro Stream (stats.fm zählt Streams ab 30 s).
+
+Fünf Anfragen pro Abruf, Ergebnis gecacht in ~/.cache/desktop/statsfm.json. Die Shell ruft alle 10 min,
+abgefragt wird höchstens alle --max-age Sekunden (Standard 1800); nach Fehler (z. B. 429) 30 min Pause.
+Ausgabe:
+{ "ok", "at": ms, "today": { "ms", "streams", "topTrack", "topArtist" },
+  "year": { "ms", "streams", "topTrack", "topTrackStreams", "topArtist", "topArtistMs" } }
+Bei Fehler: { "ok": false, "error": "unconfigured" | "network" | "private" | "notfound" | "limit" }
+(mit "stale": letzter guter Stand, falls vorhanden). Gibt den Nutzernamen nie aus.
+"""
+import datetime as dt
+import json
+import os
+import pathlib
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SECRETS = REPO / "secrets.json"
+CACHE = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or pathlib.Path.home() / ".cache") / "desktop" / "statsfm.json"
+API = "https://api.stats.fm/api/v1/users/"
+UA = "desktop-shell/1.0 (+personal dashboard, polls every 30 min)"
+BACKOFF = 1800
+
+
+def user() -> str:
+    env = os.environ.get("STATSFM_USER", "").strip()
+    if env:
+        return env
+    try:
+        d = json.loads(SECRETS.read_text())
+        return str((d.get("statsfm") or {}).get("user") or "").strip()
+    except (OSError, ValueError):
+        return ""
+
+
+class Fail(Exception):
+    pass
+
+
+def get(uid: str, path: str, **params) -> object:
+    url = API + urllib.parse.quote(uid, safe="") + path + ("?" + urllib.parse.urlencode(params) if params else "")
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r).get("items")
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            raise Fail("limit")
+        if e.code == 404:
+            # 404 heißt bei stats.fm auch "privat" – die Meldung unterscheidet
+            try:
+                msg = json.load(e).get("message", "")
+            except ValueError:
+                msg = ""
+            raise Fail("private" if "private" in msg.lower() else "notfound")
+        raise Fail("network")
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        raise Fail("network")
+
+
+def top(items, key: str) -> dict:
+    if not isinstance(items, list) or not items:
+        return {}
+    i = items[0]
+    obj = i.get(key) or {}
+    name = obj.get("name") or ""
+    if key == "track":
+        artists = ", ".join(a.get("name", "") for a in (obj.get("artists") or [])[:1] if a.get("name"))
+        name = name + (" · " + artists if artists else "")
+    return {"name": name, "streams": i.get("streams") or 0, "ms": i.get("playedMs") or 0}
+
+
+def fetch(uid: str) -> dict:
+    now = dt.datetime.now().astimezone()
+    midnight = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    jan1 = int(now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    t = get(uid, "/streams/stats", after=midnight) or {}
+    y = get(uid, "/streams/stats", after=jan1) or {}
+    tt = top(get(uid, "/top/tracks", after=midnight, limit=1), "track")
+    yt = top(get(uid, "/top/tracks", after=jan1, limit=1), "track")
+    ya = top(get(uid, "/top/artists", after=jan1, limit=1), "artist")
+    return {
+        "ok": True,
+        "at": int(time.time() * 1000),
+        "day": now.strftime("%Y-%m-%d"),
+        "today": {"ms": t.get("durationMs") or 0, "streams": t.get("count") or 0, "topTrack": tt.get("name", "")},
+        "year": {"ms": y.get("durationMs") or 0, "streams": y.get("count") or 0,
+                 "topTrack": yt.get("name", ""), "topTrackStreams": yt.get("streams", 0),
+                 "topArtist": ya.get("name", ""), "topArtistMs": ya.get("ms", 0)},
+    }
+
+
+def main() -> None:
+    max_age = 1800
+    args = sys.argv[1:]
+    if "--max-age" in args:
+        max_age = int(args[args.index("--max-age") + 1])
+    if "--force" in args:
+        max_age = 0
+
+    uid = user()
+    if not uid:
+        print(json.dumps({"ok": False, "error": "unconfigured"}))
+        return
+
+    try:
+        cache = json.loads(CACHE.read_text())
+    except (OSError, ValueError):
+        cache = {}
+    if cache.get("uid") != hash_uid(uid):
+        cache = {}
+    now = int(time.time() * 1000)
+    good = cache.get("good")
+    today = dt.date.today().isoformat()
+    # frisch genug (und noch derselbe Tag) -> Cache; nach Fehler Pause
+    if good and good.get("day") == today and now - good.get("at", 0) < max_age * 1000:
+        print(json.dumps(good))
+        return
+    if cache.get("failAt") and now - cache["failAt"] < BACKOFF * 1000 and max_age > 0:
+        out = {"ok": False, "error": cache.get("error", "network")}
+        if good:
+            out["stale"] = good
+        print(json.dumps(out))
+        return
+
+    try:
+        res = fetch(uid)
+        cache = {"uid": hash_uid(uid), "good": res}
+        out = res
+    except Fail as e:
+        cache = {"uid": hash_uid(uid), "good": good, "failAt": now, "error": str(e)}
+        out = {"ok": False, "error": str(e)}
+        if good:
+            out["stale"] = good
+    try:
+        CACHE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CACHE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cache))
+        tmp.replace(CACHE)
+    except OSError:
+        pass
+    print(json.dumps(out))
+
+
+def hash_uid(uid: str) -> str:
+    # Nutzerwechsel erkennen, ohne den Namen in den Cache zu schreiben
+    import hashlib
+    return hashlib.sha256(uid.encode()).hexdigest()[:16]
+
+
+if __name__ == "__main__":
+    main()

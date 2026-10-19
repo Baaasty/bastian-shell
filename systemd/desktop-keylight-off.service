@@ -1,0 +1,23 @@
+# Beim Herunterfahren (oder Abmelden): GoXLR-Profil speichern und Key Light aus. ExecStop läuft beim Beenden
+# der User-Sitzung. Installiert/entfernt über scripts/rice on|off (Link nach ~/.config/systemd/user).
+# GoXLR: die Fader haben keinen Motor – das Profil merkt sich so die letzte Lautstärke, beim nächsten Start
+# passt sie zur Fader-Position und man muss den Fader nicht erst "abholen".
+# Davor: Routing komplett aus (goxlr-reset-routing), damit das gespeicherte Profil schon „alles aus“ ist
+# (Schalter resetRoutingOnExit in ~/.config/desktop/goxlr.json). Doku: docs/setup/goxlr.md
+# Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/desktop.
+[Unit]
+Description=Desktop: beim Herunterfahren GoXLR-Profil speichern, Key Light aus
+After=network-online.target goxlr.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+EnvironmentFile=-%h/.config/desktop/hyprland.env
+ExecStop=-/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/desktop}/scripts/goxlr-reset-routing" --if resetRoutingOnExit'
+ExecStop=-/usr/bin/goxlr-client profiles device save
+ExecStop=/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/desktop}/scripts/keylight" off'
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

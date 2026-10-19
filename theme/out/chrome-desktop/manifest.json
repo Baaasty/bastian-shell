@@ -1,0 +1,142 @@
+{
+  "manifest_version": 3,
+  "name": "Desktop Theme",
+  "version": "0.3.0",
+  "description": "Warm brown, wood and cream (from theme/palette.json, hearth).",
+  "theme": {
+    "colors": {
+      "frame": [
+        42,
+        33,
+        27
+      ],
+      "frame_inactive": [
+        37,
+        29,
+        24
+      ],
+      "frame_incognito": [
+        81,
+        57,
+        44
+      ],
+      "frame_incognito_inactive": [
+        61,
+        43,
+        33
+      ],
+      "background_tab": [
+        42,
+        33,
+        27
+      ],
+      "background_tab_inactive": [
+        37,
+        29,
+        24
+      ],
+      "background_tab_incognito": [
+        81,
+        57,
+        44
+      ],
+      "background_tab_incognito_inactive": [
+        61,
+        43,
+        33
+      ],
+      "toolbar": [
+        56,
+        45,
+        38
+      ],
+      "toolbar_text": [
+        246,
+        236,
+        221
+      ],
+      "toolbar_button_icon": [
+        210,
+        194,
+        174
+      ],
+      "tab_text": [
+        246,
+        236,
+        221
+      ],
+      "tab_background_text": [
+        210,
+        194,
+        174
+      ],
+      "tab_background_text_inactive": [
+        181,
+        165,
+        145
+      ],
+      "tab_background_text_incognito": [
+        210,
+        194,
+        174
+      ],
+      "tab_background_text_incognito_inactive": [
+        181,
+        165,
+        145
+      ],
+      "bookmark_text": [
+        210,
+        194,
+        174
+      ],
+      "omnibox_background": [
+        47,
+        38,
+        32
+      ],
+      "omnibox_text": [
+        246,
+        236,
+        221
+      ],
+      "ntp_background": [
+        42,
+        33,
+        27
+      ],
+      "ntp_text": [
+        246,
+        236,
+        221
+      ],
+      "ntp_link": [
+        242,
+        165,
+        138
+      ],
+      "ntp_header": [
+        85,
+        74,
+        64
+      ],
+      "button_background": [
+        0,
+        0,
+        0,
+        0.0
+      ]
+    },
+    "tints": {
+      "buttons": [
+        -1,
+        -1,
+        -1
+      ]
+    },
+    "properties": {
+      "ntp_background_alignment": "bottom",
+      "ntp_logo_alternate": 1
+    }
+  }
+}

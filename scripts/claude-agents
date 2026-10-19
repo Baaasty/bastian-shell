@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""Claude-Sitzungen + Subagents für die Claude-Zentrale (Bar oben links) und die Agent-Map.
+
+  claude-agents                  aktive Sitzungen; fertige Agents nur der letzten 30 min
+  claude-agents --session <id>   nur diese Sitzung, mit allen Agents (für die Agent-Map)
+
+Gibt JSON aus:
+  { "<session-id>": { "title", "model", "context", "file", "total" (alle Agents der Sitzung),
+                      "agents": [{ "id", "description", "type", "state": "running"|"done",
+                                   "since", "updated", "last", "duration", "tokens", "file" }] } }
+(Zeiten in ms seit Epoch, Dauer in ms; laufende Agents zuerst, dann neueste.)
+
+Datenquelle: Claude Code (VS Code und CLI) legt pro Sitzung ~/.claude/projects/<ordner>/<sitzung>.jsonl an,
+Subagents unter <sitzung>/subagents/agent-<id>.jsonl + agent-<id>.meta.json. Die meta.json hat
+"description" (aus dem Agent-Aufruf) und bekommt beim Abschluss "finished": true.
+- running = nicht finished und Transkript in den letzten 90 s geändert (bzw. bis 10 min still,
+  solange die Sitzung laut claude.json noch arbeitet – lange Bash-Befehle schreiben nichts)
+- done    = finished, oder zu lange still (abgebrochen)
+Aktive Sitzungen: Einträge in ~/.local/state/desktop/claude.json und jede <sitzung>.jsonl jünger als 6 h.
+
+Sitzung: title  = letzte Zeile type "custom-title" (/rename) bzw. "ai-title" (von Claude vergeben)
+         model  = message.model der letzten Antwort der Hauptsitzung (isSidechain false)
+         context= Tokens im Kontext = input + cache_creation + cache_read + output dieser letzten Antwort
+Agent:   since/last = timestamp der ersten/letzten Transkriptzeile, duration = last - since
+         tokens = dieselbe Rechnung auf die letzte Antwort des Agents, also seine Kontextgröße am Ende.
+         So zählt Claude Code selbst ("Done · 113.8k tokens" in der Abschlussmeldung): die Werte liegen
+         ~1–2 % darunter (die Abschlussmeldung zählt die letzte Antwort noch mit). Eine Summe über alle
+         Antworten wäre wegen des Caches irreführend (jeder Schritt liest den ganzen Kontext erneut).
+
+Liest nur Struktur-Felder (timestamp, type, usage, model, Titel) – nie Nachrichteninhalte.
+Große Transkripte werden von hinten gelesen; Ergebnisse pro Datei liegen mit mtime/Größe in
+~/.cache/desktop/claude-agents.json (unveränderte Dateien werden gar nicht geöffnet).
+Fehler werden still übersprungen; Ausgabe ist immer gültiges JSON.
+"""
+import calendar
+import json
+import os
+import re
+import sys
+import time
+
+HOME = os.path.expanduser("~")
+PROJECTS = os.path.join(HOME, ".claude", "projects")
+STATE = os.path.join(HOME, ".local", "state", "desktop", "claude.json")
+CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "desktop", "claude-agents.json")
+SESSION_AGE = 6 * 3600
+RUNNING_QUIET = 90
+WORKING_QUIET = 600
+DONE_SHOW = 30 * 60
+CACHE_KEEP = 24 * 3600
+TAIL_START = 256 << 10
+TAIL_MAX = 8 << 20
+TS = re.compile(rb'"timestamp":"([0-9T:.\-]+)Z?"')
+
+
+def load_json(path: str, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def utc_ms(stamp: str) -> int:
+    """ISO-Zeitstempel (UTC) -> ms seit Epoch."""
+    base = calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S"))
+    frac = stamp[19:].lstrip(".").rstrip("Z")
+    ms = int((frac + "000")[:3]) if frac.isdigit() else 0
+    return base * 1000 + ms
+
+
+def first_ts(path: str) -> int:
+    """Startzeit aus dem timestamp der ersten Transkriptzeile (nur den Kopf lesen)."""
+    try:
+        with open(path, "rb") as f:
+            for _ in range(5):
+                line = f.readline(1 << 20)
+                if not line:
+                    break
+                m = TS.search(line)
+                if m:
+                    return utc_ms(m.group(1).decode())
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def usage_total(u: dict) -> int:
+    return sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
+
+
+def tail_scan(path: str, main: bool) -> dict:
+    """Von hinten lesen, bis letzter timestamp, letzte Antwort (usage/model) und – für die Hauptsitzung –
+    der Titel gefunden sind. Wächst bei Bedarf bis TAIL_MAX."""
+    found = {}
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            want = TAIL_START
+            while True:
+                start = max(0, size - want)
+                f.seek(start)
+                chunk = f.read(size - start)
+                lines = chunk.split(b"\n")
+                if start > 0:
+                    lines = lines[1:]  # erste Zeile ist angeschnitten
+                for line in reversed(lines):
+                    if not line:
+                        continue
+                    titled = main and line.startswith((b'{"type":"ai-title"', b'{"type":"custom-title"'))
+                    if not ("last" not in found or (titled and "title" not in found)
+                            or ("usage" not in found and b'"usage"' in line and b'"assistant"' in line)):
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    if not isinstance(d, dict):
+                        continue
+                    if "last" not in found and isinstance(d.get("timestamp"), str):
+                        found["last"] = utc_ms(d["timestamp"])
+                    if titled and "title" not in found:
+                        t = d.get("customTitle") or d.get("aiTitle")
+                        if t:
+                            found["title"] = " ".join(str(t).split())[:80]
+                    if "usage" not in found and d.get("type") == "assistant" and not (main and d.get("isSidechain")):
+                        msg = d.get("message") or {}
+                        model = msg.get("model") or ""
+                        if isinstance(msg.get("usage"), dict) and model != "<synthetic>":
+                            found["usage"] = usage_total(msg["usage"])
+                            found["model"] = model
+                    if "last" in found and "usage" in found and (not main or "title" in found):
+                        return found
+                if start == 0 or want >= TAIL_MAX:
+                    return found
+                want *= 4
+    except OSError:
+        pass
+    return found
+
+
+def full_title(path: str) -> str:
+    """Notfall: Titel steht nicht im Ende -> Datei einmal vorwärts nach Titelzeilen durchsuchen."""
+    title = ""
+    try:
+        with open(path, "rb") as f:
+            for line in f:
+                if line.startswith((b'{"type":"ai-title"', b'{"type":"custom-title"')):
+                    try:
+                        d = json.loads(line)
+                        title = " ".join(str(d.get("customTitle") or d.get("aiTitle") or "").split())[:80] or title
+                    except ValueError:
+                        pass
+    except OSError:
+        pass
+    return title
+
+
+class Cache:
+    """Pfad -> {m: mtime, s: Größe, d: Daten, t: zuletzt benutzt}."""
+
+    def __init__(self, now: float):
+        self.now = now
+        self.data = load_json(CACHE, {})
+        if not isinstance(self.data, dict):
+            self.data = {}
+        self.dirty = False
+
+    def get(self, path: str, compute):
+        try:
+            st = os.stat(path)
+        except OSError:
+            return None
+        e = self.data.get(path)
+        if e and e.get("m") == st.st_mtime and e.get("s") == st.st_size:
+            if self.now - e.get("t", 0) > 3600:
+                e["t"] = self.now
+                self.dirty = True
+            return e["d"]
+        d = compute(path, e["d"] if e else None)
+        self.data[path] = {"m": st.st_mtime, "s": st.st_size, "d": d, "t": self.now}
+        self.dirty = True
+        return d
+
+    def save(self):
+        if not self.dirty:
+            return
+        keep = {k: v for k, v in self.data.items() if self.now - v.get("t", 0) < CACHE_KEEP}
+        try:
+            os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+            tmp = CACHE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(keep, f)
+            os.replace(tmp, CACHE)
+        except OSError:
+            pass
+
+
+def agent_stats(path: str, old) -> dict:
+    t = tail_scan(path, False)
+    since = (old or {}).get("since") or first_ts(path)
+    return {"since": since, "last": t.get("last", since), "tokens": t.get("usage", (old or {}).get("tokens", 0))}
+
+
+def session_stats(path: str, old) -> dict:
+    old = old or {}
+    t = tail_scan(path, True)
+    title = t.get("title") or old.get("title")
+    if title is None:
+        title = full_title(path)
+    return {"title": title or "", "model": t.get("model") or old.get("model", ""),
+            "context": t.get("usage", old.get("context", 0))}
+
+
+def load_state() -> dict:
+    return (load_json(STATE, {}) or {}).get("sessions") or {}
+
+
+def sessions(now: float, states: dict, only: str = "") -> dict:
+    """Sitzungs-ID -> Ordner des Projekts (aktive Sitzungen bzw. genau die gesuchte)."""
+    out = {}
+    try:
+        projects = os.listdir(PROJECTS)
+    except OSError:
+        return out
+    for proj in projects:
+        base = os.path.join(PROJECTS, proj)
+        if only:
+            if os.path.exists(os.path.join(base, only + ".jsonl")):
+                out[only] = base
+                return out
+            continue
+        try:
+            names = os.listdir(base)
+        except OSError:
+            continue
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            sid = name[:-6]
+            try:
+                fresh = now - os.path.getmtime(os.path.join(base, name)) < SESSION_AGE
+            except OSError:
+                fresh = False
+            if fresh or sid in states:
+                out[sid] = base
+    return out
+
+
+def agents_of(sub: str, now: float, working: bool, cache: Cache, everything: bool) -> list:
+    out = []
+    try:
+        names = os.listdir(sub)
+    except OSError:
+        return out
+    for name in names:
+        if not (name.startswith("agent-") and name.endswith(".meta.json")):
+            continue
+        aid = name[len("agent-"):-len(".meta.json")]
+        meta_path = os.path.join(sub, name)
+        log_path = os.path.join(sub, "agent-" + aid + ".jsonl")
+        try:
+            meta_m = os.path.getmtime(meta_path)
+            log_m = os.path.getmtime(log_path) if os.path.exists(log_path) else meta_m
+        except OSError:
+            continue
+        updated = max(meta_m, log_m)
+        quiet = now - updated
+        # alt und sicher fertig: gar nicht erst öffnen
+        if not everything and quiet > max(DONE_SHOW, WORKING_QUIET):
+            continue
+        meta = load_json(meta_path, None)
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("finished"):
+            state = "done"
+        elif quiet < RUNNING_QUIET or (working and quiet < WORKING_QUIET):
+            state = "running"
+        else:
+            state = "done"
+        if not everything and state == "done" and quiet > DONE_SHOW:
+            continue
+        st = cache.get(log_path, agent_stats) or {}
+        since = st.get("since") or int(meta_m * 1000)
+        last = st.get("last") or since
+        desc = " ".join(str(meta.get("description") or "").split())[:80]
+        out.append({
+            "id": aid,
+            "description": desc or str(meta.get("agentType") or "agent"),
+            "type": str(meta.get("agentType") or "")[:40],
+            "state": state,
+            "since": since,
+            "updated": int(updated * 1000),
+            "last": last,
+            "duration": max(0, last - since),
+            "tokens": int(st.get("tokens") or 0),
+            "file": log_path if os.path.exists(log_path) else "",
+        })
+    # laufende zuerst, dann neueste
+    out.sort(key=lambda a: (a["state"] != "running", -a["updated"]))
+    return out
+
+
+def total_agents(sub: str) -> int:
+    """Alle Agents der Sitzung (auch ältere) – nur zählen, nichts öffnen."""
+    try:
+        return sum(1 for n in os.listdir(sub) if n.startswith("agent-") and n.endswith(".meta.json"))
+    except OSError:
+        return 0
+
+
+def main() -> None:
+    now = time.time()
+    only = ""
+    if len(sys.argv) > 1 and sys.argv[1] == "--session":
+        only = sys.argv[2] if len(sys.argv) > 2 else ""
+        if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", only):
+            print("{}")
+            return
+    states = load_state()
+    cache = Cache(now)
+    result = {}
+    for sid, base in sessions(now, states, only).items():
+        working = (states.get(sid) or {}).get("state") == "working"
+        path = os.path.join(base, sid + ".jsonl")
+        info = cache.get(path, session_stats) or {}
+        sub = os.path.join(base, sid, "subagents")
+        result[sid] = {
+            "title": info.get("title", ""),
+            "model": info.get("model", ""),
+            "context": int(info.get("context") or 0),
+            "file": path,
+            "agents": agents_of(sub, now, working, cache, bool(only)),
+            "total": total_agents(sub),
+        }
+    cache.save()
+    print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:  # darf die Shell nie stören
+        print("{}")

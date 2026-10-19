@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+rclone config reconnect icloud: && rclone config reconnect icloud-photos: \
+  && touch ~/.local/state/icloud-sync/last-auth \
+  && systemctl --user restart icloud-photos && systemctl --user start icloud-sync \
+  && echo "✓ iCloud neu verbunden"

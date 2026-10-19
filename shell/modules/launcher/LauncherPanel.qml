@@ -1,0 +1,333 @@
+import QtQuick
+import Quickshell
+import Quickshell.Widgets
+import qs.config
+import qs.services
+import qs.components
+
+// Such-Panel (Feld, Modi, Treffer, Rechner-Tasten) – steckt im Launcher-Fenster und im Dashboard.
+// Der Zustand (query, results, …) liegt im Launcher-Scope.
+Item {
+    id: panelRoot
+
+    required property var launcher
+    property string placeholder: "Search…"
+    // compact (Dashboard): ohne Eingabe nur das Feld, Treffer erst beim Tippen
+    property bool compact: false
+    readonly property bool idle: compact && launcher.query === ""
+    readonly property alias input: input
+    readonly property alias card: card
+    readonly property alias pad: pad
+    readonly property bool padShown: launcher.mode === "="
+    // Höhe ohne Treffer (Feld + Modus-Chips): das Dashboard setzt seine Kacheln darunter
+    readonly property real restHeight: modeFlow.y + modeFlow.height + 36
+
+    signal dismissed()
+    signal activated()
+
+    function run(i: int): void {
+        launcher.activate(i);
+        activated();
+    }
+
+    width: Theme.layout.launcherWidth || 760
+    height: card.height
+
+    Glass {
+        id: card
+        width: parent.width
+        height: col.implicitHeight + 36
+        radius: Theme.radiusXl
+
+        // Luft oben, zwischen den Teilen und unten gleich (18)
+        Column {
+            id: col
+            x: 16
+            y: 18
+            width: parent.width - 32
+            spacing: 18
+
+            // Suchfeld
+            Rectangle {
+                width: parent.width
+                height: 56
+                radius: Theme.radiusMd
+                color: Theme.raise
+                border.width: 1
+                border.color: Qt.alpha(Theme.accent, 0.5)
+
+                Icon {
+                    id: searchIcon
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "search"
+                    size: 22
+                    color: Theme.textFaint
+                }
+                TextInput {
+                    id: input
+                    anchors.left: searchIcon.right
+                    anchors.leftMargin: 12
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: launcher.query
+                    onTextChanged: launcher.query = text
+                    // Feld folgt dem Suchtext auch dann, wenn die Bindung durch input.text = … gerissen ist
+                    // (z. B. nach Klick auf einen Modus-Chip) – sonst bliebe beim nächsten Öffnen Text stehen
+                    Connections {
+                        target: panelRoot.launcher
+                        function onQueryChanged() {
+                            if (input.text !== panelRoot.launcher.query)
+                                input.text = panelRoot.launcher.query;
+                        }
+                    }
+                    color: Theme.text
+                    selectionColor: Theme.accentSoft
+                    font.family: Theme.fontUi
+                    font.pixelSize: 20
+                    focus: true
+                    Keys.onEscapePressed: panelRoot.dismissed()
+                    Keys.onReturnPressed: panelRoot.run(launcher.selected)
+                    Keys.onEnterPressed: panelRoot.run(launcher.selected)
+                    Keys.onDownPressed: launcher.selected = Math.min(launcher.results.length - 1, launcher.selected + 1)
+                    Keys.onUpPressed: launcher.selected = Math.max(0, launcher.selected - 1)
+                    Keys.onDeletePressed: {
+                        const r = launcher.results[launcher.selected];
+                        if (r && r.clipId)
+                            Clipboard.remove(r.clipId);
+                        else if (r && r.id.startsWith("pin:"))
+                            Clipboard.togglePin(r.pinText);
+                        else
+                            return;
+                        launcher.rebuild();
+                    }
+                    Keys.onPressed: event => {
+                        if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) {
+                            const r = launcher.results[launcher.selected];
+                            if (r && r.pinText) {
+                                Clipboard.togglePin(r.pinText);
+                                launcher.rebuild();
+                            }
+                            event.accepted = true;
+                        }
+                    }
+                    Keys.onTabPressed: {
+                        const i = launcher.modes.findIndex(m => m.prefix === launcher.mode);
+                        const nextMode = launcher.modes[(i + 1) % launcher.modes.length].prefix;
+                        text = nextMode + launcher.term;
+                    }
+                    Txt {
+                        anchors.fill: parent
+                        visible: input.text === ""
+                        text: panelRoot.placeholder
+                        color: Theme.textFaint
+                        font.pixelSize: 20
+                        font.weight: Font.Normal
+                    }
+                }
+            }
+
+            // Modi (mehrere Zeilen, wenn es viele sind) – auch ohne Eingabe sichtbar, damit die Präfixe (# Projects, = Calculator …) sofort da sind
+            Flow {
+                id: modeFlow
+                width: parent.width
+                spacing: 8
+                Repeater {
+                    model: launcher.modes
+                    Rectangle {
+                        required property var modelData
+                        readonly property bool on: modelData.prefix === launcher.mode
+                        width: modeRow.implicitWidth + 20
+                        height: 28
+                        radius: Theme.radiusSm
+                        color: on ? Theme.accentSoft : "transparent"
+                        border.width: on ? 0 : 1
+                        border.color: Theme.border
+                        Row {
+                            id: modeRow
+                            anchors.centerIn: parent
+                            spacing: 6
+                            MonoTxt {
+                                visible: modelData.prefix !== ""
+                                text: modelData.prefix
+                                color: Theme.textFaint
+                                font.pixelSize: 12
+                            }
+                            Txt {
+                                text: modelData.label
+                                color: parent.parent.on ? Theme.accentText : Theme.textMuted
+                                font.pixelSize: 12
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                input.text = modelData.prefix + launcher.term;
+                                input.forceActiveFocus();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Treffer: höchstens maxRows Zeilen hoch, darüber scrollt die Liste und folgt der Auswahl
+            ListView {
+                id: hits
+                readonly property int rowH: 60
+                readonly property int maxRows: 10
+                visible: !panelRoot.idle
+                width: parent.width
+                height: Math.max(0, Math.min(count, maxRows) * (rowH + spacing) - spacing)
+                spacing: 2
+                clip: true
+                interactive: count > maxRows
+                boundsBehavior: Flickable.StopAtBounds
+                model: launcher.results
+                function follow(): void {
+                    if (launcher.selected >= 0 && launcher.selected < count)
+                        positionViewAtIndex(launcher.selected, ListView.Contain);
+                }
+                Connections {
+                    target: panelRoot.launcher
+                    function onSelectedChanged() { hits.follow(); }
+                    function onResultsChanged() { hits.positionViewAtBeginning(); }
+                }
+                delegate: Rectangle {
+                    id: row
+                    required property var modelData
+                    required property int index
+                    readonly property bool on: index === launcher.selected
+                    width: ListView.view.width
+                    height: hits.rowH
+                    radius: Theme.radiusMd
+                    color: on ? Theme.accentSoft : rowArea.containsMouse ? Theme.raise : "transparent"
+
+                    Rectangle {
+                        id: tileIcon
+                        x: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 40
+                        height: 40
+                        radius: Theme.radiusSm
+                        color: row.modelData.icon ? "transparent" : Theme.wood
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            visible: !!row.modelData.thumb
+                            source: row.modelData.thumb || ""
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: false
+                            sourceSize.width: 80
+                        }
+                        IconImage {
+                            anchors.centerIn: parent
+                            visible: !!row.modelData.icon
+                            implicitSize: 32
+                            source: row.modelData.icon ? Quickshell.iconPath(row.modelData.icon, "application-x-executable") : ""
+                        }
+                        Icon {
+                            anchors.centerIn: parent
+                            visible: !row.modelData.icon && !row.modelData.emoji && !row.modelData.thumb
+                            name: row.modelData.glyph || ""
+                            size: 22
+                            fill: row.modelData.glyph === "push_pin" || !!row.modelData.glyphFill
+                            color: row.modelData.glyph === "push_pin" || row.modelData.glyphFill ? Theme.accentText : Theme.text
+                        }
+                        Text {
+                            anchors.centerIn: parent
+                            visible: !!row.modelData.emoji
+                            text: row.modelData.emoji || ""
+                            font.pixelSize: 24
+                        }
+                    }
+                    Column {
+                        anchors.left: tileIcon.right
+                        anchors.leftMargin: 14
+                        anchors.right: kind.left
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Text {
+                            width: parent.width
+                            text: Fuzzy.highlight(launcher.term, row.modelData.title, Theme.accentText)
+                            textFormat: Text.StyledText
+                            elide: Text.ElideRight
+                            color: Theme.text
+                            font.family: Theme.fontUi
+                            font.pixelSize: 16
+                            font.weight: Font.Medium
+                            linkColor: Theme.accentText
+                        }
+                        Txt {
+                            width: parent.width
+                            visible: text !== ""
+                            text: row.modelData.sub
+                            color: Theme.textMuted
+                            font.pixelSize: 12
+                            font.weight: Font.Normal
+                        }
+                    }
+                    Txt {
+                        id: kind
+                        anchors.right: parent.right
+                        anchors.rightMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 220)   // lange Bezeichnungen gekürzt
+                        text: row.modelData.kind + (row.on ? "  ↵" : "")
+                        color: row.on ? Theme.accentText : Theme.textFaint
+                        font.pixelSize: 12
+                        font.weight: Font.Normal
+                    }
+                    MouseArea {
+                        id: rowArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: panelRoot.run(row.index)
+                    }
+                }
+            }
+
+            Row {
+                visible: !panelRoot.idle
+                spacing: 18
+                leftPadding: 6
+                Repeater {
+                    model: launcher.mode === ";" ? [["↵", "copy"], ["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]]
+                         : launcher.mode === "?" && launcher.term ? [["↵", "open in Helium"], ["↑↓", "select"], ["Tab", "mode"], ["Esc", "close"]]
+                         : launcher.mode === "c " ? [["↵", "ask Claude"], ["Tab", "mode"], ["Esc", "close"]]
+                         : [["↵", "open"], ["↑↓", "select"], ["Tab", "mode"], ["?", "prefixes"], ["Esc", "close"]]
+                    Row {
+                        required property var modelData
+                        spacing: 5
+                        MonoTxt {
+                            text: modelData[0]
+                            color: Theme.textMuted
+                            font.pixelSize: 12
+                        }
+                        Txt {
+                            text: modelData[1]
+                            color: Theme.textFaint
+                            font.pixelSize: 12
+                            font.weight: Font.Normal
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Wissenschaftlicher Rechner zum Klicken (nur im Modus "=")
+    CalcPad {
+        id: pad
+        launcher: panelRoot.launcher
+        input: input
+        x: card.width + 16
+        y: 0
+        visible: panelRoot.padShown
+    }
+}

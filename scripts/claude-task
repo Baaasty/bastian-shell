@@ -1,0 +1,496 @@
+#!/usr/bin/env python3
+"""Claude-Aufgaben im Hintergrund (Claude-Zentrale → „Ask Claude…“).
+
+  claude-task start <ordner>   neue Sitzung starten; Aufgabe kommt aus $CLAUDE_TASK_TEXT oder stdin
+                               (nie als Argument: sonst stünde sie in ps/systemd). Gibt die ID aus.
+  claude-task list             alle Aufgaben der letzten 24 h als JSON (neueste zuerst)
+  claude-task stop <id>        abbrechen (systemctl --user stop claude-task-<id>)
+  claude-task seen <id>        Ergebnis angesehen (zählt nicht mehr als „your turn“)
+  claude-task remove <id>      aus der Liste werfen (Dateien weg; die Claude-Sitzung selbst bleibt)
+  claude-task _run <id>        intern: läuft als systemd-User-Unit claude-task-<id>
+
+Ablauf: start legt ~/.local/state/desktop/claude-tasks/<id>.json (Meta) + <id>.prompt an (Ordner 700,
+Dateien 600) und startet `systemd-run --user --unit=claude-task-<id> --collect` → übersteht einen
+Shell-Neustart. _run liest den Prompt (und löscht ihn), ruft
+  claude -p --output-format stream-json --verbose --session-id <uuid>
+im Projektordner auf (Prompt über stdin, kein --name: der Text soll nicht in ps/systemctl status stehen)
+und schreibt den Stream nach <id>.jsonl.
+Erlaubnisse laufen über die globalen PermissionRequest-Hooks (scripts/claude-gate → Antwort-Karte),
+die greifen auch bei -p (geprüft). Weitermachen in VS Code: vscode://anthropic.claude-code/open?session=<uuid>
+(macht die Shell); die Sitzung hat Entrypoint sdk-cli, im Verlauf-Panel steht sie evtl. nicht.
+Danach: Ergebnis (gekürzt) in die Meta, Stempel .changed (die Shell beobachtet ihn), Meldung
+„Claude task done · <projekt>“; Klick darauf öffnet das Ergebnis in der Zentrale (qs ipc).
+Gibt nie Aufgabentext auf stdout/stderr aus (außer in `list`, das nur die Shell liest).
+"""
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import uuid
+
+# DESKTOP_STATE_DIR nur zum Testen
+STATE_DIR = os.environ.get("DESKTOP_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".local", "state", "desktop")
+DIR = os.path.join(STATE_DIR, "claude-tasks")
+STAMP = os.path.join(DIR, ".changed")
+SELF = os.path.abspath(__file__)
+REPO = os.path.dirname(os.path.dirname(SELF))
+SHELL = os.path.join(REPO, "shell")
+ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$")
+LIST_AGE = 24 * 3600          # so lange stehen fertige Aufgaben in der Liste
+KEEP_AGE = 7 * 24 * 3600      # danach fliegen die Dateien weg
+MAX_TEXT = 20000
+RESULT_MAX = 6000             # in der Meta
+RESULT_SHOW = 2000            # in `list`
+ACTION_WAIT = 600             # so lange wartet die Meldung auf einen Klick
+ACTIVE = ("starting", "running")
+
+
+# ---------- Dateien ----------
+
+def ensure_dir() -> None:
+    os.makedirs(DIR, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(DIR, 0o700)
+    except OSError:
+        pass
+
+
+def write_json(path: str, data) -> None:
+    """Atomar (tmp + rename), Rechte 600."""
+    fd, tmp = tempfile.mkstemp(dir=DIR, prefix=".task.", suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def read_json(path: str):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def stamp() -> None:
+    try:
+        with open(STAMP, "w") as f:
+            f.write(str(int(time.time() * 1000)))
+    except OSError:
+        pass
+
+
+def meta_path(tid: str) -> str:
+    return os.path.join(DIR, tid + ".json")
+
+
+def update(tid: str, **fields) -> dict:
+    m = read_json(meta_path(tid)) or {"id": tid}
+    m.update(fields)
+    write_json(meta_path(tid), m)
+    stamp()
+    return m
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def valid_id(tid: str) -> str:
+    if not ID_RE.match(tid or ""):
+        sys.exit("claude-task: ungültige ID")
+    return tid
+
+
+# ---------- Hilfen ----------
+
+def project_of(cwd: str) -> str:
+    """Name des Git-Repos (oberster Ordner mit .git), sonst Ordnername (wie claude-status)."""
+    probe = cwd
+    while probe and probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, ".git")):
+            return os.path.basename(probe)
+        probe = os.path.dirname(probe)
+    return os.path.basename(cwd)
+
+
+def short(text: str, n: int) -> str:
+    line = " ".join(text.split())
+    return line if len(line) <= n else line[: n - 1].rstrip() + "…"
+
+
+def find_claude() -> str:
+    for c in (shutil.which("claude"), os.path.expanduser("~/.local/bin/claude")):
+        if c and os.access(c, os.X_OK):
+            return c
+    return ""
+
+
+def alive(pid) -> bool:
+    try:
+        pid = int(pid)
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return b"claude-task" in f.read()
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def unit_of(tid: str) -> str:
+    return "claude-task-" + tid
+
+
+def parse_log(path: str) -> dict:
+    """Ergebnis aus dem stream-json: result-Zeile, sonst letzte Assistant-Antwort. Dazu Schritte (Tool-Aufrufe)."""
+    out = {"steps": 0, "result": "", "is_error": None, "cost": None, "turns": None, "denials": 0, "subtype": ""}
+    last_text = ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                t = d.get("type")
+                if t == "assistant" and not d.get("parent_tool_use_id"):
+                    for c in (d.get("message") or {}).get("content") or []:
+                        if not isinstance(c, dict):
+                            continue
+                        if c.get("type") == "tool_use":
+                            out["steps"] += 1
+                        elif c.get("type") == "text" and c.get("text", "").strip():
+                            last_text = c["text"].strip()
+                elif t == "result":
+                    out["result"] = str(d.get("result") or "").strip()
+                    out["is_error"] = bool(d.get("is_error"))
+                    out["cost"] = d.get("total_cost_usd")
+                    out["turns"] = d.get("num_turns")
+                    out["denials"] = len(d.get("permission_denials") or [])
+                    out["subtype"] = str(d.get("subtype") or "")
+    except OSError:
+        pass
+    if not out["result"]:
+        out["result"] = last_text
+    return out
+
+
+# ---------- start ----------
+
+def cmd_start(args) -> None:
+    if not args:
+        sys.exit("claude-task start <ordner>")
+    text = os.environ.pop("CLAUDE_TASK_TEXT", None)
+    if text is None:
+        text = sys.stdin.read()
+    text = (text or "").strip()
+    if not text:
+        sys.exit("claude-task: keine Aufgabe")
+    if len(text) > MAX_TEXT:
+        sys.exit("claude-task: Aufgabe zu lang")
+    cwd = os.path.realpath(os.path.expanduser(args[0]))
+    home = os.path.realpath(os.path.expanduser("~"))
+    if not os.path.isdir(cwd) or not (cwd == home or cwd.startswith(home + "/")):
+        sys.exit("claude-task: Ordner nicht gefunden")
+    claude = find_claude()
+    if not claude:
+        sys.exit("claude-task: claude nicht gefunden")
+
+    ensure_dir()
+    tid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(2)
+    session = str(uuid.uuid4())
+    project = project_of(cwd)
+    meta = {"id": tid, "session": session, "cwd": cwd, "project": project, "title": short(text, 120),
+            "state": "starting", "started": now_ms(), "finished": 0, "unit": unit_of(tid), "seen": False}
+    # Prompt in eigene Datei (600), _run liest und löscht sie
+    fd = os.open(os.path.join(DIR, tid + ".prompt"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    write_json(meta_path(tid), meta)
+    stamp()
+
+    argv = ["systemd-run", "--user", "--unit=" + unit_of(tid), "--collect", "--quiet",
+            "--description=Claude background task (" + short(project, 40) + ")",
+            "--working-directory=" + cwd, "-p", "TimeoutStopSec=20", "--", SELF, "_run", tid]
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                           text=True, timeout=20)
+        ok = r.returncode == 0
+        err = (r.stderr or "").strip()[:200]
+    except (OSError, subprocess.TimeoutExpired) as e:
+        ok, err = False, type(e).__name__
+    if not ok:
+        try:
+            os.unlink(os.path.join(DIR, tid + ".prompt"))
+        except OSError:
+            pass
+        update(tid, state="failed", finished=now_ms(), error="could not start: " + err)
+        sys.exit("claude-task: Start fehlgeschlagen")
+    print(tid)
+
+
+# ---------- _run (in der Unit) ----------
+
+def _gvariant_str(text: str) -> str:
+    """Text als GVariant-String für gdbus (einfache Anführungszeichen, Backslash/Quote escaped)."""
+    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def notify(tid: str, summary: str, body: str) -> None:
+    """Meldung mit Klick → Ergebnis in der Zentrale; wartet höchstens ACTION_WAIT auf einen Klick.
+
+    Bewusst nicht notify-send -A: libnotify schickt die Meldung nach jedem Shell-Neustart erneut
+    (die Shell ist der Notification-Server). Hier: einmal Notify per gdbus, dann nur auf
+    ActionInvoked/NotificationClosed mit unserer ID lauschen."""
+    bus = ["--session", "--dest", "org.freedesktop.Notifications", "--object-path", "/org/freedesktop/Notifications"]
+    try:
+        mon = subprocess.Popen(["gdbus", "monitor"] + bus, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, text=True)
+    except OSError:
+        mon = None
+    nid = 0
+    try:
+        r = subprocess.run(["gdbus", "call"] + bus + ["--method", "org.freedesktop.Notifications.Notify", "--",
+                            "Claude", "0", "applications-development", _gvariant_str(summary[:200]), _gvariant_str(body[:300]),
+                            "['default', 'Show', 'open', 'Show result']", "{}", "-1"],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        m = re.search(r"uint32 (\d+)", r.stdout or "")
+        nid = int(m.group(1)) if m else 0
+    except (OSError, subprocess.TimeoutExpired):
+        nid = 0
+    if not nid or not mon:
+        if mon:
+            mon.kill()
+        return
+
+    clicked = {"v": False}
+
+    def watch():
+        pat_act = re.compile(r"ActionInvoked \(uint32 %d, '(default|open)'\)" % nid)
+        pat_close = re.compile(r"NotificationClosed \(uint32 %d," % nid)
+        for line in mon.stdout:
+            if pat_act.search(line):
+                clicked["v"] = True
+                return
+            if pat_close.search(line):
+                return
+
+    th = threading.Thread(target=watch, daemon=True)
+    th.start()
+    th.join(ACTION_WAIT)
+    if th.is_alive():
+        # niemand hat geklickt: Meldung schließen
+        subprocess.run(["gdbus", "call"] + bus + ["--method", "org.freedesktop.Notifications.CloseNotification", str(nid)],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+    mon.kill()
+    if clicked["v"]:
+        subprocess.run(["qs", "ipc", "--any-display", "-p", SHELL, "call", "claudehub", "showTask", tid],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+
+
+def cmd_run(args) -> None:
+    tid = valid_id(args[0] if args else "")
+    meta = read_json(meta_path(tid))
+    if not meta:
+        sys.exit(1)
+    prompt_file = os.path.join(DIR, tid + ".prompt")
+    try:
+        with open(prompt_file, encoding="utf-8") as f:
+            text = f.read()
+        os.unlink(prompt_file)
+    except OSError:
+        update(tid, state="failed", finished=now_ms(), error="task text missing")
+        sys.exit(1)
+    claude = find_claude()
+    if not claude:
+        update(tid, state="failed", finished=now_ms(), error="claude not found")
+        sys.exit(1)
+
+    log = os.path.join(DIR, tid + ".jsonl")
+    errlog = os.path.join(DIR, tid + ".err")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE_TASK_", "CLAUDECODE", "CLAUDE_CODE_"))}
+    argv = [claude, "-p", "--output-format", "stream-json", "--verbose", "--session-id", meta["session"]]
+
+    stopped = {"flag": False}
+    child = {"p": None}
+
+    def on_term(_sig, _frm):
+        if child["p"] is not None and child["p"].poll() is not None:
+            os._exit(0)          # Claude ist schon fertig (wartet nur noch auf einen Klick auf die Meldung)
+        stopped["flag"] = True
+        if child["p"] and child["p"].poll() is None:
+            child["p"].terminate()
+    signal.signal(signal.SIGTERM, on_term)
+    signal.signal(signal.SIGINT, on_term)
+
+    old = os.umask(0o077)
+    try:
+        with open(log, "w") as out, open(errlog, "w") as err:
+            os.umask(old)
+            p = subprocess.Popen(argv, cwd=meta["cwd"], env=env, stdin=subprocess.PIPE, stdout=out, stderr=err, text=True)
+            child["p"] = p
+            update(tid, state="running", pid=os.getpid())
+            try:
+                p.stdin.write(text)
+                p.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+            del text
+            rc = p.wait()
+    except OSError as e:
+        update(tid, state="failed", finished=now_ms(), error="could not run claude: " + type(e).__name__)
+        sys.exit(1)
+
+    # Sitzung im Bar-Status abmelden, falls Claude das nicht mehr selbst geschafft hat (SessionEnd-Hook)
+    try:
+        subprocess.run([os.path.join(REPO, "scripts", "claude-status"), "end"], input=json.dumps(
+            {"session_id": meta["session"], "cwd": meta["cwd"]}), text=True, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    info = parse_log(log)
+    if stopped["flag"]:
+        state = "stopped"
+    elif info["is_error"] is False:
+        state = "done"
+    else:
+        state = "failed"
+    error = ""
+    if state == "failed":
+        error = info["subtype"] if info["subtype"] and info["subtype"] != "success" else f"exit {rc}"
+    result = info["result"][:RESULT_MAX]
+    update(tid, state=state, finished=now_ms(), result=result, steps=info["steps"], cost=info["cost"],
+           turns=info["turns"], denials=info["denials"], error=error, pid=0)
+    if state == "stopped":
+        return
+    project = meta.get("project") or "project"
+    summary = ("Claude task done · " if state == "done" else "Claude task failed · ") + project
+    body = short(result, 200) if result else (error or "no answer")
+    notify(tid, summary, body)
+
+
+# ---------- list / stop / seen / remove ----------
+
+def live_steps(tid: str) -> int:
+    """Tool-Aufrufe bisher (für „running · 3 steps“), billig gezählt."""
+    n = 0
+    try:
+        with open(os.path.join(DIR, tid + ".jsonl"), "rb") as f:
+            for line in f:
+                if b'"type":"assistant"' in line and b'"tool_use"' in line and b'"parent_tool_use_id":null' in line:
+                    n += line.count(b'"type":"tool_use"')
+    except OSError:
+        pass
+    return n
+
+
+def cmd_list(_args) -> None:
+    out = []
+    try:
+        names = os.listdir(DIR)
+    except OSError:
+        names = []
+    t = time.time()
+    for name in names:
+        if not name.endswith(".json") or not ID_RE.match(name[:-5]):
+            continue
+        tid = name[:-5]
+        path = os.path.join(DIR, name)
+        m = read_json(path)
+        if not m:
+            continue
+        try:
+            age = t - os.path.getmtime(path)
+        except OSError:
+            continue
+        state = m.get("state")
+        if state not in ACTIVE and age > KEEP_AGE:
+            remove_files(tid)
+            continue
+        # Unit weg, aber nie fertig geworden (Absturz, Neustart …)
+        if state == "running" and not alive(m.get("pid")):
+            m = update(tid, state="lost", finished=now_ms(), pid=0)
+        elif state == "starting" and age > 120 and not os.path.exists(os.path.join(DIR, tid + ".prompt")) and not alive(m.get("pid")):
+            m = update(tid, state="lost", finished=now_ms(), pid=0)
+        elif state == "starting" and age > 300:
+            m = update(tid, state="failed", finished=now_ms(), error="did not start")
+            try:
+                os.unlink(os.path.join(DIR, tid + ".prompt"))
+            except OSError:
+                pass
+        if m.get("state") not in ACTIVE and t * 1000 - (m.get("finished") or m.get("started") or 0) > LIST_AGE * 1000:
+            continue
+        e = {k: m.get(k) for k in ("id", "session", "cwd", "project", "title", "state", "started", "finished",
+                                    "steps", "cost", "turns", "denials", "error", "seen")}
+        e["result"] = (m.get("result") or "")[:RESULT_SHOW]
+        e["cut"] = len(m.get("result") or "") > RESULT_SHOW
+        if e["state"] == "running":
+            e["steps"] = live_steps(tid)
+        out.append(e)
+    out.sort(key=lambda e: e.get("started") or 0, reverse=True)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def remove_files(tid: str) -> None:
+    for ext in (".json", ".jsonl", ".err", ".prompt"):
+        try:
+            os.unlink(os.path.join(DIR, tid + ext))
+        except OSError:
+            pass
+
+
+def cmd_stop(args) -> None:
+    tid = valid_id(args[0] if args else "")
+    m = read_json(meta_path(tid))
+    if not m:
+        return
+    subprocess.run(["systemctl", "--user", "stop", unit_of(tid)], stdin=subprocess.DEVNULL,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+    m = read_json(meta_path(tid)) or m
+    if m.get("state") in ACTIVE:
+        update(tid, state="stopped", finished=now_ms(), pid=0)
+        try:
+            os.unlink(os.path.join(DIR, tid + ".prompt"))
+        except OSError:
+            pass
+
+
+def cmd_seen(args) -> None:
+    tid = valid_id(args[0] if args else "")
+    if read_json(meta_path(tid)):
+        update(tid, seen=True)
+
+
+def cmd_remove(args) -> None:
+    tid = valid_id(args[0] if args else "")
+    m = read_json(meta_path(tid))
+    if m and m.get("state") in ACTIVE:
+        cmd_stop([tid])
+    remove_files(tid)
+    stamp()
+
+
+def main() -> None:
+    cmds = {"start": cmd_start, "_run": cmd_run, "list": cmd_list, "stop": cmd_stop,
+            "seen": cmd_seen, "remove": cmd_remove}
+    if len(sys.argv) < 2 or sys.argv[1] not in cmds:
+        sys.exit(__doc__)
+    if sys.argv[1] != "list":
+        ensure_dir()
+    cmds[sys.argv[1]](sys.argv[2:])
+
+
+if __name__ == "__main__":
+    main()

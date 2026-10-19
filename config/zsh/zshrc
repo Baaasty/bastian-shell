@@ -1,0 +1,183 @@
+# ~/.zshrc – zsh im Desktop-Look (Symlink aus dem Repo, gesetzt/entfernt von scripts/zsh-setup install|off).
+# Farben: theme/out/zsh/colors.zsh (erzeugt: theme/gen/zsh.py). Prompt: Starship (wie in bash).
+# Übersicht aller Extras und Kürzel: docs/THEMING.md "zsh".
+
+DESKTOP_ROOT=${${(%):-%x}:A:h:h:h}   # Repo-Root (Datei liegt in config/zsh/)
+
+# ---------- Umgebung ----------
+typeset -U path
+path=(~/.local/bin ~/bin $path)
+export EDITOR=${EDITOR:-nano}
+export LESS='-R --ignore-case --mouse'
+export MANPAGER="sh -c 'col -bx | bat -l man -p'" MANROFFOPT=-c
+[[ -r ~/.bashrc.d/desktop.sh ]] && source ~/.bashrc.d/desktop.sh   # gemeinsame Variablen (Podman …)
+[[ -z $SSH_AUTH_SOCK && -S $XDG_RUNTIME_DIR/ssh-agent.socket ]] && export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/ssh-agent.socket  # sshs, git
+[[ -r $DESKTOP_ROOT/theme/out/zsh/colors.zsh ]] && source $DESKTOP_ROOT/theme/out/zsh/colors.zsh
+
+# ---------- Verlauf: groß, geteilt zwischen Fenstern, ohne Dubletten ----------
+HISTFILE=~/.zsh_history
+HISTSIZE=100000
+SAVEHIST=100000
+setopt share_history hist_ignore_all_dups hist_ignore_space hist_reduce_blanks hist_verify extended_history
+[[ -f ~/.zsh_history || ! -f ~/.bash_history ]] || \
+  sed 's/^/: 0:0;/' ~/.bash_history > ~/.zsh_history   # einmalig: bash-Verlauf übernehmen
+
+# ---------- Komfort ----------
+setopt auto_cd auto_pushd pushd_ignore_dups pushd_silent   # Ordnername tippen = cd; cd -<Tab> = letzte Ordner
+setopt extended_glob glob_dots no_beep interactive_comments
+setopt no_flow_control                                    # Ctrl+S friert nicht mehr ein
+WORDCHARS=${WORDCHARS//[\/.-]}                            # Ctrl+Backspace löscht nur bis zum nächsten / . -
+
+# ---------- Completion ----------
+autoload -Uz compinit
+compinit -d ~/.cache/zcompdump
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'  # groß/klein egal, Teilwörter
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:descriptions' format "[%d]"
+zstyle ':completion:*' squeeze-slashes true
+zstyle ':completion:*' use-cache on
+zstyle ':completion:*' cache-path ~/.cache/zsh
+zstyle ':completion:*:git-checkout:*' sort false
+# fzf-tab: Tab öffnet eine Fuzzy-Liste mit Vorschau (Ordner = eza-Baum, Dateien = bat)
+if [[ -r ~/.local/share/zsh/plugins/fzf-tab/fzf-tab.plugin.zsh ]]; then
+  source ~/.local/share/zsh/plugins/fzf-tab/fzf-tab.plugin.zsh
+  zstyle ':fzf-tab:*' fzf-flags --color="$DESKTOP_FZF_COLORS" --height=50% --border=rounded
+  zstyle ':fzf-tab:*' switch-group '<' '>'
+  zstyle ':fzf-tab:complete:(cd|z|ls|eza|ll|la|lt):*' fzf-preview 'eza -1 --icons=always --color=always --group-directories-first $realpath'
+  zstyle ':fzf-tab:complete:(cat|bat|less|nano|code|vim|nvim):*' fzf-preview \
+    '[[ -d $realpath ]] && eza -1 --icons=always --color=always $realpath || bat --color=always --style=numbers --line-range=:200 $realpath'
+  zstyle ':fzf-tab:complete:systemctl-*:*' fzf-preview 'SYSTEMD_COLORS=1 systemctl status $word'
+  zstyle ':fzf-tab:complete:kill:argument-rest' fzf-preview 'ps -o pid,user,%cpu,%mem,cmd -p $word'
+else
+  zstyle ':completion:*' menu select
+fi
+
+# ---------- Tasten (Emacs-Stil wie bash) ----------
+bindkey -e
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search edit-command-line
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+zle -N edit-command-line
+bindkey '^[[A' up-line-or-beginning-search     # ↑: Verlauf, passend zum schon Getippten
+bindkey '^[OA' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
+bindkey '^[OB' down-line-or-beginning-search
+bindkey '^[[H' beginning-of-line   '^[OH' beginning-of-line
+bindkey '^[[F' end-of-line         '^[OF' end-of-line
+bindkey '^[[3~' delete-char
+bindkey '^[[1;5C' forward-word     '^[[1;5D' backward-word   # Ctrl+→/←: wortweise
+bindkey '^H' backward-kill-word    '^[[3;5~' kill-word       # Ctrl+Backspace / Ctrl+Entf
+bindkey '^X^E' edit-command-line                             # Ctrl+X Ctrl+E: Zeile im Editor
+# Ctrl+Z ein zweites Mal: angehaltenes Programm wieder nach vorn
+_desktop_fg() { [[ -z $BUFFER ]] && { BUFFER=fg; zle accept-line } || zle push-input }
+zle -N _desktop_fg
+bindkey '^Z' _desktop_fg
+# Esc Esc: sudo vor die Zeile (oder vor den letzten Befehl)
+_desktop_sudo() { [[ -z $BUFFER ]] && BUFFER="$(fc -ln -1)"; [[ $BUFFER == sudo\ * ]] && BUFFER=${BUFFER#sudo } || BUFFER="sudo $BUFFER"; CURSOR=$#BUFFER }
+zle -N _desktop_sudo
+bindkey '\e\e' _desktop_sudo
+
+# ---------- fzf: Ctrl+R Verlauf (ohne atuin) · Ctrl+T Dateien · Alt+C Ordner ----------
+if command -v fzf >/dev/null; then
+  export FZF_DEFAULT_OPTS="--color=$DESKTOP_FZF_COLORS --height=45% --layout=reverse --border=rounded --info=inline-right --prompt='❯ ' --pointer='▌' --marker='•'"
+  if command -v fd >/dev/null; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git --exclude node_modules'
+    export FZF_CTRL_T_COMMAND=$FZF_DEFAULT_COMMAND
+    export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git --exclude node_modules'
+  fi
+  export FZF_CTRL_T_OPTS="--preview 'bat --color=always --style=numbers --line-range=:200 {}'"
+  export FZF_ALT_C_OPTS="--preview 'eza --tree --level=2 --icons=always --color=always {}'"
+  source <(fzf --zsh)
+fi
+
+# ---------- atuin: Strg+R = Verlauf mit Ordner, Dauer, Exit-Code (lokal, kein Sync ohne "atuin login") ----------
+command -v atuin >/dev/null && eval "$(atuin init zsh --disable-up-arrow)"   # ↑ bleibt wie oben
+
+# ---------- zoxide: z <teil> springt in den passenden Ordner, zi = Auswahl ----------
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
+
+# ---------- ls / cat / Kleinkram ----------
+if command -v eza >/dev/null; then
+  alias ls='eza --icons=auto --group-directories-first'
+  alias ll='eza -l --icons=auto --group-directories-first --git --time-style=relative --no-user'
+  alias la='eza -la --icons=auto --group-directories-first --git --time-style=relative --no-user'
+  alias lt='eza --tree --level=2 --icons=auto --group-directories-first --git-ignore'
+fi
+if command -v bat >/dev/null; then
+  # cat = bat: Rahmen, Zeilennummern, Dateiname, Git-Änderungen am Rand (in Pipes automatisch roh wie cat)
+  export BAT_STYLE=numbers,grid,header-filename,header-filesize,changes
+  alias cat='bat --paging=never'
+  alias catp='bat --paging=never --style=plain'   # ohne Rahmen, z. B. zum Kopieren
+fi
+alias ..='cd ..' ...='cd ../..' ....='cd ../../..'
+alias grep='grep --color=auto'
+alias df='df -h' du='du -h' free='free -h'
+alias ip='ip -color=auto'
+alias please='sudo $(fc -ln -1)'
+mkcd() { mkdir -p -- "$1" && cd -- "$1" }
+# Entpacken, egal welches Format
+x() {
+  case $1 in
+    *.tar.gz|*.tgz) tar xzf "$1" ;; *.tar.xz) tar xJf "$1" ;; *.tar.zst) tar --zstd -xf "$1" ;;
+    *.tar.bz2) tar xjf "$1" ;; *.tar) tar xf "$1" ;; *.zip) unzip "$1" ;; *.7z) 7z x "$1" ;;
+    *.gz) gunzip "$1" ;; *.xz) unxz "$1" ;; *.zst) unzstd "$1" ;; *.rar) unrar x "$1" ;;
+    *) echo "x: kenne ich nicht: $1" >&2; return 1 ;;
+  esac
+}
+
+# ---------- Plugins (Highlighting zuletzt) ----------
+[[ -r /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && {
+  ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+  source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+  bindkey '^ ' autosuggest-accept   # Ctrl+Leertaste übernimmt den grauen Vorschlag (→ geht auch)
+}
+
+# ---------- Paket-Tipp: Befehl nicht gefunden -> welches dnf-Paket liefert ihn ----------
+[[ -r /etc/profile.d/PackageKit.sh ]] && source /etc/profile.d/PackageKit.sh
+
+# ---------- Fertig-Ping: Befehl > 30 s und Kitty nicht vorn -> Benachrichtigung ----------
+zmodload zsh/datetime
+autoload -Uz add-zsh-hook
+DESKTOP_PING_AFTER=30
+DESKTOP_PING_SKIP=(nano vim nvim less man ssh yazi y lazygit lg btop htop top fzf tldr watch journalctl claude code)
+_desktop_ping_start() { _desktop_ping_cmd=$1; _desktop_ping_t0=$EPOCHSECONDS }
+_desktop_ping_done() {
+  local st=$? dt
+  [[ -n $_desktop_ping_t0 ]] || return $st
+  dt=$(( EPOCHSECONDS - _desktop_ping_t0 )); unset _desktop_ping_t0
+  (( dt >= DESKTOP_PING_AFTER )) && (( ! ${DESKTOP_PING_SKIP[(Ie)${${(z)_desktop_ping_cmd}[1]}]} )) || return $st
+  if [[ -n $KITTY_PID ]] && command -v hyprctl >/dev/null; then
+    [[ $(hyprctl activewindow -j 2>/dev/null | jq -r .pid 2>/dev/null) == $KITTY_PID ]] && return $st
+  fi
+  local took="$(( dt / 60 ))m $(( dt % 60 ))s"
+  if (( st == 0 )); then
+    notify-send -a Terminal -i utilities-terminal "fertig · $took" "${_desktop_ping_cmd[1,80]}" &!
+  else
+    notify-send -a Terminal -i dialog-error "fehlgeschlagen ($st) · $took" "${_desktop_ping_cmd[1,80]}" &!
+  fi
+  return $st   # Exit-Code für Starship erhalten
+}
+add-zsh-hook preexec _desktop_ping_start
+add-zsh-hook precmd _desktop_ping_done
+
+# ---------- Pfad kopieren (in Kitty auch Strg+Shift+P) ----------
+cpwd() { print -n -- $PWD | wl-copy && print -P "%F{8}kopiert:%f $PWD" }
+
+# ---------- Werkzeuge ----------
+# y: yazi öffnen, beim Schließen landest du im zuletzt offenen Ordner
+y() {
+  local tmp=$(mktemp -t yazi-cwd.XXXXXX) cwd
+  yazi "$@" --cwd-file="$tmp"
+  cwd=$(<"$tmp"); [[ -n $cwd && $cwd != $PWD ]] && builtin cd -- "$cwd"
+  rm -f -- "$tmp"
+}
+alias lg='lazygit'
+
+# ---------- Prompt + Begrüßung ----------
+export STARSHIP_CONFIG=$DESKTOP_ROOT/theme/out/starship.toml
+command -v starship >/dev/null && eval "$(starship init zsh)"
+[[ -r ~/.bashrc.d/desktop-fetch.sh ]] && source ~/.bashrc.d/desktop-fetch.sh
+
+[[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+  source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

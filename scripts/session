@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# Fenster-Sitzung sichern und nach Neustart/Absturz wiederherstellen (Backend: hyprflow, geprüft: docs/SESSION.md).
+#
+#   session install      Konfiguration + Autosave-Timer einrichten (ohne sudo, nichts wird gebaut oder gestartet)
+#   session build        hyprflow aus dem geprüften, festgenagelten Quellstand bauen (braucht cargo = Freigabe!)
+#   session uninstall    Links, Timer und Autostart-Schalter entfernen (gesicherte Sitzungen bleiben)
+#   session save [name]  jetzt sichern (Standard: "latest")
+#   session restore [name] [--dry-run] [--max-age 24h]   wiederherstellen (öffnet Programme!)
+#   session dry-run [name]   zeigen, was restore täte – startet nichts
+#   session status       was ist installiert/aktiv, was würde wiederhergestellt
+#   session list         gespeicherte Sitzungen
+#   session off | on     NOT-AUS: Autostart-Restore und Autosave aus / wieder an
+#   (intern) session boot       Login-Restore (Hyprland exec-once), session autosave   (Timer)
+set -uo pipefail
+
+SELF=$(readlink -f "$0")
+REPO=$(dirname "$(dirname "$SELF")")
+PREP="$REPO/scripts/session-prepare"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE="$HOME/.local/state/desktop"
+RT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/desktop-session"
+OFF="$STATE/session-off"
+LOG="$STATE/session.log"
+SRC="$HOME/.local/src/hyprflow"
+# Geprüfter Stand von github.com/isorensen/hyprflow v0.2.1 (Quellcode-Prüfung 18.10.2026, docs/SESSION.md).
+# Neuer Stand erst nach neuer Prüfung eintragen.
+PIN=efc96e9aa7bf96ad00706e77511a3daf99ca4c63
+UNITS=(desktop-session-save.service desktop-session-save.timer)
+NOSD="${SESSION_NO_SYSTEMD:-}"   # Test ohne systemctl
+
+say() { printf '%s\n' "$*"; }
+log() { mkdir -p "$STATE"; [ -f "$LOG" ] && [ "$(stat -c %s "$LOG")" -gt 204800 ] && : > "$LOG"; printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
+
+hyprflow_bin() {
+    if [ -x "$HOME/.local/bin/hyprflow" ]; then echo "$HOME/.local/bin/hyprflow"; else command -v hyprflow; fi
+}
+need_hf() {
+    HF=$(hyprflow_bin) || { say "hyprflow ist nicht installiert → scripts/session build (braucht cargo, siehe docs/SESSION.md)"; return 1; }
+}
+sd() { [ -n "$NOSD" ] || systemctl --user "$@"; }
+
+# Datei/Link anlegen; Fremdes vorher sichern
+link() {
+    local src=$1 f=$2
+    mkdir -p "$(dirname "$f")"
+    if [ -L "$f" ] && [ "$(readlink "$f")" = "$src" ]; then return 0; fi
+    if [ -e "$f" ] || [ -L "$f" ]; then
+        local bak="$f.bak-$(date +%Y%m%d-%H%M%S)"
+        mv "$f" "$bak" && say "  gesichert: $f → $bak"
+    fi
+    ln -s "$src" "$f"
+    say "  verlinkt: $f"
+}
+
+cmd_install() {
+    say "Repo: $REPO"
+    link "$REPO/config/hyprflow/config.toml" "$CONF/hyprflow/config.toml"
+    mkdir -p -m 700 "$HOME/.local/share/hyprflow/sessions"
+    chmod 700 "$HOME/.local/share/hyprflow" "$HOME/.local/share/hyprflow/sessions"
+    local u
+    for u in "${UNITS[@]}"; do link "$REPO/systemd/$u" "$CONF/systemd/user/$u"; done
+    rm -f "$OFF"
+    sd daemon-reload
+    sd enable --now desktop-session-save.timer 2>&1 | sed 's/^/  /'
+    if hyprflow_bin >/dev/null; then
+        say "hyprflow: $(hyprflow_bin)"
+    else
+        say "hyprflow fehlt noch → cargo bereitstellen (docs/SESSION.md), dann: scripts/session build"
+        say "Bis dahin sind Autosave und Login-Restore harmlos (tun nichts)."
+    fi
+    say "Fertig. Test ohne Risiko: scripts/session dry-run   ·   Not-Aus: scripts/session off"
+}
+
+cmd_uninstall() {
+    sd disable --now desktop-session-save.timer >/dev/null 2>&1 || true
+    local f
+    for f in "$CONF/hyprflow/config.toml" "${UNITS[@]/#/$CONF/systemd/user/}"; do
+        if [ -L "$f" ] && [[ "$(readlink "$f")" == "$REPO"/* ]]; then rm -f "$f"; say "  entfernt: $f"; fi
+    done
+    sd daemon-reload
+    say "Entfernt. Gesicherte Sitzungen (~/.local/share/hyprflow) und das Programm bleiben."
+}
+
+cmd_build() {
+    command -v cargo >/dev/null 2>&1 || {
+        say "cargo fehlt. Entweder (sudo, Bastian entscheidet):  sudo dnf install -y cargo"
+        say "oder über Super+P → „cargo“. Danach nochmal: scripts/session build"
+        return 1
+    }
+    command -v git >/dev/null 2>&1 || { say "git fehlt"; return 1; }
+    if [ ! -d "$SRC/.git" ]; then
+        mkdir -p "$(dirname "$SRC")"
+        git clone https://github.com/isorensen/hyprflow "$SRC" || return 1
+    fi
+    git -C "$SRC" fetch -q origin 2>/dev/null || true
+    git -C "$SRC" checkout -q --detach "$PIN" || { say "Geprüfter Stand $PIN nicht gefunden – abgebrochen."; return 1; }
+    [ "$(git -C "$SRC" rev-parse HEAD)" = "$PIN" ] || { say "Stand stimmt nicht – abgebrochen."; return 1; }
+    [ -z "$(git -C "$SRC" status --porcelain)" ] || { say "Quellordner $SRC ist verändert – abgebrochen."; return 1; }
+    say "Baue hyprflow ($PIN) nach ~/.local/bin …"
+    # Hinweis: lädt Abhängigkeiten von crates.io und führt deren build.rs aus (Standard bei Rust).
+    cargo install --locked --root "$HOME/.local" --path "$SRC"
+}
+
+cmd_save() {
+    need_hf || return 1
+    "$HF" save --force "${1:-latest}"
+    local rc=$?
+    chmod 600 "$HOME"/.local/share/hyprflow/sessions/*.json 2>/dev/null || true
+    return $rc
+}
+
+cmd_restore() {
+    local name="" dry="" age=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --dry-run|-n) dry=--dry-run ;;
+            --max-age) age=$2; shift ;;
+            -*) say "unbekannte Option $1"; return 2 ;;
+            *) name=$1 ;;
+        esac
+        shift
+    done
+    need_hf || return 1
+    local a=()
+    [ -n "$name" ] && a=(--name "$name")
+    "$PREP" prepare "${a[@]}" --write || return $?
+    local r=()
+    [ -n "$age" ] && r+=(--max-age "$age")
+    [ -n "$dry" ] && r+=(--dry-run)
+    # XDG_DATA_HOME/PATH nur für hyprflow umgebogen (bereinigte Kopie + Startskripte); die Startskripte setzen beides zurück
+    XDG_DATA_HOME="$RT/data" PATH="$RT/shims:$PATH" "$HF" -v restore "${r[@]}"
+}
+
+cmd_boot() {
+    [ -e "$OFF" ] && { log "boot: aus (session off)"; return 0; }
+    if ! hyprflow_bin >/dev/null; then log "boot: hyprflow nicht installiert, nichts zu tun"; return 0; fi
+    mkdir -p -m 700 "$RT"
+    : > "$RT/pending"
+    trap 'rm -f "$RT/pending"' EXIT
+    local wsec settle age
+    wsec=$("$PREP" conf shell_wait_s 90); settle=$("$PREP" conf settle_s 8); age=$("$PREP" conf boot_max_age 24h)
+    local i
+    for ((i = 0; i < wsec; i++)); do
+        systemctl --user is-active --quiet desktop-shell-hyprland.service && break
+        sleep 1
+    done
+    sleep "$settle"
+    [ -e "$OFF" ] && { log "boot: abgebrochen (session off)"; return 0; }
+    log "boot: Restore startet (max-age $age)"
+    cmd_restore --max-age "$age" >> "$LOG" 2>&1
+    local rc=$?
+    log "boot: Restore fertig (rc=$rc)"
+    if [ $rc -eq 0 ]; then
+        notify-send -a Desktop -t 6000 "Session restored" "Details: scripts/session status" 2>/dev/null || true
+    fi
+    return 0
+}
+
+cmd_autosave() {
+    [ -e "$OFF" ] && return 0
+    local g
+    g=$("$PREP" guard) || { log "autosave: $g"; return 0; }
+    hyprflow_bin >/dev/null || return 0
+    need_hf || return 0
+    "$HF" autosave --now >/dev/null 2>&1 || log "autosave: hyprflow-Fehler"
+    # Dateien nur für den Nutzer lesbar (hyprflow schreibt mit umask)
+    chmod 600 "$HOME"/.local/share/hyprflow/sessions/*.json 2>/dev/null || true
+}
+
+cmd_status() {
+    local f
+    say "Backend   : hyprflow $(hyprflow_bin || echo '(fehlt – scripts/session build)')"
+    say "cargo     : $(command -v cargo || echo fehlt)"
+    [ -L "$CONF/hyprflow/config.toml" ] && say "Config    : ok → $(readlink "$CONF/hyprflow/config.toml")" \
+        || say "Config    : nicht verlinkt (scripts/session install)"
+    for f in "${UNITS[@]}"; do
+        [ -L "$CONF/systemd/user/$f" ] && say "Unit      : $f verlinkt" || say "Unit      : $f fehlt"
+    done
+    say "Timer     : $(systemctl --user is-enabled desktop-session-save.timer 2>/dev/null || echo aus) / $(systemctl --user is-active desktop-session-save.timer 2>/dev/null)"
+    [ -e "$OFF" ] && say "Schalter   : AUS (session off) – kein Autosave, kein Login-Restore" || say "Schalter   : an"
+    [ -e "$RT/pending" ] && say "Restore    : läuft/steht an"
+    say "Sitzungen :"
+    "$PREP" prepare 2>&1 | sed 's/^/  /' || true
+    [ -f "$LOG" ] && { say "Log (letzte 5):"; tail -n 5 "$LOG" | sed 's/^/  /'; }
+}
+
+cmd_list() {
+    local d="$HOME/.local/share/hyprflow/sessions"
+    ls -1t "$d" 2>/dev/null | sed 's/\.json$//' || say "(keine)"
+}
+
+cmd_off() {
+    mkdir -p "$STATE"; : > "$OFF"
+    # nur stoppen, nicht "disable": das würde den verlinkten Unit-Link selbst löschen
+    sd stop desktop-session-save.timer >/dev/null 2>&1 || true
+    rm -f "$RT/pending"
+    say "Sitzungs-Wiederherstellung AUS (kein Autosave, kein Login-Restore). Wieder an: scripts/session on"
+}
+
+cmd_on() {
+    rm -f "$OFF"
+    [ -e "$CONF/systemd/user/desktop-session-save.timer" ] || { say "Timer-Link fehlt → richte ihn neu ein"; cmd_install >/dev/null; }
+    sd enable --now desktop-session-save.timer >/dev/null 2>&1 || say "Timer nicht eingerichtet → scripts/session install"
+    say "Sitzungs-Wiederherstellung an."
+}
+
+case "${1:-status}" in
+    install) cmd_install ;;
+    uninstall) cmd_uninstall ;;
+    build) cmd_build ;;
+    save) shift; cmd_save "$@" ;;
+    restore) shift; cmd_restore "$@" ;;
+    dry-run) shift; cmd_restore --dry-run "$@" ;;
+    status) cmd_status ;;
+    list) cmd_list ;;
+    off) cmd_off ;;
+    on) cmd_on ;;
+    boot) cmd_boot ;;
+    autosave) cmd_autosave ;;
+    -h|--help|help) sed -n '2,13p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+    *) say "unbekannt: $1 (session help)"; exit 2 ;;
+esac

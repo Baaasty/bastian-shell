@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Hue-Bridge koppeln: holt einen App-Key und legt ihn in secrets.json ab (hue.key).
+
+  scripts/hue-pair              Taste auf der Bridge drücken, dann Enter
+  scripts/hue-pair --dry-run    nichts senden, nichts schreiben (zeigt nur die Schritte)
+  scripts/hue-pair --force      vorhandenen Key ersetzen
+  scripts/hue-pair --bridge IP  Bridge-Adresse vorgeben (sonst: hue.bridge aus secrets.json, sonst Suche
+                                über discovery.meethue.com)
+
+Test-Optionen: --url (anderer Endpunkt, z. B. Fake-Server), --secrets (andere Datei), --yes (ohne Enter).
+Der Key wird nie ausgegeben. secrets.json bekommt Rechte 600, andere Einträge bleiben erhalten.
+Geschrieben werden hue.key, hue.clientkey, hue.bridge (LAN-Adresse) und hue.bridgeId.
+"""
+import argparse
+import json
+import os
+import pathlib
+import ssl
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+DISCOVERY = "https://discovery.meethue.com/"
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SECRETS = REPO / "secrets.json"
+DEVICETYPE = "desktop#pc"
+WAIT_S = 30          # so lange nach Enter auf die Taste warten
+LINK_NOT_PRESSED = 101
+
+
+def load(path: pathlib.Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text() or "{}")
+    except json.JSONDecodeError:
+        sys.exit(f"{path} ist kein gültiges JSON – bitte erst reparieren (wird nicht überschrieben).")
+    if not isinstance(data, dict):
+        sys.exit(f"{path}: Wurzel muss ein Objekt sein.")
+    return data
+
+
+def save(path: pathlib.Path, data: dict) -> None:
+    """Atomar schreiben, Rechte 600 schon beim Anlegen."""
+    fd, tmp = tempfile.mkstemp(prefix=".secrets-", dir=path.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp, path)
+    except BaseException:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
+    os.chmod(path, 0o600)
+
+
+def _ctx() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE  # Bridge hat ein selbstsigniertes Zertifikat
+    return ctx
+
+
+def discover() -> tuple:
+    """(adresse, bridgeId) der ersten Bridge im Netz laut discovery.meethue.com, sonst ("", "")."""
+    try:
+        with urllib.request.urlopen(DISCOVERY, timeout=5) as r:
+            found = json.loads(r.read().decode())
+    except (urllib.error.URLError, OSError, json.JSONDecodeError):
+        return "", ""
+    if isinstance(found, list) and found and isinstance(found[0], dict):
+        if len(found) > 1:
+            print(f"  {len(found)} Bridges gefunden, nehme die erste (andere: --bridge IP).")
+        return str(found[0].get("internalipaddress") or ""), str(found[0].get("id") or "").lower()
+    return "", ""
+
+
+def bridge_id(bridge: str) -> str:
+    """bridgeid aus der öffentlichen Kurz-Konfiguration der Bridge (ohne Key), sonst ""."""
+    try:
+        with urllib.request.urlopen(f"https://{bridge}/api/0/config", timeout=5, context=_ctx()) as r:
+            return str(json.loads(r.read().decode()).get("bridgeid") or "").lower()
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, AttributeError):
+        return ""
+
+
+def request(url: str) -> list:
+    body = json.dumps({"devicetype": DEVICETYPE, "generateclientkey": True}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=5, context=_ctx()) as r:
+        return json.loads(r.read().decode())
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Hue-Bridge koppeln (App-Key → secrets.json)")
+    ap.add_argument("--dry-run", action="store_true", help="nichts senden, nichts schreiben")
+    ap.add_argument("--force", action="store_true", help="vorhandenen Key ersetzen")
+    ap.add_argument("--yes", action="store_true", help="nicht auf Enter warten")
+    ap.add_argument("--bridge", default="", help="Bridge-Adresse (IP oder Hostname)")
+    ap.add_argument("--url", default="", help="Kopplungs-Endpunkt (Test), Standard https://<bridge>/api")
+    ap.add_argument("--secrets", type=pathlib.Path, default=SECRETS, help="Ziel-Datei (Test)")
+    args = ap.parse_args()
+
+    data = load(args.secrets)
+    hue = data.get("hue") if isinstance(data.get("hue"), dict) else {}
+    if hue.get("key") and not args.force:
+        print(f"Es gibt schon einen Hue-Key in {args.secrets}. Ersetzen mit --force.")
+        return
+
+    bridge, bid = args.bridge or str(hue.get("bridge") or ""), str(hue.get("bridgeId") or "")
+    if args.bridge and args.bridge != hue.get("bridge"):
+        bid = ""
+    if not bridge and not args.url and not args.dry_run:
+        print("Suche die Bridge im Netz …")
+        bridge, bid = discover()
+        if not bridge:
+            sys.exit("Keine Bridge gefunden – Adresse angeben: scripts/hue-pair --bridge <IP>")
+        print(f"  gefunden: {bridge}")
+    url = args.url or f"https://{bridge or '<bridge>'}/api"
+
+    if args.dry_run:
+        if not bridge and not args.url:
+            print(f"Trockenlauf: keine Bridge-Adresse bekannt – würde sie über {DISCOVERY} suchen.")
+        print(f"Trockenlauf: würde POST {url} senden (devicetype {DEVICETYPE}),")
+        print(f"bis zu {WAIT_S} s auf die Bridge-Taste warten und hue.key nach {args.secrets} schreiben (600).")
+        return
+
+    print("Drück jetzt die runde Taste oben auf der Hue Bridge.")
+    if not args.yes:
+        try:
+            input("Danach Enter … ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nAbgebrochen.")
+            return
+
+    deadline = time.monotonic() + WAIT_S
+    while True:
+        try:
+            res = request(url)
+        except (urllib.error.URLError, OSError, json.JSONDecodeError) as e:
+            sys.exit(f"Bridge nicht erreichbar ({type(e).__name__}).")
+        item = res[0] if isinstance(res, list) and res else {}
+        if "success" in item:
+            ok = item["success"]
+            break
+        err = item.get("error", {})
+        if err.get("type") == LINK_NOT_PRESSED and time.monotonic() < deadline:
+            print("  Taste noch nicht erkannt – warte …")
+            time.sleep(2)
+            continue
+        sys.exit(f"Kopplung fehlgeschlagen: {err.get('description', 'unbekannte Antwort')}")
+
+    key = ok.get("username")
+    if not key:
+        sys.exit("Antwort ohne Key – nichts geschrieben.")
+    data = load(args.secrets)  # frisch lesen, falls sich inzwischen etwas geändert hat
+    hue = data.get("hue") if isinstance(data.get("hue"), dict) else {}
+    hue.update({"key": key})
+    if bridge:
+        hue.update({"bridge": bridge, "bridgeId": bid or bridge_id(bridge) or hue.get("bridgeId", "")})
+    if ok.get("clientkey"):
+        hue["clientkey"] = ok["clientkey"]
+    data["hue"] = hue
+    save(args.secrets, data)
+    print(f"Gekoppelt. Key liegt in {args.secrets} (Rechte 600). Die Shell lädt ihn beim nächsten Öffnen des Dashboards.")
+
+
+if __name__ == "__main__":
+    main()

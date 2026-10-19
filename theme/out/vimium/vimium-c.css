@@ -1,0 +1,56 @@
+/* ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/vimium.py */
+/* #ui */
+.LH, .D>.LH {
+  background: #45372E !important; color: #F6ECDD !important;
+  border: 1px solid #DB6B4C !important; border-radius: 6px !important;
+  box-shadow: 0 2px 5px rgba(12, 7, 4, 0.34) !important;
+  font: 600 12px/1 "JetBrainsMono Nerd Font", JetBrains Mono, monospace !important; padding: 3px 4px 2px !important;
+}
+.MC, .MH, .D>.LH .MC { color: #F2A58A !important; }
+.BH { color: #E0AE55 !important; }
+.One { border-color: #E0AE55 !important; }
+.IH { background: rgba(219, 107, 76, 0.22) !important; border: 1px solid #DB6B4C !important; border-radius: 4px; }
+.IHS { background: rgba(224, 174, 85, 0.18) !important; border-color: #E0AE55 !important; }
+.HUD, .HUD.D { color: #F6ECDD !important; font: 500 13px/16px "Inter", system-ui, sans-serif !important; }
+.HUD:after, .HUD.D:after {
+  background: #382D26 !important; border: 1px solid #605349 !important; border-radius: 8px 8px 0 0 !important;
+}
+.Flash { box-shadow: 0 0 0 2px #DB6B4C !important; border-radius: 4px; }
+.Sel { box-shadow: 0 0 0 2px #E0AE55 !important; }
+.Frame { border-color: #DB6B4C !important; }
+/* #find */
+.r, .r.D {
+  background: #382D26 !important; color: #F6ECDD !important;
+  box-shadow: inset 0 0 0 1px #605349 !important; border-radius: 8px 8px 0 0 !important;
+}
+* { font-family: "Inter", system-ui, sans-serif !important; }
+/* #find:selection */
+::selection { background: #DB6B4C !important; color: #2B1A12 !important; }
+/* #omni */
+body { background: #382D26 !important; border-radius: 14px !important; box-shadow: 0 10px 28px rgba(12, 7, 4, 0.34) !important; }
+body::after { border: 1px solid #605349 !important; border-radius: 14px !important; }
+#bar, .has-dark>#bar { background: #45372E !important; border-bottom: 1px solid #4C4038 !important; border-radius: 14px 14px 0 0 !important; }
+#bar.empty { border-radius: 14px !important; border: none !important; }
+#input {
+  background: #2F2620 !important; color: #F6ECDD !important; caret-color: #DB6B4C;
+  border: 1px solid #DB6B4C !important; border-radius: 10px !important; box-shadow: none !important;
+  font-family: "Inter", system-ui, sans-serif !important;
+}
+#input::selection { background: rgba(219, 107, 76, 0.22); }
+#list { background: #382D26 !important; border-radius: 0 0 14px 14px !important; }
+#toolbar { color: #B5A591 !important; }
+.button:hover { background: #40332B !important; color: #F6ECDD !important; border-radius: 6px; }
+.item { border-bottom: 1px solid #4C4038 !important; }
+.b { border-radius: 0 0 14px 14px !important; }
+.item:hover { background-color: #40332B !important; }
+.item.s, .item.s:hover { background-color: #5C392D !important; }
+.p { border-color: #4C4038 !important; }
+.top { color: #F6ECDD !important; font-family: "Inter", system-ui, sans-serif !important; }
+match { color: #F2A58A !important; font-weight: 600; }
+.s .top, .s match { color: #F6ECDD !important; }
+a { color: #D2C2AE !important; }
+.mono-url a { font-family: "JetBrainsMono Nerd Font", JetBrains Mono, monospace !important; font-size: 13px; }
+.label, .time { color: #B5A591 !important; }
+.icon { --vc-c: #B5A591; }
+.s .icon { --vc-c: #F2A58A; }
+.alt .alt-index::after { background: #45372E !important; color: #F6ECDD !important; }

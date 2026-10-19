@@ -1,0 +1,54 @@
+{
+  "name": "Yazi",
+  "about": "File manager in the terminal (y in zsh, Files in sshs) · ~ or F1 shows all keys",
+  "match": { "class": ["kitty", "sshs", "kitty-drop"], "title": "^yazi\\b" },
+  "order": 60,
+  "sections": [
+    {
+      "name": "Move",
+      "keys": [
+        { "keys": ["j k", "↓ ↑"], "title": "Next / previous file" },
+        { "keys": ["h l", "← →"], "title": "Parent folder / open folder" },
+        { "keys": "Enter", "title": "Open file" },
+        { "keys": "Shift+O", "title": "Open with …" },
+        { "keys": "g g", "title": "Top" },
+        { "keys": "Shift+G", "title": "Bottom" },
+        { "keys": "Shift+H L", "title": "Back / forward in history" },
+        { "keys": "g h", "title": "Home folder", "note": "g d Downloads · g c ~/.config" },
+        { "keys": "z", "title": "Jump with fzf" },
+        { "keys": "Shift+Z", "title": "Jump with zoxide" }
+      ]
+    },
+    {
+      "name": "Files",
+      "keys": [
+        { "keys": "Space", "title": "Select / unselect" },
+        { "keys": "v", "title": "Select a range (visual mode)" },
+        { "keys": "Ctrl+A", "title": "Select all" },
+        { "keys": "y", "title": "Copy" },
+        { "keys": "x", "title": "Cut" },
+        { "keys": "p", "title": "Paste" },
+        { "keys": "d", "title": "Move to trash" },
+        { "keys": "Shift+D", "title": "Delete permanently" },
+        { "keys": "a", "title": "New file", "note": "end the name with / for a folder" },
+        { "keys": "r", "title": "Rename" },
+        { "keys": "c c", "title": "Copy path", "note": "c d folder path · c f file name" }
+      ]
+    },
+    {
+      "name": "Find & tabs",
+      "keys": [
+        { "keys": "f", "title": "Filter this folder" },
+        { "keys": "/", "title": "Find next file by name", "note": "n / Shift+N next / previous" },
+        { "keys": "s", "title": "Search file names (fd)" },
+        { "keys": "Shift+S", "title": "Search file contents (ripgrep)" },
+        { "keys": ".", "title": "Show hidden files" },
+        { "keys": "t t", "title": "New tab" },
+        { "keys": "[ ]", "title": "Previous / next tab" },
+        { "keys": "1…9", "title": "Go to tab 1…9" },
+        { "keys": ";", "title": "Run a shell command" },
+        { "keys": "q", "title": "Quit (shell goes to this folder)" }
+      ]
+    }
+  ]
+}

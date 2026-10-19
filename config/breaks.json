@@ -1,0 +1,24 @@
+{
+  "_hilfe": [
+    "Hyperfokus-Wecker (shell/services/Breaks.qml, Doku: docs/BREAKS.md). Datei wird live gelesen.",
+    "Eigene Werte am besten in ~/.config/desktop/breaks.json: Schlüssel dort ersetzen die hier.",
+    "afterMin = Minuten am Stück am PC bis zum Hinweis. breakMin = so lange ohne Maus/Tastatur zählt als Pause (setzt zurück).",
+    "snoozeMin = was '10 more min' verschiebt. respectInhibitors: false (Standard) = Video ohne Eingabe zählt als Pause; true = Video/Idle-Inhibit zählt nicht als Pause.",
+    "silentScenes = Szenen aus config/scenes.json, in denen er schweigt (game = Spiele-Modus, evening = Feierabend).",
+    "Außerdem still: Vollbild, Spiel, Discord-Call, laufender Fokus-Block (danach kommt er), Sperrbildschirm.",
+    "messages = Texte unter der Überschrift, einer wird zufällig gewählt."
+  ],
+  "enabled": true,
+  "afterMin": 90,
+  "breakMin": 5,
+  "snoozeMin": 10,
+  "respectInhibitors": false,
+  "silentScenes": ["game", "evening"],
+  "messages": [
+    "Water, stretch, look away.",
+    "Grab some water and look out the window for a bit.",
+    "Stand up, roll your shoulders, rest your eyes.",
+    "A glass of water and 20 seconds of looking far away.",
+    "Stretch a little – everything here will wait for you."
+  ]
+}

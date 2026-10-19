@@ -1,0 +1,761 @@
+#!/usr/bin/env bash
+# Desktop an- und ausschalten. "off" ist der Not-Aus: zurück zu Vanilla-Plasma.
+#
+#   scripts/rice on        Shell starten, Kürzel setzen, Desktop-Lockscreen an
+#   scripts/rice off       Shell stoppen, Kürzel weg + alte Belegung zurück, Plasma-Lockscreen
+#   scripts/rice restart   nur die Shell neu starten
+#   scripts/rice shortcuts Kürzel-Datei neu registrieren
+#   scripts/rice edges     KWin-Kanten-Script (Bar/Workbar am Rand holen) neu installieren
+#   scripts/rice tiling    KWin-Fenster-Script (Super+Pfeile: maximieren, mittig, Seiten, Monitor) neu installieren
+#   scripts/rice switcher  Desktop-Fensterwechsler (Super+Tab) neu erzeugen + installieren
+#   scripts/rice keys-fix  KWin-Kürzel (Alt+Tab …) wieder aktiv melden, falls sie tot sind (Dienst desktop-keys-watch prüft alle 30 s)
+#   scripts/rice theme on|off   KDE-Farben, Fensterdeko, Cursor, Konsole-Profil, Starship (merkt sich den alten Stand)
+#   scripts/rice variant [name] Farbvariante aus theme/palette.json setzen + alles neu erzeugen (ohne Name: Liste)
+#   scripts/rice feeds    Mail-/Termin-Timer + Mail-Wächter einrichten und sofort abrufen (nach Konto/Passwort in secrets.json)
+#   scripts/rice status
+set -uo pipefail
+
+# Aus einer Flatpak-Sandbox (z. B. VS-Code-Terminal) gibt es kein systemctl/kwriteconfig6 –
+# dann auf dem Host weiterlaufen
+if ! command -v systemctl >/dev/null 2>&1 && command -v flatpak-spawn >/dev/null 2>&1; then
+    exec flatpak-spawn --host "$(realpath "$0")" "$@"
+fi
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+SHELL_DIR="$REPO/shell"
+STATE="$HOME/.local/state/desktop"
+KEYS_BACKUP="$STATE/shortcut-backup.txt"
+APPS="$HOME/.local/share/applications"
+SHORTCUTS="$APPS/desktop-shortcuts.desktop"
+UNIT="desktop-shell"
+IPC="qs ipc --any-display -p $SHELL_DIR call"
+
+# Fremde Kürzel, die wir ändern: Komponente|Aktion|Komponente (Anzeige)|Aktion (Anzeige)[|neue Tasten]
+# Ohne neue Tasten = Kürzel weg. Tasten als a(ai)-Liste: Anzahl, dann je "4 <Qt-Code> 0 0 0".
+# Fensterwechsel nur noch mit Super (Meta+Tab, Meta+Shift+Tab, Meta+`, Meta+~), Alt bleibt frei.
+FOREIGN=(
+    "kwin|Show Desktop|KWin|Peek at Desktop"
+    "org.kde.plasma-systemmonitor.desktop|_launch|System Monitor|System Monitor"
+    "plasmashell|show-on-mouse-pos|plasmashell|Show Clipboard Items at Mouse Position"
+    "org.kde.spectacle.desktop|_launch|Spectacle|Launch Spectacle"
+    # Plasmas Startmenü gibt es ohne Panel nicht (Super allein = unser Dashboard, Alt+F1 tot)
+    "plasmashell|activate application launcher|plasmashell|Activate Application Launcher"
+    # Anpinnen (alle Desktops): kein Kürzel (Bastian: zu leicht aus Versehen) – nur per Knopf in der Titelleiste.
+    # Immer im Vordergrund = Meta+Shift+P – auch für Fenster mit eigener Leiste (Discord)
+    "kwin|Window On All Desktops|KWin|Keep Window on All Desktops"
+    # Super+P hat ab Werk auch kscreen (Bildschirm umschalten) – dort bleibt nur die Display-Taste
+    "org.kde.kscreen.desktop|ShowOSD|Display Configuration|Switch Display|1 4 16777425 0 0 0"
+    "kwin|Window Above Other Windows|KWin|Keep Window Above Others|1 4 301989968 0 0 0"
+    "kwin|Walk Through Windows|KWin|Walk Through Windows|1 4 285212673 0 0 0"
+    # KWin-Übersicht/Raster/Kachel-Editor sehen nicht nach desktop aus -> weg (Super+Tab, Super+Leertaste, Workbar)
+    "kwin|Overview|KWin|Toggle Overview"
+    "kwin|Grid View|KWin|Toggle Grid View"
+    "kwin|Edit Tiles|KWin|Toggle Tiles Editor"
+    # Super+Pfeile/Super+Shift+Pfeile gehören dem KWin-Script desktop-tiling (tiling_on), KWins Varianten weg
+    # (auch Super+Bild↑/↓ und Super+Rücktaste)
+    "kwin|Window Quick Tile Top|KWin|Quick Tile Window to the Top"
+    "kwin|Window Quick Tile Bottom|KWin|Quick Tile Window to the Bottom"
+    "kwin|Window Quick Tile Left|KWin|Quick Tile Window to the Left"
+    "kwin|Window Quick Tile Right|KWin|Quick Tile Window to the Right"
+    "kwin|Window Maximize|KWin|Maximize Window"
+    "kwin|Window Minimize|KWin|Minimize Window"
+    "kwin|Window Restore|KWin|Restore Window"
+    "kwin|Window Fullscreen|KWin|Make Window Fullscreen"
+    "kwin|Window to Previous Screen|KWin|Move Window to Previous Screen"
+    "kwin|Window to Next Screen|KWin|Move Window to Next Screen"
+    # Terminal nur Super+T, KRunner weg (Suche steckt im Dashboard), Emoji nur unser Super+.
+    "org.kde.konsole.desktop|_launch|Konsole|Konsole|1 4 268435540 0 0 0"
+    "org.kde.krunner.desktop|_launch|KRunner|KRunner"
+    "org.kde.krunner.desktop|RunClipboard|KRunner|Run command on clipboard contents"
+    "org.kde.plasma.emojier.desktop|_launch|Emoji Selector|Emoji Selector"
+    "kwin|Walk Through Windows (Reverse)|KWin|Walk Through Windows (Reverse)|1 4 318767105 0 0 0"
+    "kwin|Walk Through Windows of Current Application|KWin|Walk Through Windows of Current Application|1 4 268435552 0 0 0"
+    "kwin|Walk Through Windows of Current Application (Reverse)|KWin|Walk Through Windows of Current Application (Reverse)|1 4 268435582 0 0 0"
+    # Nur noch eigene Kürzel. Bleiben: Hardware-Tasten (Lautstärke, Medien, Helligkeit, Mikro, Power …),
+    # Super+L, Strg+Alt+Entf, Super+R, Alt+F4, Super+Strg+Esc (Fenster abschießen), Super+Shift+Esc (Eingabe-Fang lösen).
+    # Desktops (1 Desktop, Super+Leertaste), Aktivitäten, Expose, Maus, Lupe, Fokus-Pfeile, Fenstermenü
+    "kwin|Switch to Desktop 1|KWin|Switch to Desktop 1"
+    "kwin|Switch to Desktop 2|KWin|Switch to Desktop 2"
+    "kwin|Switch to Desktop 3|KWin|Switch to Desktop 3"
+    "kwin|Switch to Desktop 4|KWin|Switch to Desktop 4"
+    "kwin|Switch One Desktop to the Left|KWin|Switch One Desktop to the Left"
+    "kwin|Switch One Desktop to the Right|KWin|Switch One Desktop to the Right"
+    "kwin|Switch One Desktop Up|KWin|Switch One Desktop Up"
+    "kwin|Switch One Desktop Down|KWin|Switch One Desktop Down"
+    "kwin|Window One Desktop to the Left|KWin|Window One Desktop to the Left"
+    "kwin|Window One Desktop to the Right|KWin|Window One Desktop to the Right"
+    "kwin|Window One Desktop Up|KWin|Window One Desktop Up"
+    "kwin|Window One Desktop Down|KWin|Window One Desktop Down"
+    "kwin|Switch Window Left|KWin|Switch to Window to the Left"
+    "kwin|Switch Window Right|KWin|Switch to Window to the Right"
+    "kwin|Switch Window Up|KWin|Switch to Window Above"
+    "kwin|Switch Window Down|KWin|Switch to Window Below"
+    "kwin|Expose|KWin|Toggle Present Windows (Current desktop)"
+    "kwin|ExposeClass|KWin|Toggle Present Windows (Window class)"
+    # ExposeAll: nur die Hardware-Taste (LaunchC) bleibt
+    "kwin|ExposeAll|KWin|Toggle Present Windows (All desktops)|1 4 16777390 0 0 0"
+    "kwin|MoveMouseToFocus|KWin|Move Mouse to Focus"
+    "kwin|MoveMouseToCenter|KWin|Move Mouse to Center"
+    "kwin|Activate Window Demanding Attention|KWin|Activate Window Demanding Attention"
+    "kwin|view_actual_size|KWin|Zoom to Actual Size"
+    "kwin|view_zoom_in|KWin|Zoom In"
+    "kwin|view_zoom_out|KWin|Zoom Out"
+    "kwin|Window Operations Menu|KWin|Window Menu"
+    "plasmashell|manage activities|plasmashell|Show Activity Switcher"
+    "plasmashell|next activity|plasmashell|Walk through activities"
+    "plasmashell|previous activity|plasmashell|Walk through activities (Reverse)"
+    # Plasma-Taskleiste, Panels, Klipper, Desktop zeigen gibt es ohne Panel nicht
+    "plasmashell|activate task manager entry 1|plasmashell|Activate Task Manager Entry 1"
+    "plasmashell|activate task manager entry 2|plasmashell|Activate Task Manager Entry 2"
+    "plasmashell|activate task manager entry 3|plasmashell|Activate Task Manager Entry 3"
+    "plasmashell|activate task manager entry 4|plasmashell|Activate Task Manager Entry 4"
+    "plasmashell|activate task manager entry 5|plasmashell|Activate Task Manager Entry 5"
+    "plasmashell|activate task manager entry 6|plasmashell|Activate Task Manager Entry 6"
+    "plasmashell|activate task manager entry 7|plasmashell|Activate Task Manager Entry 7"
+    "plasmashell|activate task manager entry 8|plasmashell|Activate Task Manager Entry 8"
+    "plasmashell|activate task manager entry 9|plasmashell|Activate Task Manager Entry 9"
+    "plasmashell|cycle-panels|plasmashell|Move keyboard focus between panels"
+    "plasmashell|clipboard_action|plasmashell|Automatic Action Popup Menu"
+    "plasmashell|show dashboard|plasmashell|Show Desktop"
+    # Spectacle: ganz ohne Kürzel – Bilder (Druck/Super+S) und Video (Super+R) macht unser Ausschneiden
+    "org.kde.spectacle.desktop|RecordRegion|Spectacle|Start/Stop Region Recording"
+    "org.kde.spectacle.desktop|RecordScreen|Spectacle|Start/Stop Screen Recording"
+    "org.kde.spectacle.desktop|RecordWindow|Spectacle|Start/Stop Window Recording"
+    "org.kde.spectacle.desktop|ActiveWindowScreenShot|Spectacle|Capture Active Window"
+    "org.kde.spectacle.desktop|FullScreenScreenShot|Spectacle|Capture Entire Desktop"
+    "org.kde.spectacle.desktop|RectangularRegionScreenShot|Spectacle|Capture Rectangular Region"
+    "org.kde.spectacle.desktop|WindowUnderCursorScreenShot|Spectacle|Capture Selected Window"
+    # Apps/Einstellungen: nur die Hardware-Tasten bleiben
+    "systemsettings.desktop|_launch|System Settings|System Settings|1 4 16777457 0 0 0"
+    "org_kde_powerdevil|powerProfile|Power Management|Switch Power Profile|1 4 16777470 0 0 0"
+    # Tastatur-Layout (nur 1 Layout) und Vorlesen
+    "KDE Keyboard Layout Switcher|Switch to Next Keyboard Layout|Keyboard Layout Switcher|"
+    "KDE Keyboard Layout Switcher|Switch to Last-Used Keyboard Layout|Keyboard Layout Switcher|"
+    "kaccess|Toggle Screen Reader On and Off|Accessibility|Toggle Screen Reader On and Off"
+)
+
+kga() { busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel "$@"; }
+
+free_foreign() {
+    mkdir -p "$STATE"
+    [ -f "$KEYS_BACKUP" ] || : > "$KEYS_BACKUP"
+    for entry in "${FOREIGN[@]}"; do
+        IFS='|' read -r comp action fcomp faction newkeys <<< "$entry"
+        if ! grep -qF "$comp|$action|" "$KEYS_BACKUP"; then
+            keys="$(kga shortcutKeys as 4 "$comp" "$action" "$fcomp" "$faction" 2>/dev/null | sed 's/^a(ai) //')"
+            echo "$comp|$action|$fcomp|$faction|${keys:-0}" >> "$KEYS_BACKUP"
+        fi
+        # shellcheck disable=SC2086 # Schlüsselliste absichtlich aufgespalten
+        kga setForeignShortcutKeys 'asa(ai)' 4 "$comp" "$action" "$fcomp" "$faction" ${newkeys:-0} >/dev/null 2>&1 || true
+    done
+}
+
+restore_foreign() {
+    [ -f "$KEYS_BACKUP" ] || return 0
+    while IFS='|' read -r comp action fcomp faction keys; do
+        # shellcheck disable=SC2086 # Schlüsselliste absichtlich aufgespalten
+        kga setForeignShortcutKeys 'asa(ai)' 4 "$comp" "$action" "$fcomp" "$faction" $keys >/dev/null 2>&1 || true
+    done < "$KEYS_BACKUP"
+    rm -f "$KEYS_BACKUP"
+}
+
+install_shortcuts() {
+    mkdir -p "$APPS"
+    # Exec relativ mit "qs" (nicht /usr/bin/qs), sonst kollidiert es mit der Fensterlisten-Freigabe
+    cat > "$SHORTCUTS" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Desktop: Dashboard
+NoDisplay=true
+X-KDE-GlobalAccel-CommandShortcut=true
+StartupNotify=false
+Exec=$IPC dashboard toggle
+# Super allein (kglobalaccel kennt seit Plasma 6 Kürzel nur aus einer Modifier-Taste)
+X-KDE-Shortcuts=Meta
+Actions=launcher;clipboard;emoji;snip;record;power;focus;off;reveal-top;leave-top;reveal-bottom;desk-next;desk-prev;
+
+[Desktop Action snip]
+Name=Desktop: Snip
+Exec=$IPC snip region
+X-KDE-Shortcuts=Print,Meta+S
+
+# Super+R: Bereich als Video – gleiche Auswahl wie Ausschneiden, Aufnahme über scripts/screenrec
+[Desktop Action record]
+Name=Desktop: Record Region
+Exec=$IPC snip record
+X-KDE-Shortcuts=Meta+R
+
+[Desktop Action emoji]
+Name=Desktop: Emoji
+Exec=$IPC launcher search :
+X-KDE-Shortcuts=Meta+.
+
+[Desktop Action clipboard]
+Name=Desktop: Clipboard
+Exec=$IPC launcher clipboard
+X-KDE-Shortcuts=Meta+V
+
+# ohne Taste: die Suche steckt im Dashboard (Super allein); Meta+Space bleibt frei
+[Desktop Action launcher]
+Name=Desktop: Launcher
+Exec=$IPC launcher toggle
+X-KDE-Shortcuts=
+
+[Desktop Action power]
+Name=Desktop: Power Menu
+Exec=$IPC power toggle
+X-KDE-Shortcuts=Meta+Esc
+
+[Desktop Action focus]
+Name=Desktop: Focus Timer
+Exec=$IPC focus toggle
+X-KDE-Shortcuts=Meta+F
+
+[Desktop Action off]
+Name=Desktop: Emergency Off
+Exec=$REPO/scripts/rice off
+X-KDE-Shortcuts=Ctrl+Alt+Shift+Q
+
+[Desktop Action desk-next]
+Name=Desktop: Next Desktop
+Exec=$IPC workbar nextDesk
+X-KDE-Shortcuts=Meta+Space
+
+[Desktop Action desk-prev]
+Name=Desktop: Previous Desktop
+Exec=$IPC workbar prevDesk
+X-KDE-Shortcuts=Meta+Shift+Space
+
+# ohne Taste: ruft das KWin-Script desktop-edges an der Bildschirmkante auf
+[Desktop Action reveal-top]
+Name=Desktop: Reveal Bar
+Exec=$IPC bar reveal
+X-KDE-Shortcuts=
+
+[Desktop Action leave-top]
+Name=Desktop: Bar Zone Left
+Exec=$IPC bar leave
+X-KDE-Shortcuts=
+
+[Desktop Action reveal-bottom]
+Name=Desktop: Reveal Workbar
+Exec=$IPC workbar reveal
+X-KDE-Shortcuts=
+EOF
+    kbuildsycoca6 >/dev/null 2>&1 || true
+}
+
+remove_shortcuts() {
+    rm -f "$SHORTCUTS"
+    kbuildsycoca6 >/dev/null 2>&1 || true
+    sleep 2
+    # sonst behält kglobalaccel die alte Aktionsliste und ignoriert neue Aktionen
+    qdbus-qt6 org.kde.kglobalaccel /component/desktop_shortcuts_desktop org.kde.kglobalaccel.Component.cleanUp >/dev/null 2>&1 || true
+}
+
+# R10: Plasma-Panel entfernen (nur im Desktop-Layout; "rice off" schaltet aufs unberührte Original zurück)
+remove_plasma_panel() {
+    qdbus-qt6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+        'var p = panels(); for (var i = 0; i < p.length; i++) p[i].remove(); print(p.length);' 2>/dev/null
+}
+
+# Meta (Super) allein öffnet das Dashboard (mit Suche drin): KWin ruft beim Antippen direkt unser Kürzel auf
+# alter Weg über kwinrc ModifierOnlyShortcuts: aufräumen, Super läuft jetzt über kglobalaccel (sonst doppelt)
+reset_meta() {
+    kwriteconfig6 --file kwinrc --group ModifierOnlyShortcuts --key Meta --delete
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+}
+
+# KWin-Script desktop-edges: Kanten oben/unten holen Bar und Workbar, ohne Klicks zu blockieren
+EDGES="$REPO/bridge/kwin/desktop-edges"
+# reconfigure lädt ein schon laufendes KWin-Script nicht neu (die alte Fassung bliebe aktiv):
+# entladen, dann lädt start() alle eingeschalteten Scripts frisch von der Platte
+kwin_script_reload() {
+    qdbus-qt6 org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript "$1" >/dev/null 2>&1 || true
+    qdbus-qt6 org.kde.KWin /Scripting org.kde.kwin.Scripting.start >/dev/null 2>&1 || true
+}
+edges_on() {
+    kpackagetool6 --type=KWin/Script --upgrade "$EDGES" >/dev/null 2>&1 \
+        || kpackagetool6 --type=KWin/Script --install "$EDGES" >/dev/null
+    # einmal aus und wieder an, damit KWin die neue Fassung lädt
+    kwriteconfig6 --file kwinrc --group Plugins --key desktop-edgesEnabled false
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kwriteconfig6 --file kwinrc --group Plugins --key desktop-edgesEnabled true
+    kwriteconfig6 --file kwinrc --group Plugins --key screenedgeEnabled false   # kein Leuchten an den Kanten
+    # Kanten auch bei Vollbild-Fenstern: Bar/Workbar lassen sich dann trotzdem hervorholen
+    kwriteconfig6 --file kwinrc --group ScreenEdges --key RemainActiveOnFullscreen true
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kwin_script_reload desktop-edges
+}
+edges_off() {
+    kwriteconfig6 --file kwinrc --group Plugins --key desktop-edgesEnabled --delete
+    kwriteconfig6 --file kwinrc --group Plugins --key screenedgeEnabled --delete
+    kwriteconfig6 --file kwinrc --group ScreenEdges --key RemainActiveOnFullscreen --delete
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kpackagetool6 --type=KWin/Script --remove desktop-edges >/dev/null 2>&1 || true
+}
+
+# KWin-Script desktop-tiling: Super+↑ maximieren/zurück, Super+↓ mittig (nie minimieren), Super+←/→ Seite ½ ⅓ ⅔,
+# Super+Shift+←/→ Nachbarmonitor, Super+Shift+↑ Vollbild. KWins Kürzel dafür räumt free_foreign vorher frei.
+TILING="$REPO/bridge/kwin/desktop-tiling"
+# Aktion|Anzeigename|Tasten – wie registerShortcut im Script; hier noch einmal fest gesetzt, falls kglobalaccel
+# beim ersten Registrieren eine Taste noch belegt sah
+TILING_KEYS=(
+    "Desktop Window Maximize|Desktop: Maximize / Restore Window|1 4 285212691 0 0 0"
+    "Desktop Window Restore|Desktop: Restore Window to Center|1 4 285212693 0 0 0"
+    "Desktop Window Left|Desktop: Window to Left Side (1/2, 1/3, 2/3)|1 4 285212690 0 0 0"
+    "Desktop Window Right|Desktop: Window to Right Side (1/2, 1/3, 2/3)|1 4 285212692 0 0 0"
+    "Desktop Window Screen Left|Desktop: Window to Left Monitor|1 4 318767122 0 0 0"
+    "Desktop Window Screen Right|Desktop: Window to Right Monitor|1 4 318767124 0 0 0"
+    "Desktop Window Fullscreen|Desktop: Toggle Fullscreen|1 4 318767123 0 0 0"
+)
+tiling_on() {
+    kpackagetool6 --type=KWin/Script --upgrade "$TILING" >/dev/null 2>&1 \
+        || kpackagetool6 --type=KWin/Script --install "$TILING" >/dev/null
+    kwriteconfig6 --file kwinrc --group Plugins --key desktop-tilingEnabled false
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kwriteconfig6 --file kwinrc --group Plugins --key desktop-tilingEnabled true
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kwin_script_reload desktop-tiling
+    sleep 1
+    local entry action friendly keys
+    for entry in "${TILING_KEYS[@]}"; do
+        IFS='|' read -r action friendly keys <<< "$entry"
+        # shellcheck disable=SC2086 # Schlüsselliste absichtlich aufgespalten
+        kga setForeignShortcutKeys 'asa(ai)' 4 kwin "$action" KWin "$friendly" $keys >/dev/null 2>&1 || true
+    done
+}
+tiling_off() {
+    kwriteconfig6 --file kwinrc --group Plugins --key desktop-tilingEnabled --delete
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    sleep 1
+    # Aktionen ganz abmelden, sonst halten sie die Tasten und restore_foreign bekommt Super+Pfeile nicht zurück
+    local entry action
+    for entry in "${TILING_KEYS[@]}"; do
+        IFS='|' read -r action _ <<< "$entry"
+        kga unregister ss kwin "$action" >/dev/null 2>&1 || true
+    done
+    kpackagetool6 --type=KWin/Script --remove desktop-tiling >/dev/null 2>&1 || true
+}
+
+# KWin-Fensterwechsler desktop-switcher (Super+Tab) statt KDEs Vorschau-Raster.
+# Alter LayoutName wird gemerkt (leer = KDE-Standard), "off" stellt ihn wieder her.
+SWITCHER="$REPO/bridge/kwin/desktop-switcher"
+SWITCHER_BACKUP="$STATE/switcher-layout.txt"
+switcher_on() {
+    python3 -I "$REPO/theme/gen/switcher.py" >/dev/null
+    kpackagetool6 --type=KWin/WindowSwitcher --upgrade "$SWITCHER" >/dev/null 2>&1 \
+        || kpackagetool6 --type=KWin/WindowSwitcher --install "$SWITCHER" >/dev/null
+    if [ ! -f "$SWITCHER_BACKUP" ]; then
+        mkdir -p "$STATE"
+        local old
+        old="$(kreadconfig6 --file kwinrc --group TabBox --key LayoutName)"
+        [ "$old" = "desktop-switcher" ] && old=""
+        printf '%s\n' "$old" > "$SWITCHER_BACKUP"
+    fi
+    kwriteconfig6 --file kwinrc --group TabBox --key LayoutName desktop-switcher
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+}
+switcher_off() {
+    local old=""
+    [ -f "$SWITCHER_BACKUP" ] && old="$(head -n1 "$SWITCHER_BACKUP")"
+    # nur zurückstellen, wenn noch unser Layout drin steht (sonst hat Bastian selbst umgestellt)
+    if [ "$(kreadconfig6 --file kwinrc --group TabBox --key LayoutName)" != "desktop-switcher" ]; then
+        :
+    elif [ -n "$old" ]; then
+        kwriteconfig6 --file kwinrc --group TabBox --key LayoutName "$old"
+    else
+        kwriteconfig6 --file kwinrc --group TabBox --key LayoutName --delete
+    fi
+    rm -f "$SWITCHER_BACKUP"
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kpackagetool6 --type=KWin/WindowSwitcher --remove desktop-switcher >/dev/null 2>&1 || true
+}
+
+# KWin-Kürzel wieder aktiv melden. Nötig, wenn ein zweiter kwin_wayland (Test) beim Beenden alle
+# "kwin"-Aktionen als nicht vorhanden markiert hat (Alt+Tab & Co. tot). Flag 2 = vorhanden, Tasten bleiben.
+keys_fix() {
+    qdbus-qt6 --literal org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.allShortcutInfos \
+        | python3 -I -c '
+import re, sys
+for m in re.finditer(r"\(ssssssaiai\) \"((?:[^\"\\\\]|\\\\.)*)\", \"((?:[^\"\\\\]|\\\\.)*)\", \"kwin\", \"KWin\"", sys.stdin.read()):
+    print(m.group(1) + "\t" + m.group(2))' \
+        | while IFS=$'\t' read -r action friendly; do
+            kga setShortcut asaiu 4 kwin "$action" KWin "$friendly" 0 2 >/dev/null 2>&1
+        done
+    echo "KWin-Kürzel aktiv: $(qdbus-qt6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.isActive)"
+}
+
+# Hot Corner oben links (KWin-Übersicht) aus: dort sitzt die Desktop-Leiste
+corner_off() {
+    kwriteconfig6 --file kwinrc --group Effect-overview --key BorderActivate 9
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+}
+corner_on() {
+    kwriteconfig6 --file kwinrc --group Effect-overview --key BorderActivate --delete
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+}
+
+# Shell als richtiger User-Dienst (systemd/desktop-shell.service): startet mit jeder Plasma-Sitzung
+UNIT_SRC="$REPO/systemd/$UNIT.service"
+UNIT_DST="$HOME/.config/systemd/user/$UNIT.service"
+KEYLIGHT_UNIT="desktop-keylight-off"
+KEYLIGHT_SRC="$REPO/systemd/$KEYLIGHT_UNIT.service"
+KEYLIGHT_DST="$HOME/.config/systemd/user/$KEYLIGHT_UNIT.service"
+# Mail + Termine/Todos fürs Dashboard: Timer holen per IMAP/CalDAV nach ~/.cache/desktop/{mail,agenda}.json
+FEED_UNITS=(desktop-mail desktop-agenda)
+# Kürzel-Wächter: Dauer-Dienst (Schleife alle 30 s), repariert tote KWin-Kürzel
+KEYS_UNIT=desktop-keys-watch
+# Dauerläufer (IMAP IDLE): neue Mails melden, Einmal-Codes kopieren, Code-Mails später in den Papierkorb
+WATCH_UNIT="desktop-mail-watch"
+
+start_shell() {
+    qs kill --any-display -p "$SHELL_DIR" >/dev/null 2>&1 || true
+    systemctl --user stop "$UNIT" >/dev/null 2>&1 || true
+    systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
+    mkdir -p "$(dirname "$UNIT_DST")"
+    ln -sf "$UNIT_SRC" "$UNIT_DST"
+    systemctl --user daemon-reload
+    systemctl --user enable --quiet "$UNIT"
+    systemctl --user start "$UNIT"
+    # Key Light geht beim Herunterfahren aus
+    ln -sf "$KEYLIGHT_SRC" "$KEYLIGHT_DST"
+    systemctl --user daemon-reload
+    systemctl --user enable --now --quiet "$KEYLIGHT_UNIT"
+    feeds_on
+}
+
+# Konten + Passwörter stehen in secrets.json ("accounts"), Anleitung: docs/setup/mail-calendar.md
+feeds_on() {
+    local u
+    for u in "${FEED_UNITS[@]}"; do
+        ln -sf "$REPO/systemd/$u.service" "$HOME/.config/systemd/user/$u.service"
+        ln -sf "$REPO/systemd/$u.timer" "$HOME/.config/systemd/user/$u.timer"
+    done
+    ln -sf "$REPO/systemd/$WATCH_UNIT.service" "$HOME/.config/systemd/user/$WATCH_UNIT.service"
+    ln -sf "$REPO/systemd/$KEYS_UNIT.service" "$HOME/.config/systemd/user/$KEYS_UNIT.service"
+    systemctl --user daemon-reload
+    for u in "${FEED_UNITS[@]}"; do
+        systemctl --user enable --now --quiet "$u.timer"
+    done
+    systemctl --user enable --now --quiet "$WATCH_UNIT"
+    systemctl --user enable --now --quiet "$KEYS_UNIT"
+}
+
+feeds_off() {
+    local u
+    for u in "${FEED_UNITS[@]}"; do
+        systemctl --user disable --now --quiet "$u.timer" >/dev/null 2>&1 || true
+        systemctl --user stop "$u.service" >/dev/null 2>&1 || true
+        rm -f "$HOME/.config/systemd/user/$u.service" "$HOME/.config/systemd/user/$u.timer"
+    done
+    systemctl --user disable --now --quiet "$WATCH_UNIT" >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/$WATCH_UNIT.service"
+    systemctl --user disable --now --quiet "$KEYS_UNIT" >/dev/null 2>&1 || true
+    rm -f "$HOME/.config/systemd/user/$KEYS_UNIT.service"
+}
+
+stop_shell() {
+    systemctl --user stop "$UNIT" >/dev/null 2>&1 || true
+    systemctl --user disable --quiet "$UNIT" >/dev/null 2>&1 || true
+    rm -f "$UNIT_DST"
+    # ohne ExecStop entfernen: sonst ginge das Key Light beim rice off aus
+    systemctl --user disable --quiet "$KEYLIGHT_UNIT" >/dev/null 2>&1 || true
+    rm -f "$KEYLIGHT_DST"
+    feeds_off
+    systemctl --user daemon-reload
+    qs kill --any-display -p "$SHELL_DIR" >/dev/null 2>&1 || true
+}
+
+THEME_BACKUP="$STATE/theme-backup.txt"
+BASHRC="$HOME/.bashrc"
+
+# Systemschrift: Inter fürs UI, JetBrains Mono Nerd Font für Monospace (ohne Eintrag nimmt KDE Noto Sans).
+# Alter Stand je Schlüssel ins Theme-Backup (leer = war nicht gesetzt -> beim Aus wieder löschen).
+FONT_KEYS=("General font" "General menuFont" "General toolBarFont" "General smallestReadableFont" "General fixed" "WM activeFont")
+font_value() {
+    case "$2" in
+        smallestReadableFont) echo "Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1" ;;
+        fixed) echo "JetBrainsMono Nerd Font,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1" ;;
+        *) echo "Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1" ;;
+    esac
+}
+
+fonts_on() {
+    local entry group key
+    for entry in "${FONT_KEYS[@]}"; do
+        read -r group key <<< "$entry"
+        grep -q "^font_${group}_$key=" "$THEME_BACKUP" \
+            || echo "font_${group}_$key=\"$(kreadconfig6 --file kdeglobals --group "$group" --key "$key")\"" >> "$THEME_BACKUP"
+        kwriteconfig6 --notify --file kdeglobals --group "$group" --key "$key" "$(font_value "$group" "$key")"
+    done
+}
+
+fonts_off() {
+    local entry group key var
+    for entry in "${FONT_KEYS[@]}"; do
+        read -r group key <<< "$entry"
+        var="font_${group}_$key"
+        if [ -n "${!var:-}" ]; then
+            kwriteconfig6 --notify --file kdeglobals --group "$group" --key "$key" "${!var}"
+        else
+            kwriteconfig6 --notify --file kdeglobals --group "$group" --key "$key" --delete
+        fi
+    done
+}
+
+theme_on() {
+    python3 -I "$REPO/theme/gen/all.py" >/dev/null
+    if [ ! -f "$THEME_BACKUP" ]; then
+        mkdir -p "$STATE"
+        {
+            echo "colors=$(kreadconfig6 --file kdeglobals --group General --key ColorScheme)"
+            echo "cursor=$(kreadconfig6 --file kcminputrc --group Mouse --key cursorTheme)"
+            echo "konsole=$(kreadconfig6 --file konsolerc --group 'Desktop Entry' --key DefaultProfile)"
+        } > "$THEME_BACKUP"
+    fi
+    # Fensterdeko: alter Stand kommt dazu, falls das Backup von vor der Deko-Umstellung stammt
+    for key in library theme ButtonsOnLeft; do
+        grep -q "^deco_$key=" "$THEME_BACKUP" \
+            || echo "deco_$key=$(kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key "$key")" >> "$THEME_BACKUP"
+    done
+    plasma-apply-colorscheme "$(scheme_name)" >/dev/null
+    plasma-apply-cursortheme Desktop >/dev/null
+    fonts_on
+    # Ordner holzbraun: eigenes Icon-Theme "Desktop-Icons" (Breeze Dark gespiegelt, nur Ordner umgefärbt);
+    # alter Stand kommt dazu, falls das Backup von vor der Ordner-Umstellung stammt
+    if ! grep -q "^icons=" "$THEME_BACKUP"; then
+        cur_icons=$(kreadconfig6 --file kdeglobals --group Icons --key Theme)
+        [ "$cur_icons" = "Desktop-Icons" ] && cur_icons=breeze-dark
+        echo "icons=$cur_icons" >> "$THEME_BACKUP"
+    fi
+    python3 -I "$REPO/theme/gen/icons.py" >/dev/null
+    /usr/libexec/plasma-changeicons Desktop-Icons >/dev/null 2>&1
+    # Flatpak-Apps (Thunderbird, Discord …) sehen ~/.local/share/icons sonst nicht -> fehlende Fensterknöpfe/Icons
+    # (nur lesend; bleibt bei theme off, schadet ohne das Theme nicht)
+    flatpak override --user --filesystem=xdg-data/icons:ro >/dev/null 2>&1 || true
+    # Thunderbird: Theme-XPI + chrome/ + user.js-Block (greift nach Thunderbird-Neustart)
+    python3 -I "$REPO/theme/gen/thunderbird.py" apply >/dev/null 2>&1 || true
+    # Breeze-Deko: Titelleiste und Knöpfe nehmen die Desktop-Farben aus dem Farbschema
+    kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key library org.kde.breeze
+    kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme Breeze
+    # links: App-Menü, Anpinnen (alle Desktops), immer im Vordergrund
+    kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft MSF
+    qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    kwriteconfig6 --file konsolerc --group "Desktop Entry" --key DefaultProfile Desktop.profile
+    # Konsole schlank: keine Werkzeugleisten, Tab-Leiste nur bei mehreren Tabs (eigenes Backup)
+    "$REPO/scripts/konsole-ui" on >/dev/null
+    if ! grep -q ">>> desktop starship" "$BASHRC" 2>/dev/null; then
+        printf '\n# >>> desktop starship >>>\nexport STARSHIP_CONFIG="%s/theme/out/starship.toml"\n[[ $- == *i* && "$TERM" != dumb ]] && command -v starship >/dev/null && eval "$(starship init bash)"\n# <<< desktop starship <<<\n' "$REPO" >> "$BASHRC"
+    fi
+    echo "Theme an (neue Terminals bekommen den Prompt). VS Code: Strg+K Strg+T → Desktop."
+}
+
+theme_off() {
+    if [ -f "$THEME_BACKUP" ]; then
+        # shellcheck disable=SC1090
+        . "$THEME_BACKUP"
+        [ -n "${colors:-}" ] && plasma-apply-colorscheme "$colors" >/dev/null
+        [ -n "${cursor:-}" ] && plasma-apply-cursortheme "$cursor" >/dev/null
+        /usr/libexec/plasma-changeicons "${icons:-breeze-dark}" >/dev/null 2>&1
+        fonts_off
+        if [ -n "${konsole:-}" ]; then
+            kwriteconfig6 --file konsolerc --group "Desktop Entry" --key DefaultProfile "$konsole"
+        else
+            kwriteconfig6 --file konsolerc --group "Desktop Entry" --key DefaultProfile --delete
+        fi
+        for key in library theme ButtonsOnLeft; do
+            var="deco_$key"
+            if [ -n "${!var:-}" ]; then
+                kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key "$key" "${!var}"
+            else
+                kwriteconfig6 --file kwinrc --group org.kde.kdecoration2 --key "$key" --delete
+            fi
+        done
+        qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+        rm -f "$THEME_BACKUP"
+    fi
+    "$REPO/scripts/konsole-ui" off >/dev/null
+    python3 -I "$REPO/theme/gen/thunderbird.py" remove >/dev/null 2>&1 || true
+    sed -i '/# >>> desktop starship >>>/,/# <<< desktop starship <<</d' "$BASHRC"
+    echo "Theme aus, alter Stand zurück."
+}
+
+# Farbvariante umschalten: defaultTheme in palette.json setzen, alles neu erzeugen und nur das neu
+# anwenden, was schon aktiv ist. Die Shell liest palette.json live (Theme.qml), kein Neustart nötig.
+PALETTE="$REPO/theme/palette.json"
+
+# KDE-Farbschema zur aktiven Variante: hearth → "DesktopHearth" (theme/gen/kde_colors.py), alle anderen → "Desktop"
+scheme_name() {
+    python3 -I - "$REPO/theme/palette.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print("DesktopHearth" if d.get("defaultTheme") == "hearth" else "Desktop")
+PY
+}
+LOCK_THEME="plasma/shells/de.bastian.desktop/contents/lockscreen/DesktopTheme.qml"
+variant_list() {
+    python3 -I - "$PALETTE" <<'PY'
+import json, sys
+src = json.load(open(sys.argv[1]))
+info = src.get("themeInfo", {})
+for name in src["themes"]:
+    mark = "*" if name == src["defaultTheme"] else " "
+    print(f" {mark} {name:12} {info.get(name, '')}")
+PY
+}
+variant_set() {
+    local name="$1"
+    # json rein/raus: palette.json ist genau so formatiert (indent 2), es ändert sich nur die eine Zeile
+    python3 -I - "$PALETTE" "$name" <<'PY' || return 1
+import json, sys
+path, name = sys.argv[1], sys.argv[2]
+src = json.load(open(path))
+if name not in src["themes"]:
+    sys.exit(f"Unbekannte Variante: {name} (da: {', '.join(src['themes'])})")
+src["defaultTheme"] = name
+open(path, "w").write(json.dumps(src, indent=2, ensure_ascii=False) + "\n")
+PY
+    # KDE-Farbschema "Desktop", Konsole, Starship, VS Code, Chrome, Vorschau, Lockscreen- und Wechsler-Theme
+    # (Cursor hängt nicht an der Variante)
+    python3 -I "$REPO/theme/gen/all.py" --alles --ohne-cursor >/dev/null || return 1
+    # Lockscreen: nur die Farbdatei ins installierte Paket (kein shellpkg install, sonst ist die Fokus-Aufgabe weg)
+    local lockdir="$HOME/.local/share/plasma/shells/de.bastian.desktop/contents/lockscreen"
+    [ -d "$lockdir" ] && cp "$REPO/$LOCK_THEME" "$lockdir/"
+    if kpackagetool6 --type=KWin/WindowSwitcher --show desktop-switcher >/dev/null 2>&1; then
+        kpackagetool6 --type=KWin/WindowSwitcher --upgrade "$SWITCHER" >/dev/null 2>&1
+        qdbus-qt6 org.kde.KWin /KWin reconfigure >/dev/null 2>&1 || true
+    fi
+    # Ordner-Icons in der neuen Holzfarbe; laufende Apps übernehmen sie nur über einen kurzen Wechsel
+    if [ "$(kreadconfig6 --file kdeglobals --group Icons --key Theme)" = "Desktop-Icons" ]; then
+        python3 -I "$REPO/theme/gen/icons.py" >/dev/null
+        /usr/libexec/plasma-changeicons breeze-dark >/dev/null 2>&1
+        /usr/libexec/plasma-changeicons Desktop-Icons >/dev/null 2>&1
+    fi
+    # Das Schema der neuen Variante setzen (hearth → DesktopHearth, sonst Desktop). Gleiches Schema nimmt
+    # plasma-apply-colorscheme nicht neu an -> kurz über BreezeDark, wenn schon eines unserer Schemata aktiv ist
+    cur="$(kreadconfig6 --file kdeglobals --group General --key ColorScheme)"
+    want="$(scheme_name)"
+    if [ "$cur" = "Desktop" ] || [ "$cur" = "DesktopHearth" ]; then
+        plasma-apply-colorscheme BreezeDark >/dev/null
+        plasma-apply-colorscheme "$want" >/dev/null
+    fi
+    echo "Variante $name aktiv (Shell sofort, Fenster/Lockscreen/Wechsler neu, VS Code: Fenster neu laden)."
+}
+
+case "${1:-}" in
+    variant)
+        if [ -z "${2:-}" ]; then
+            variant_list
+            echo "Umschalten: scripts/rice variant <name>   (Vergleich: design/variants.html)"
+        else
+            variant_set "$2" || exit 1
+        fi
+        ;;
+    theme)
+        case "${2:-}" in
+            on) theme_on ;;
+            off) theme_off ;;
+            *) echo "scripts/rice theme on|off"; exit 1 ;;
+        esac
+        ;;
+    on)
+        "$REPO/scripts/shellpkg" status | grep -q "de.bastian.desktop$" || "$REPO/scripts/shellpkg" on
+        free_foreign
+        # Super+R: Bereichs-Aufnahme (baut den kleinen KWin-Screencast-Helfer nur neu, wenn nötig)
+        "$REPO/scripts/screenrec" install >/dev/null || true
+        install_shortcuts
+        start_shell
+        sleep 2
+        [ "$(remove_plasma_panel)" != "0" ] && echo "Plasma-Panel entfernt."
+        reset_meta
+        corner_off
+        edges_on
+        tiling_on
+        switcher_on
+        "$REPO/scripts/winrules" on >/dev/null
+        # Plasmas OSD aus (sonst doppelt neben dem Desktop-OSD)
+        kwriteconfig6 --notify --file plasmarc --group OSD --key Enabled false
+        echo "Desktop an. Not-Aus: Strg+Alt+Shift+Q oder scripts/rice off"
+        ;;
+    off)
+        stop_shell
+        reset_meta
+        corner_on
+        edges_off
+        tiling_off
+        switcher_off
+        theme_off >/dev/null
+        "$REPO/scripts/winrules" off >/dev/null
+        kwriteconfig6 --notify --file plasmarc --group OSD --key Enabled --delete
+        remove_shortcuts
+        restore_foreign
+        "$REPO/scripts/shellpkg" status | grep -q "de.bastian.desktop$" && "$REPO/scripts/shellpkg" off
+        echo "Desktop aus. Vanilla-Plasma ist zurück."
+        ;;
+    shortcuts)
+        # Kürzel-Datei neu registrieren (kglobalaccel übernimmt Änderungen nur über Löschen + Neu)
+        remove_shortcuts
+        sleep 4
+        free_foreign
+        install_shortcuts
+        echo "Kürzel neu gesetzt."
+        ;;
+    keys-fix)
+        keys_fix
+        ;;
+    keys-check)
+        # unter Hyprland gibt es keine KWin-Kürzel (und kglobalaccel soll dort nicht per D-Bus anspringen)
+        if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || pgrep -x Hyprland >/dev/null; then
+            exit 0
+        fi
+        # für den Timer: nur reparieren, wenn KWins Kürzel als inaktiv gemeldet sind
+        if [ "$(qdbus-qt6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.isActive 2>/dev/null)" = "false" ]; then
+            echo "KWin-Kürzel waren tot (zweiter kwin_wayland?) – repariere"
+            keys_fix
+        fi
+        ;;
+    feeds)
+        feeds_on
+        # neu starten, damit geänderte Konten/Einstellungen sofort gelten
+        systemctl --user restart "$WATCH_UNIT"
+        systemctl --user start desktop-mail.service desktop-agenda.service
+        echo "mail-watch: $(systemctl --user is-active "$WATCH_UNIT")"
+        python3 -I -c '
+import json, os
+for f in ("mail", "agenda"):
+    try:
+        d = json.load(open(os.path.expanduser("~/.cache/desktop/%s.json" % f)))
+    except (OSError, ValueError):
+        print(f + ": no data"); continue
+    accs = ", ".join("%s %s%s" % (a["name"], a["status"], " (" + a["error"] + ")" if a.get("error") else "") for a in d.get("accounts", []))
+    print("%s: %s%s" % (f, d.get("status"), " · " + accs if accs else ""))'
+        ;;
+    edges)
+        edges_on
+        echo "Kanten-Script neu installiert."
+        ;;
+    tiling)
+        free_foreign
+        tiling_on
+        echo "Fenster-Script neu installiert (Super+Pfeile)."
+        ;;
+    switcher)
+        switcher_on
+        echo "Fensterwechsler neu installiert (Super+Tab)."
+        ;;
+    restart)
+        start_shell
+        echo "Shell neu gestartet."
+        ;;
+    status)
+        echo "Shell:    $(systemctl --user is-active "$UNIT" 2>/dev/null)"
+        [ -f "$SHORTCUTS" ] && echo "Kürzel:   gesetzt" || echo "Kürzel:   aus"
+        "$REPO/scripts/shellpkg" status | head -1
+        echo "Wechsler: $(kreadconfig6 --file kwinrc --group TabBox --key LayoutName --default 'KDE-Standard')"
+        ;;
+    *)
+        sed -n '2,15p' "$0"
+        exit 1
+        ;;
+esac

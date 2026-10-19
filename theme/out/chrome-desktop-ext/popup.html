@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- Desktop – Popup (Symbol in der Toolbar): Logins der aktuellen Seite. Vorlage: theme/gen/chrome-ext/, erzeugt von theme/gen/chrome.py -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <span class="sym">key</span>
+    <h1>Passwords</h1>
+    <span class="count" id="count"></span>
+  </header>
+  <div class="status" id="status">Connecting…</div>
+  <div class="list" id="list"></div>
+  <div class="toast" id="toast" hidden></div>
+  <script src="popup.js"></script>
+</body>
+</html>

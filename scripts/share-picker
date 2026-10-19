@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# Bildschirm-teilen-Auswahl im Desktop-Look für xdg-desktop-portal-hyprland (xdph). Doku: docs/SHARING.md
+#
+# Zwei Picker, eingetragen als screencopy:custom_picker_binary in ~/.config/hypr/xdph.conf:
+#   shell (Standard)  Quickshell-Overlay shell/modules/sharepicker, Brücke scripts/share-pick – ohne sudo, ohne Bauen
+#   gtk   (Alternative) hyprland-preview-share-picker (Rust/GTK4, geprüft + festgenagelt), braucht gtk4-layer-shell (sudo)
+#
+#   share-picker install [shell|gtk]   xdph.conf-Block eintragen (Backup der alten Datei nach ~/.local/state/desktop/).
+#                           Wirkt nach Portal-Neustart (siehe unten)
+#   share-picker off        Block aus xdph.conf entfernen → Standard-Picker hyprland-share-picker kommt zurück
+#                           (auch: uninstall, restore); gtk-Links werden mit entfernt, Programme bleiben
+#   share-picker status     welcher Picker ist eingetragen, läuft die Shell, muss das Portal neu starten?
+#   share-picker test       Shell-Picker mit den echten Fenstern zeigen (scripts/share-pick --demo): nichts wird geteilt,
+#                           Portal und laufende Streams bleiben unberührt. Esc schließt
+#   share-picker test --gtk [--shot datei.png]   dasselbe mit dem GTK-Picker, optional Screenshot per grim
+#   share-picker build      GTK-Picker aus dem geprüften Stand bauen (cargo + gtk4-devel/gtk4-layer-shell-devel)
+#   share-picker css        Stylesheet des GTK-Pickers neu aus der Palette (kommt auch mit theme/gen/all.py)
+# Das Portal liest xdph.conf nur beim Start. Neustart (nur wenn kein Stream/Call läuft):
+#   systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal
+# Dieses Skript startet das Portal nie neu.
+set -uo pipefail
+
+SELF=$(readlink -f "$0")
+REPO=$(dirname "$(dirname "$SELF")")
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE="$HOME/.local/state/desktop"
+SRC="$HOME/.local/src/hyprland-preview-share-picker"
+BIN="$HOME/.local/bin/hyprland-preview-share-picker"     # GTK-Picker (Alternative)
+PICK="$REPO/scripts/share-pick"                         # Shell-Picker (Standard)
+SHELL_DIR="$REPO/shell"
+PICKER_CONF="$CONF/hyprland-preview-share-picker"
+XDPH="$CONF/hypr/xdph.conf"
+CREATED="$STATE/xdph.conf.created-by-share-picker"
+# Geprüfter Stand (v0.3.0, Quellcode-Prüfung 18.10.2026, docs/SHARING.md). Neuer Stand erst nach neuer Prüfung eintragen.
+PIN=7e11349d3f6ecae75b42be73d6a258503656cc8f
+BEGIN="# >>> desktop share-picker (scripts/share-picker) >>>"
+END="# <<< desktop share-picker <<<"
+
+say() { printf '%s\n' "$*"; }
+
+# Link anlegen; Fremdes vorher sichern
+link() {
+    local src=$1 f=$2
+    mkdir -p "$(dirname "$f")"
+    if [ -L "$f" ] && [ "$(readlink "$f")" = "$src" ]; then return 0; fi
+    if [ -e "$f" ] || [ -L "$f" ]; then
+        local bak="$f.bak-$(date +%Y%m%d-%H%M%S)"
+        mv "$f" "$bak" && say "  gesichert: $f → $bak"
+    fi
+    ln -s "$src" "$f"
+    say "  verlinkt: $f"
+}
+unlink_ours() {
+    local f=$1
+    if [ -L "$f" ] && [[ "$(readlink "$f")" == "$REPO"/* ]]; then rm -f "$f"; say "  entfernt: $f"; fi
+}
+has_block() { [ -f "$XDPH" ] && grep -qF "$BEGIN" "$XDPH"; }
+strip_block() {   # Block aus Datei entfernen, Leerzeilen am Ende weg -> stdout
+    awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$1" \
+        | awk 'NF{for(i=0;i<n;i++)print ""; n=0; print; next}{n++}'
+}
+
+cmd_css() {
+    python3 -I "$REPO/theme/gen/share_picker.py" "$@"
+}
+
+cmd_build() {
+    command -v cargo >/dev/null 2>&1 || { say "cargo fehlt (Fedora: sudo dnf install -y cargo, oder Super+P → „cargo“)."; return 1; }
+    local missing=()
+    pkg-config --exists gtk4 || missing+=(gtk4-devel)
+    pkg-config --exists gtk4-layer-shell-0 || missing+=(gtk4-layer-shell gtk4-layer-shell-devel)
+    if [ ${#missing[@]} -gt 0 ]; then
+        say "Es fehlen Entwicklerpakete (Bastian, mit sudo):"
+        say "  sudo dnf install -y gtk4-devel gtk4-layer-shell gtk4-layer-shell-devel"
+        say "Danach nochmal: scripts/share-picker build"
+        return 1
+    fi
+    if [ ! -d "$SRC/.git" ]; then
+        mkdir -p "$(dirname "$SRC")"
+        git clone --recursive https://github.com/WhySoBad/hyprland-preview-share-picker "$SRC" || return 1
+    fi
+    git -C "$SRC" fetch -q --tags origin 2>/dev/null || true
+    git -C "$SRC" checkout -q --detach "$PIN" || { say "Geprüfter Stand $PIN nicht gefunden – abgebrochen."; return 1; }
+    [ "$(git -C "$SRC" rev-parse HEAD)" = "$PIN" ] || { say "Stand stimmt nicht – abgebrochen."; return 1; }
+    git -C "$SRC" submodule update -q --init --recursive || return 1
+    [ -z "$(git -C "$SRC" status --porcelain)" ] || { say "Quellordner $SRC ist verändert – abgebrochen."; return 1; }
+    say "Baue hyprland-preview-share-picker ($PIN) nach ~/.local/bin …"
+    # Hinweis: lädt Abhängigkeiten von crates.io (Cargo.lock, 279 Pakete) und führt deren build.rs aus (Standard bei Rust).
+    cargo install --locked --root "$HOME/.local" --path "$SRC"
+}
+
+# xdph.conf-Block mit custom_picker_binary = $1 schreiben (Fremdes vorher sichern)
+write_block() {
+    local bin=$1
+    mkdir -p "$STATE" "$(dirname "$XDPH")"
+    if [ -f "$XDPH" ] && ! has_block; then
+        if grep -q '^[[:space:]]*custom_picker_binary' "$XDPH"; then
+            say "In $XDPH steht schon ein custom_picker_binary (nicht von hier) – nichts geändert."; return 1
+        fi
+    fi
+    if [ -f "$XDPH" ]; then
+        cp -p "$XDPH" "$STATE/xdph.conf.bak-$(date +%Y%m%d-%H%M%S)" && say "  gesichert: $XDPH → $STATE/xdph.conf.bak-…"
+    fi
+    local tmp; tmp=$(mktemp)
+    if [ -f "$XDPH" ]; then strip_block "$XDPH" > "$tmp"; else : > "$tmp"; touch "$CREATED"; fi
+    { cat "$tmp"; [ -s "$tmp" ] && echo
+      echo "$BEGIN"
+      echo "screencopy {"
+      echo "    custom_picker_binary = $bin"
+      echo "}"
+      echo "$END"; } > "$XDPH"
+    rm -f "$tmp"
+    say "  xdph.conf: custom_picker_binary = $bin"
+    say "Fertig. Wirkt nach Portal-Neustart (nur wenn kein Stream/Call läuft):"
+    say "  systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal"
+}
+
+cmd_install() {
+    local mode=${1:-shell}
+    say "Repo: $REPO"
+    case "$mode" in
+        shell) install_shell ;;
+        gtk) install_gtk ;;
+        *) say "Unbekannter Picker „$mode“ (shell | gtk)"; return 1 ;;
+    esac
+}
+
+install_shell() {
+    [ -x "$PICK" ] || { say "$PICK fehlt oder ist nicht ausführbar – nichts geändert."; return 1; }
+    command -v qs >/dev/null || { say "qs (Quickshell) fehlt – nichts geändert."; return 1; }
+    command -v slurp >/dev/null || say "  Hinweis: slurp fehlt → Reiter „Region“ geht nicht (sudo dnf install -y slurp)."
+    command -v hyprland-share-picker >/dev/null || say "  Hinweis: hyprland-share-picker fehlt → kein Rückfall, wenn die Shell nicht läuft."
+    if ! shell_has_picker; then
+        say "  Hinweis: die laufende Shell kennt „sharepicker“ noch nicht (läuft sie? sonst nimmt share-pick den Standard-Picker)."
+    fi
+    # GTK-Links weg, damit klar ist, wer zuständig ist (Programm + Config im Repo bleiben)
+    unlink_ours "$PICKER_CONF/config.yaml"
+    unlink_ours "$PICKER_CONF/style.css"
+    write_block "$PICK"
+}
+
+install_gtk() {
+    cmd_css --nur-out || return 1
+    link "$REPO/config/share-picker/config.yaml" "$PICKER_CONF/config.yaml"
+    link "$REPO/theme/out/share-picker.css" "$PICKER_CONF/style.css"
+    if [ ! -x "$BIN" ]; then
+        say "GTK-Picker noch nicht gebaut ($BIN fehlt) → xdph.conf bleibt unberührt."
+        say "Erst: scripts/share-picker build   (braucht ggf. sudo dnf install -y gtk4-devel gtk4-layer-shell gtk4-layer-shell-devel)"
+        return 0
+    fi
+    if ldd "$BIN" 2>/dev/null | grep -q "not found"; then
+        say "Dem Picker fehlen Bibliotheken ($(ldd "$BIN" | grep 'not found' | awk '{print $1}' | tr '\n' ' ')) → xdph.conf bleibt unberührt."
+        say "Vermutlich: sudo dnf install -y gtk4-layer-shell"
+        return 1
+    fi
+    write_block "$BIN"
+}
+
+shell_has_picker() {
+    timeout 4 qs ipc --any-display -p "$SHELL_DIR" show 2>/dev/null | grep -q '^target sharepicker$'
+}
+
+cmd_off() {
+    if has_block; then
+        local tmp; tmp=$(mktemp)
+        strip_block "$XDPH" > "$tmp"
+        if [ -e "$CREATED" ] && ! grep -q '[^[:space:]]' "$tmp"; then rm -f "$XDPH" "$CREATED"; say "  xdph.conf entfernt (hatten wir angelegt)"
+        else cat "$tmp" > "$XDPH"; say "  Block aus xdph.conf entfernt"; fi
+        rm -f "$tmp"
+        mkdir -p "$STATE" && touch "$STATE/xdph.conf.changed"
+        say "Wirkt nach Portal-Neustart: systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal"
+    else
+        say "  xdph.conf hat keinen Block von hier."
+    fi
+    unlink_ours "$PICKER_CONF/config.yaml"
+    unlink_ours "$PICKER_CONF/style.css"
+    say "Aus: Standard-Picker hyprland-share-picker. Programme bleiben; Backups in $STATE."
+}
+
+cmd_status() {
+    local ok="ja" no="nein" cur=""
+    if has_block; then
+        cur=$(awk -v b="$BEGIN" -v e="$END" '$0==b{inb=1} inb && /custom_picker_binary/{sub(/^[^=]*=[[:space:]]*/, ""); print} $0==e{inb=0}' "$XDPH")
+        case "$cur" in
+            "$PICK") say "Eingetragen:       Shell-Picker ($cur)" ;;
+            "$BIN") say "Eingetragen:       GTK-Picker ($cur)" ;;
+            *) say "Eingetragen:       $cur" ;;
+        esac
+    else
+        say "Eingetragen:       nichts → Standard-Picker hyprland-share-picker"
+    fi
+    shell_has_picker && say "Shell (sharepicker): läuft" || say "Shell (sharepicker): nicht erreichbar → share-pick nimmt den Standard-Picker"
+    command -v hyprland-share-picker >/dev/null && say "Standard-Picker:   da (Rückfall)" || say "Standard-Picker:   $no"
+    command -v slurp >/dev/null && say "slurp (Region):    $ok" || say "slurp (Region):    $no"
+    [ -x "$BIN" ] && say "GTK-Picker gebaut: $ok ($("$BIN" --version 2>/dev/null | head -1))" || say "GTK-Picker gebaut: $no (Alternative, scripts/share-picker build)"
+    local pid; pid=$(systemctl --user show -p MainPID --value xdg-desktop-portal-hyprland 2>/dev/null)
+    if [ -n "${pid:-}" ] && [ "$pid" != 0 ]; then
+        local up; up=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+        local started=$(( $(date +%s) - ${up:-0} ))
+        local changed=0
+        [ -f "$XDPH" ] && changed=$(stat -c %Y "$XDPH")
+        [ -f "$STATE/xdph.conf.changed" ] && [ "$(stat -c %Y "$STATE/xdph.conf.changed")" -gt "$changed" ] && changed=$(stat -c %Y "$STATE/xdph.conf.changed")
+        if [ "$changed" -gt "$started" ]; then
+            say "Portal:            liest die neue xdph.conf noch nicht → Neustart nötig (wenn kein Stream läuft)"
+        else say "Portal:            läuft mit aktueller xdph.conf"; fi
+    else
+        say "Portal:            läuft nicht (startet beim nächsten Teilen von selbst)"
+    fi
+}
+
+cmd_test() {
+    if [ "${1:-}" != "--gtk" ]; then
+        shell_has_picker || { say "Shell läuft nicht (oder kennt sharepicker noch nicht)."; return 1; }
+        say "Zeige den Shell-Picker (Esc schließt, nichts wird geteilt) …"
+        "$PICK" --demo
+        return $?
+    fi
+    shift
+    [ -x "$BIN" ] || { say "GTK-Picker nicht gebaut → scripts/share-picker build"; return 1; }
+    local shot=""
+    [ "${1:-}" = "--shot" ] && shot=${2:-}
+    # Fensterliste im Format von xdph: <id>[HC>]<Klasse>[HT>]<Titel>[HE>]<Adresse dezimal>[HA>]; id = untere 32 Bit
+    local list
+    list=$(hyprctl clients -j | python3 -I -c '
+import json, sys
+out = ""
+for c in json.load(sys.stdin):
+    if not c.get("mapped", True): continue
+    a = int(c["address"], 16)
+    out += "%d[HC>]%s[HT>]%s[HE>]%d[HA>]" % (a & 0xFFFFFFFF, c["class"], c["title"], a)
+print(out, end="")')
+    mkdir -p "$STATE"
+    say "Starte Picker (Esc schließt, es wird nichts geteilt) …"
+    XDPH_WINDOW_SHARING_LIST="$list" "$BIN" --logs "$STATE/share-picker.log" > "$STATE/share-picker.out" &
+    local pid=$!
+    if [ -n "$shot" ]; then
+        sleep 3
+        grim "$shot" && say "Screenshot: $shot"
+        kill "$pid" 2>/dev/null
+    else
+        wait "$pid"
+    fi
+    say "Ausgabe: $(cat "$STATE/share-picker.out" 2>/dev/null) · Log: $STATE/share-picker.log"
+}
+
+case "${1:-status}" in
+    build) cmd_build ;;
+    install) shift; cmd_install "$@" ;;
+    off|uninstall|restore) cmd_off ;;
+    status) cmd_status ;;
+    css) shift; cmd_css "$@" ;;
+    test) shift; cmd_test "$@" ;;
+    *) sed -n '2,21p' "$SELF" ;;
+esac

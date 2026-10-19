@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""cam-relay – Brücke zwischen dem Equibop-Plugin „DesktopBridge“ (Unix-Socket) und der Shell (Quickshell).
+
+Verbindet sich mit $XDG_RUNTIME_DIR/desktop/cams.sock (legt das Plugin an), versucht es leise weiter, solange Equibop/Plugin fehlt.
+stdout (JSON-Zeilen):
+  {"relay":"up"} · {"relay":"down"}          Verbindung zum Plugin steht / ist weg
+  {"state":"ok","inVoice":…,"members":[…]}   Zustand wie von discord-bridge (zusätzlich "plugin":true, "tiles":[…])
+  {"event":"guilds"|"channels"|"peek"|"opened"|"actionFailed",…}   Antworten auf Befehle
+  {"event":"frame","id":"<key>","n":<zähler>,"path":"…"}           neues Kamerabild liegt als Datei bereit
+stdin (eine Zeile): pin <id> · unpin <id> · mute 0|1 · deaf 0|1 · leave · join <id> · uvol <id> <0-200> · umute <id> 0|1 ·
+  guilds · channels <gid> · peek <id>… · open <id> – alles andere reicht das Plugin weiter oder weist es ab.
+Bilder: $XDG_RUNTIME_DIR/desktop/cam-<key>.jpg (RAM, atomar ersetzt, bei Entpinnen/Trennung gelöscht). Nichts wird auf Platte
+oder ins Netz geschrieben. Doku: docs/DISCORD-CAMS.md
+"""
+
+import json
+import os
+import re
+import select
+import signal
+import socket
+import sys
+import time
+
+RT = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
+DIR = os.path.join(RT, "desktop")
+SOCK = os.environ.get("DESKTOP_CAMS_SOCK") or os.environ.get("CAMS_SOCK") or os.path.join(DIR, "cams.sock")
+# Test (scripts/equibop-test watch): eigener Bildordner, damit ein zweiter Relay die Bilder des echten nicht wegräumt
+FRAMES = os.environ.get("DESKTOP_CAMS_FRAMES") or DIR
+KEY = re.compile(r"^[\w:.-]{1,64}$")
+MAX_FRAME = 4 * 1024 * 1024
+
+pins = set()
+files = {}        # key -> Zähler
+_last = None
+
+
+def emit(obj):
+    global _last
+    line = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    if obj.get("state") and line == _last:
+        return
+    if obj.get("state"):
+        _last = line
+    try:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    except BrokenPipeError:
+        sys.exit(0)
+
+
+def frame_path(key):
+    return os.path.join(FRAMES, "cam-%s.jpg" % key.replace(":", "_"))
+
+
+def drop_frames(only=None):
+    for key in list(files):
+        if only is None or key == only:
+            try:
+                os.unlink(frame_path(key))
+            except OSError:
+                pass
+            files.pop(key, None)
+
+
+def store_frame(key, data):
+    if not KEY.match(key) or not data.startswith(b"\xff\xd8"):
+        return
+    path = frame_path(key)
+    tmp = path + ".tmp"
+    try:
+        os.makedirs(FRAMES, mode=0o700, exist_ok=True)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except OSError:
+        return
+    files[key] = files.get(key, 0) + 1
+    emit({"event": "frame", "id": key, "n": files[key], "path": path})
+
+
+class Conn:
+    def __init__(self, s):
+        self.s = s
+        self.buf = b""
+
+    def send(self, line):
+        try:
+            self.s.sendall((line + "\n").encode("utf-8"))
+        except OSError:
+            raise ConnectionError
+
+    def pump(self):
+        """Gelesene Bytes verarbeiten. Gibt False bei Ende zurück."""
+        try:
+            d = self.s.recv(262144)
+        except BlockingIOError:
+            return True
+        except OSError:
+            return False
+        if not d:
+            return False
+        self.buf += d
+        while True:
+            nl = self.buf.find(b"\n")
+            if nl < 0:
+                return len(self.buf) < MAX_FRAME * 2
+            head = self.buf[:nl].decode("utf-8", "replace")
+            if head.startswith("F "):
+                parts = head.split(" ")
+                try:
+                    n = int(parts[2])
+                except (IndexError, ValueError):
+                    return False
+                if n < 0 or n > MAX_FRAME:
+                    return False
+                if len(self.buf) < nl + 1 + n:
+                    return True
+                data = self.buf[nl + 1:nl + 1 + n]
+                self.buf = self.buf[nl + 1 + n:]
+                if parts[1] in pins:
+                    store_frame(parts[1], data)
+                continue
+            self.buf = self.buf[nl + 1:]
+            kind, _, rest = head.partition(" ")
+            try:
+                obj = json.loads(rest)
+            except ValueError:
+                continue
+            if kind == "S" and isinstance(obj, dict):
+                emit(obj)
+            elif kind == "E" and isinstance(obj, dict):
+                emit(obj)
+
+
+def handle_stdin(line, conn):
+    line = line.strip()
+    if not line:
+        return
+    op, _, arg = line.partition(" ")
+    if op == "pin" and KEY.match(arg):
+        pins.add(arg)
+    elif op == "unpin" and KEY.match(arg):
+        pins.discard(arg)
+        drop_frames(arg)
+    if conn:
+        try:
+            conn.send(line)
+        except ConnectionError:
+            pass
+
+
+def connect():
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(2)
+    try:
+        s.connect(SOCK)
+    except OSError:
+        s.close()
+        return None
+    s.setblocking(False)
+    return Conn(s)
+
+
+def clean_stale():
+    """Reste eines früheren (abgestürzten) Relays wegräumen."""
+    try:
+        for n in os.listdir(FRAMES):
+            if n.startswith("cam-") and (n.endswith(".jpg") or n.endswith(".tmp")):
+                os.unlink(os.path.join(FRAMES, n))
+    except OSError:
+        pass
+
+
+def main():
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    clean_stale()
+    conn = None
+    sin = sys.stdin.buffer
+    inbuf = b""
+    os.set_blocking(sin.fileno(), False)
+    retry_at = 0
+    try:
+        while True:
+            if conn is None and time.monotonic() >= retry_at:
+                conn = connect()
+                if conn:
+                    global _last
+                    _last = None
+                    emit({"relay": "up"})
+                    for p in sorted(pins):      # Pins nach Neuverbindung erneut anmelden
+                        conn.send("pin " + p)
+                else:
+                    retry_at = time.monotonic() + 2
+            fds = [sin] + ([conn.s] if conn else [])
+            r, _, _ = select.select(fds, [], [], 1.0)
+            if sin in r:
+                try:
+                    d = os.read(sin.fileno(), 65536)
+                except BlockingIOError:
+                    d = None
+                if d == b"":
+                    break                   # Shell hat stdin geschlossen
+                inbuf += d or b""
+                while b"\n" in inbuf:
+                    line, _, inbuf = inbuf.partition(b"\n")
+                    handle_stdin(line.decode("utf-8", "replace"), conn)
+            if conn and conn.s in r:
+                if not conn.pump():
+                    try:
+                        conn.s.close()
+                    except OSError:
+                        pass
+                    conn = None
+                    drop_frames()
+                    emit({"relay": "down"})
+                    retry_at = time.monotonic() + 1
+    except KeyboardInterrupt:
+        pass
+    finally:
+        drop_frames()
+
+
+if __name__ == "__main__":
+    main()

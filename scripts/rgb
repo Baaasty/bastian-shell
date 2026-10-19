@@ -1,0 +1,262 @@
+#!/usr/bin/env -S python3 -I
+"""PC-Beleuchtung: alle RGB-Geräte (Mainboard, NZXT, RAM …) fest auf eine Farbe. Doku: docs/RGB.md
+
+  rgb apply [--boot] [--delay S]   Primärfarbe der aktiven Palette-Variante (accent in theme/palette.json), statisch
+  rgb color <hex>      einmalig eine andere Farbe (z. B. rgb color ff8800), bis zum nächsten apply
+  rgb off              alles aus
+  rgb status           gefundene Geräte, Modi und die Farbe, die apply setzen würde
+  rgb plan [<hex>]     nur zeigen, was gesetzt würde (scannt, ändert nichts)
+
+Technik: OpenRGB ohne Server (--noautoconnect). Erst ein Scan (-l), dann pro Gerät der erste passende Modus
+(Static, Fixed, Direct) in einem einzigen Aufruf. Jeder Scan dauert ein paar Sekunden.
+--boot (Autostart): fehlt openrgb oder klemmt etwas, kurze Meldung und Exit 0 – der Login wird nie blockiert.
+--delay S: erst S Sekunden warten (nach Standby, USB braucht kurz; hypridle after_sleep_cmd nutzt 3 s).
+Geräte auslassen: ~/.config/desktop/rgb.json  {"skip": ["G502"]}  (Teil des Gerätenamens, Groß/klein egal)
+Installieren (einmalig, sudo): sudo dnf install openrgb openrgb-udev-rules
+"""
+import fcntl
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+PALETTE = ROOT / "theme" / "palette.json"
+CONFIG = Path.home() / ".config" / "desktop" / "rgb.json"
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+LOCK = RUN / "desktop-rgb.lock"
+TIMEOUT = 90  # Sekunden je OpenRGB-Aufruf (Scan von USB + SMBus)
+INSTALL_HINT = "openrgb fehlt. Installieren: sudo dnf install openrgb openrgb-udev-rules (Doku: docs/RGB.md)"
+
+# Reihenfolge der Modi: statisch zuerst (bleibt in der Hardware), Direct nur als Rückfall
+COLOR_MODES = ("static", "fixed", "direct")
+OFF_MODES = ("off",)
+
+
+def say(msg):
+    print(f"rgb: {msg}", flush=True)
+
+
+# ---------- Farbe ----------
+
+def norm_hex(value):
+    v = str(value).strip().lstrip("#")
+    if len(v) == 3:
+        v = "".join(c * 2 for c in v)
+    if not re.fullmatch(r"[0-9a-fA-F]{6}", v):
+        raise ValueError(f"keine Farbe: {value!r} (erwartet RRGGBB, z. B. db6b4c)")
+    return v.upper()
+
+
+def palette_accent():
+    """accent der aktiven Variante (defaultTheme), nicht geraten."""
+    data = json.loads(PALETTE.read_text())
+    variant = data.get("defaultTheme")
+    theme = (data.get("themes") or {}).get(variant)
+    if not isinstance(theme, dict) or "accent" not in theme:
+        raise ValueError(f"palette.json: Variante {variant!r} ohne accent")
+    return variant, norm_hex(theme["accent"])
+
+
+def load_skip():
+    try:
+        cfg = json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        return []
+    return [str(s).lower() for s in cfg.get("skip", []) if str(s).strip()]
+
+
+# ---------- OpenRGB ----------
+
+def openrgb_bin():
+    return shutil.which("openrgb")
+
+
+def run_openrgb(args):
+    cmd = [openrgb_bin(), "--noautoconnect", *args]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
+
+
+def parse_list(text):
+    """Ausgabe von `openrgb -l` → [{index, name, type, modes}]"""
+    devices, cur = [], None
+    for line in text.splitlines():
+        m = re.match(r"^(\d+): (.+)$", line)
+        if m:
+            cur = {"index": int(m.group(1)), "name": m.group(2).strip(), "type": "", "modes": []}
+            devices.append(cur)
+            continue
+        if cur is None:
+            continue
+        s = line.strip()
+        if s.startswith("Type:"):
+            cur["type"] = s[5:].strip()
+        elif s.startswith("Modes:"):
+            raw = s[6:].replace("[", " ").replace("]", " ")
+            try:
+                cur["modes"] = shlex.split(raw)
+            except ValueError:
+                cur["modes"] = raw.split()
+    return devices
+
+
+def scan():
+    r = run_openrgb(["--list-devices"])
+    devices = parse_list(r.stdout)
+    if r.returncode != 0 and not devices:
+        tail = (r.stderr or r.stdout).strip().splitlines()[-3:]
+        raise RuntimeError("openrgb -l fehlgeschlagen: " + " | ".join(tail))
+    return devices
+
+
+def pick_mode(modes, wanted):
+    low = {m.lower(): m for m in modes}
+    for w in wanted:
+        if w in low:
+            return low[w]
+    return None
+
+
+def build_plan(devices, color, off=False):
+    """Pro Gerät (index, name, mode, color) oder (…, None, grund)."""
+    skip = load_skip()
+    plan = []
+    for d in devices:
+        if any(s in d["name"].lower() for s in skip):
+            plan.append((d, None, None, "übersprungen (rgb.json)"))
+            continue
+        if off:
+            mode = pick_mode(d["modes"], OFF_MODES)
+            if mode:
+                plan.append((d, mode, None, ""))
+                continue
+            mode = pick_mode(d["modes"], COLOR_MODES)
+            plan.append((d, mode, "000000", "") if mode else (d, None, None, "kein Off/Static/Direct"))
+            continue
+        mode = pick_mode(d["modes"], COLOR_MODES)
+        plan.append((d, mode, color, "") if mode else (d, None, None, "kein Static/Fixed/Direct"))
+    return plan
+
+
+def plan_args(plan):
+    args = []
+    for d, mode, color, _ in plan:
+        if not mode:
+            continue
+        args += ["--device", str(d["index"]), "--mode", mode]
+        if color:
+            args += ["--color", color]
+    return args
+
+
+def show_plan(plan):
+    for d, mode, color, why in plan:
+        what = f"{mode} {color}" if mode and color else (mode or why)
+        print(f"  {d['index']}: {d['name']} [{d['type'] or '?'}] → {what}")
+
+
+def apply(color, off=False, dry=False):
+    devices = scan()
+    if not devices:
+        say("keine Geräte gefunden (Rechte? docs/RGB.md „Keine Geräte“)")
+        return 1
+    plan = build_plan(devices, color, off)
+    show_plan(plan)
+    args = plan_args(plan)
+    if dry:
+        return 0
+    if not args:
+        say("kein Gerät mit passendem Modus")
+        return 1
+    r = run_openrgb(args)
+    errs = [l for l in (r.stdout + r.stderr).splitlines() if "error" in l.lower() or "not available" in l.lower()]
+    for l in errs[:10]:
+        say(l.strip())
+    if r.returncode != 0:
+        say(f"openrgb endete mit {r.returncode}")
+        return 1
+    n = sum(1 for p in plan if p[1])
+    say(("aus" if off else f"#{color}") + f" auf {n} Gerät(en) gesetzt")
+    return 0
+
+
+# ---------- Ablauf ----------
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    boot = "--boot" in rest
+    rest = [a for a in rest if a != "--boot"]
+    delay = 0.0
+    if "--delay" in rest:
+        i = rest.index("--delay")
+        try:
+            delay = max(0.0, min(60.0, float(rest[i + 1])))
+        except (IndexError, ValueError):
+            say("--delay braucht Sekunden, z. B. --delay 3")
+            return 0 if boot else 2
+        del rest[i:i + 2]
+
+    if cmd not in ("apply", "color", "off", "status", "plan"):
+        say(f"unbekannt: {cmd} (rgb --help)")
+        return 2
+
+    try:
+        if cmd == "color" or (cmd == "plan" and rest):
+            if not rest:
+                say("Farbe fehlt: rgb color <hex>")
+                return 2
+            color, source = norm_hex(rest[0]), "von Hand"
+        else:
+            variant, color = palette_accent()
+            source = f"accent der Variante {variant}"
+    except (OSError, ValueError) as e:
+        say(str(e))
+        return 0 if boot else 2
+
+    if not openrgb_bin():
+        say(INSTALL_HINT)
+        if cmd in ("status", "plan"):
+            print(f"  Farbe: #{color} ({source})")
+        return 0 if boot or cmd in ("status", "plan") else 1
+
+    if delay:
+        time.sleep(delay)
+    RUN.mkdir(parents=True, exist_ok=True)
+    with open(LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # nie zwei OpenRGB-Läufe gleichzeitig (Boot + Palette-Wechsel)
+        try:
+            if cmd == "status":
+                print(f"Farbe für apply: #{color} ({source})")
+                devices = scan()
+                if not devices:
+                    print("  keine Geräte gefunden (Rechte? docs/RGB.md „Keine Geräte“)")
+                for d in devices:
+                    print(f"  {d['index']}: {d['name']} [{d['type'] or '?'}]  Modi: {', '.join(d['modes']) or '–'}")
+                return 0
+            if cmd == "plan":
+                print(f"Farbe: #{color} ({source}) – nur Vorschau")
+                return apply(color, dry=True)
+            if cmd == "off":
+                rc = apply(color, off=True)
+            else:
+                say(f"setze #{color} ({source})")
+                rc = apply(color)
+            return 0 if boot else rc
+        except subprocess.TimeoutExpired:
+            say(f"openrgb antwortet nicht (>{TIMEOUT} s), abgebrochen")
+            return 0 if boot else 1
+        except (OSError, RuntimeError) as e:
+            say(str(e))
+            return 0 if boot else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

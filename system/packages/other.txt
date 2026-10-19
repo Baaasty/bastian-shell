@@ -1,0 +1,112 @@
+# Alles außerhalb von dnf/Flatpak (Stand 2026-10-18 abends, Hyprland-Rechner)
+
+## ~/.local/bin
+bun            1.4.3     Binary (identisch mit ~/.bun/bin/bun) · neu: GitHub-Release bun-linux-x64.zip → ~/.local/bin (bootstrap 6)
+bunx           → bun
+claude         2.1.302   Symlink → ~/.local/share/claude/versions/<ver> · neu: curl -fsSL https://claude.ai/install.sh | bash (bootstrap 6)
+starship       1.27.0    offizielles Release (ohne sudo) · neu: starship.rs/install.sh -b ~/.local/bin (bootstrap 6)
+pnpm, pn, pnpx, pnx  → ~/.local/lib/node_modules/pnpm   pnpm 12.8.1 per `npm i -g pnpm@12.8.1 --prefix ~/.local` (bootstrap 6) – nur für den Equicord-Build
+hyprflow       0.2.1     Session-Restore, gebaut von `scripts/session build` (cargo, festgenagelter Commit; Quelle ~/.local/src/hyprflow) (bootstrap 6)
+hyprland-preview-share-picker   Bildschirm-teilen-Auswahl, gebaut von `scripts/share-picker build` (cargo, festgenagelt; Quelle
+                 ~/.local/src/hyprland-preview-share-picker) – bei Bastian NOCH NICHT gebaut (braucht gtk4-devel + gtk4-layer-shell(-devel), siehe dnf.txt)
+git-lfs        3.8.0     Binary – künftig per dnf (dnf.txt); nach `dnf install git-lfs` dieses Binary löschen (liegt im PATH vor /usr/bin)
+godot          → ~/.local/opt/godot/Godot_v4.7.2-stable_linux.x86_64 (GitHub-Release godotengine/godot, bootstrap 6)
+icp            → ~/Apps/icp/.venv/bin/icp  (iCloud-Passwörter, git clone github.com/Sank6/iCloud-Keychain-for-Linux + venv;
+                 braucht den Anisette-Container, Browser-Erweiterung von Hand, Login per Apple-ID – bootstrap 6)
+keylight       eigenes Skript → system/dotfiles/.local/bin (Link auf scripts/keylight, volle CLI)
+icloud-sync    eigenes Skript → system/dotfiles/.local/bin – rclone bisync iCloud Drive
+icloud-login   eigenes Skript → system/dotfiles/.local/bin – rclone reconnect
+# keylight/icloud-* liegen in system/dotfiles/.local/bin/ und werden von bootstrap 8 verlinkt.
+
+## ~/.local/src (Quellen für Fremd-Builds; werden von den Skripten selbst geklont und auf den geprüften Commit gesetzt)
+hyprflow                         github.com/isorensen/hyprflow            → scripts/session build
+hyprland-preview-share-picker    github.com/WhySoBad/hyprland-preview-share-picker → scripts/share-picker build
+equicord                         github.com/Equicord/Equicord             → von Hand klonen (git clone), dann scripts/equicord build; Hinweis in bootstrap 11
+                                 (Plugin desktopBridge liegt in equicord/ im Repo; Details docs/DISCORD-CAMS.md)
+
+## RPMs aus GitHub-Releases (kein Repo → nicht in dnf.txt; bootstrap 2 lädt das neueste)
+goxlr-utility 1.2.4       GoXLR-on-Linux/goxlr-utility, goxlr-utility-<ver>-1.x86_64.rpm (nicht die -suse-Datei)
+equibop 3.3.1             Equicord/Equibop, equibop-<ver>.x86_64.rpm (Discord-Client mit Equicord; Plugin desktopBridge: scripts/equicord install)
+
+## Distrobox
+ubuntu         Image docker.io/library/ubuntu:24.04
+               create: distrobox create -n ubuntu -i docker.io/library/ubuntu:24.04 \
+                         --additional-flags "--group-add keep-groups --device /dev/kvm --device /dev/vhost-vsock"
+               (/dev/kvm + vhost-vsock für Claude Desktops VM → Host: Gruppe kvm, Modul vhost_vsock, siehe unten)
+               apt-Quelle: deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc]
+                           https://downloads.claude.ai/claude-desktop/apt/stable stable main
+               Schlüssel:  https://downloads.claude.ai/claude-desktop/key.asc
+               Pakete (selbst installiert): claude-desktop (2.42304.0), breeze-icon-theme
+               Export:     distrobox-export --app claude-desktop  → ~/.local/share/applications/ubuntu-com.anthropic.Claude.desktop
+               Autostart:  ~/.config/autostart/claude-desktop.desktop – repariert 2026-10-18 auf
+                           Exec=/usr/bin/distrobox-enter -n ubuntu -- claude-desktop --startup (Kopie in system/copies,
+                           alt: claude-desktop.desktop.vor-desktop). Claude Desktop schreibt beim Umschalten von
+                           „Beim Anmelden starten“ wieder den Container-Pfad → dann system/sync push --apply
+
+## Podman (rootless)
+Container:
+  ubuntu                 distrobox (s. o.)
+  systemd-anisette       Quadlet ~/.config/containers/systemd/anisette.container (system/dotfiles), Port 127.0.0.1:6969, für icp
+  <projekt>-postgres     je Projekt (compose, `bun run services:up`)
+  <projekt>-minio        je Projekt mit Datei-Speicher (+ <projekt>-minio-init, einmalig)
+  → Projekt-Container entstehen aus den Projekt-Repos neu, nicht im Bootstrap.
+Images: ubuntu:24.04, dadoum/anisette-v3-server:latest, postgres:15, postgres:17-alpine,
+        pgsty/minio:RELEASE.2026-06-18T00-00-00Z, oven/bun:1.4.3(-slim)
+User-Socket: podman.socket aktiviert, DOCKER_HOST in ~/.bashrc.d/desktop.sh
+
+## Schriften (~/.local/share/fonts/<desktop|huette>/ – alter Ordnername „huette“ auf Bastians PC; bootstrap lädt neu nach …/fonts/desktop)
+JetBrainsMonoNerdFont-*.ttf (16 Schnitte)   github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
+MaterialSymbolsRounded.ttf                  github.com/google/material-design-icons (variablefont/MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf)
+Inter kommt per dnf (rsms-inter-fonts).
+
+## Erzeugt aus dem Repo (nichts zu sichern; bootstrap 9 → theme/gen/all.py und die Installer)
+~/.local/share/color-schemes/Desktop.colors, DesktopHearth.colors   KDE-Farbschemata (kde_colors.py)
+~/.local/share/icons/Desktop (Cursor), Desktop-Icons (Ordner holzbraun)
+~/.local/share/konsole/Desktop.*, ~/.vscode/extensions/desktop.*, Thunderbird-XPI/chrome/, ~/.config/kitty/{kitty,theme}.conf (Links)
+~/.config/hypr/{hyprland,hypridle}.conf, ~/.config/uwsm/env-hyprland, ~/.config/xdg-desktop-portal/hyprland-portals.conf,
+~/.config/desktop/hyprland.env                                      scripts/hypr install
+~/.config/hyprflow/config.toml (Link)                               scripts/session install
+~/.config/desktop/workspaces/*.code-workspace + index.json          scripts/vscode-colors (nach dem Klonen der Projekte: `scripts/vscode-colors refresh`)
+~/.local/share/wallpapers/desktop/                                  Wallpaper-Bilder (bootstrap 9 kopiert den Rückfall-Satz aus design/claude-design/wallpaper)
+Themes, die NICHT aus dem Repo kommen: color-schemes/CatppuccinMochaRed.colors, icons/catppuccin-mocha-{red,dark}-cursors
+→ der alte Look vor dem Rice (Fallback für `rice theme off`). Herkunft unbekannt, bei Neuinstallation nicht nötig.
+
+## Systemd-User-Units (~/.config/systemd/user)
+Aus dem Repo (systemd/*; Links bzw. angepasste Kopien – bootstrap 9 legt sie an, Pfade aus dem Repo-Ort):
+  Hyprland:  desktop-shell-hyprland.service (scripts/hypr install) · desktop-session-save.{service,timer} (scripts/session install)
+             desktop-keylight-off.service, desktop-goxlr-unlock.{path,service}, desktop-mail.{service,timer},
+             desktop-agenda.{service,timer}, desktop-mail-watch.service (bootstrap 9)
+  Nur KWin:  desktop-shell.service, desktop-keys-watch.service (scripts/rice on; bootstrap --kwin)
+  Transient: desktop-polkit-agent (Wächter, startet scripts/polkit-agent aus hypr/autostart.conf per systemd-run – keine Datei)
+Fremd, eigene Dateien (in system/dotfiles/.config/systemd/user):
+  goxlr.service              goxlr-daemon (GoXLR Utility), default.target
+  icloud-photos.service      rclone mount iCloud-Fotos → ~/Data/iCloud/Photos (read-only), default.target
+  icloud-sync.{service,timer}  ~/.local/bin/icloud-sync (rclone bisync iCloud Drive)
+  Quadlet anisette.container (→ systemd-anisette)
+Fremd, nur aktiviert (Dateien vom System):
+  podman.socket (sockets.target); app-org.kde.krdpserver.service (nur Plasma, entfällt unter Hyprland)
+
+## GoXLR Utility
+goxlr-utility 1.2.4 RPM (siehe oben).
+Profile/Mic-Profile: ~/.local/share/goxlr-utility/{profiles,mic-profiles} → Kopie in system/copies (system/sync pull)
+Starter: ~/.local/share/applications/goxlr.desktop (`helium --app=http://localhost:14564`) + Icons hicolor/*/apps/goxlr.png → Kopien
+Schalter der Shell (von Hand pflegbar, optional): ~/.config/desktop/{goxlr,audio}.json → Kopien (docs/setup/goxlr.md)
+
+## System (/etc, root) – vom Bootstrap mit sudo
+- Gruppe kvm für den eigenen Benutzer (Claude Desktop VM)       sudo usermod -aG kvm $USER
+- Gruppe pkg-build für den eigenen Benutzer (lpf baut Spotify)      sudo usermod -aG pkg-build $USER
+- Modul vhost_vsock beim Boot                          /etc/modules-load.d/vhost_vsock.conf
+- /etc/containers/nodocker (podman-docker ohne Hinweis)
+- Anmeldung: Plasma Login Manager (plasmalogin.service ist display-manager); auf Workstation wechselt bootstrap 3 von GDM darauf
+- Firewall: Dienst rdp freigegeben (nur wenn krdp installiert ist – Plasma)
+- Wake-on-LAN: nmcli connection "Wired connection 1" 802-3-ethernet.wake-on-lan magic
+- Secure Boot an → akmods-Schlüssel per MOK einschreiben (manuell, Neustart)
+- Kernel-Zeile (kommt von akmod-nvidia/grubby): rd.driver.blacklist=nouveau,nova_core modprobe.blacklist=nouveau,nova_core
+- Login-Bildschirm: scripts/loginscreen apply (sudo, eigener Schritt im Repo, nur als Hinweis in bootstrap 10)
+Nicht mehr nötig: Chrome-Repo/Brave-Repo (siehe repos.txt), KWin-Shell-Paket (~/.local/share/plasma/shells/de.bastian.desktop, nur --kwin)
+
+## Ordner, die vorausgesetzt werden
+<Workspace>/<repo>   dieses Repo (heute ~/Workspace/desktop und der Worktree ~/Workspace/desktop-hyprland; bleibt nach AP 13 ~/Workspace/shell –
+                     bootstrap leitet den Pfad aus seinem eigenen Ort ab), ~/Workspace/<org> (eigene Projekt-Repos, per gh geklont; Pfade: projects/projects.json),
+~/Data (zweite Platte/Partition: iCloud/, Games/SteamLibrary, .cache/rclone), ~/Apps/icp
+(~/Notes/inbox.md für „Gedanken parken“, Super+N, legt die Shell bei der ersten Notiz selbst an)

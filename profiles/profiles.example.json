@@ -1,0 +1,37 @@
+{
+  "_hinweis": "BEISPIEL – gilt nur, solange profiles/profiles.json fehlt (eigene Vorlagen: diese Datei nach profiles.json kopieren, profiles.json ist gitignored). Vorlagen für neue Desktops. apps = Befehle (\"@code\" = VS Code, nativ oder Flatpak); move = vorhandene Fenster (AppId enthält …) auf den neuen Desktop holen. Projekt-Desktops (Code) stellt projects/projects.json ein (scripts/project: open, dev.ports), Links ebenfalls dort.",
+  "templates": [
+    {
+      "id": "code",
+      "name": "Code",
+      "glyph": "code",
+      "apps": [
+        [
+          "@code",
+          "--new-window"
+        ],
+        [
+          "helium",
+          "--new-window",
+          "http://localhost:3000"
+        ]
+      ]
+    },
+    {
+      "id": "office",
+      "name": "Office",
+      "glyph": "office",
+      "apps": [
+        [
+          "dolphin",
+          "--new-window",
+          "~/Documents"
+        ],
+        [
+          "helium",
+          "--app=https://example.com/accounting"
+        ]
+      ]
+    }
+  ]
+}

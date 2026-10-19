@@ -1,0 +1,51 @@
+{
+  "name": "lazygit",
+  "about": "Git in the terminal · ? shows all keys of the panel you are in",
+  "match": { "class": ["kitty", "kitty-drop"], "title": "^lazygit\\b" },
+  "order": 65,
+  "sections": [
+    {
+      "name": "Move",
+      "keys": [
+        { "keys": ["← →", "h l"], "title": "Previous / next panel" },
+        { "keys": "1…5", "title": "Status / files / branches / commits / stash" },
+        { "keys": ["↑ ↓", "k j"], "title": "Move in the list" },
+        { "keys": "[ ]", "title": "Previous / next tab of a panel" },
+        { "keys": "/", "title": "Search this view" },
+        { "keys": "Enter", "title": "Open / go into" },
+        { "keys": "Esc", "title": "Back / cancel" },
+        { "keys": "?", "title": "All keys here" },
+        { "keys": "q", "title": "Quit" }
+      ]
+    },
+    {
+      "name": "Files",
+      "keys": [
+        { "keys": "Space", "title": "Stage / unstage file" },
+        { "keys": "a", "title": "Stage / unstage all" },
+        { "keys": "Enter", "title": "Stage single lines" },
+        { "keys": "c", "title": "Commit" },
+        { "keys": "Shift+A", "title": "Amend last commit" },
+        { "keys": "d", "title": "Discard changes …" },
+        { "keys": "s", "title": "Stash all changes" },
+        { "keys": "e", "title": "Edit file" }
+      ]
+    },
+    {
+      "name": "Branches, commits, remote",
+      "keys": [
+        { "keys": "n", "title": "New branch" },
+        { "keys": "Space", "title": "Checkout branch / commit" },
+        { "keys": "Shift+M", "title": "Merge into current branch" },
+        { "keys": "r", "title": "Rebase current branch onto this one" },
+        { "keys": "r", "title": "Reword commit", "note": "in the commits panel" },
+        { "keys": "s", "title": "Squash into commit below", "note": "in the commits panel" },
+        { "keys": "p", "title": "Pull" },
+        { "keys": "Shift+P", "title": "Push" },
+        { "keys": "f", "title": "Fetch", "note": "in the files panel" },
+        { "keys": "z", "title": "Undo (reflog)" },
+        { "keys": "Ctrl+R", "title": "Switch to a recent repo" }
+      ]
+    }
+  ]
+}

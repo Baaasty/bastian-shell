@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""zsh im Desktop-Look ein-/ausschalten.
+
+  scripts/zsh-setup install   Farben erzeugen (theme/gen/zsh.py), fzf-tab holen, ~/.zshrc -> config/zsh/zshrc,
+                              Standard-Shell auf zsh (pkexec usermod, grafische Passwortabfrage)
+  scripts/zsh-setup off       Symlink weg, alte ~/.zshrc zurück, Standard-Shell wieder bash
+  scripts/zsh-setup status
+
+Pakete (system/packages/dnf.txt): zsh zsh-autosuggestions zsh-syntax-highlighting eza fzf zoxide fd-find bat,
+dazu tealdeer git-delta du-dust duf, lazygit + yazi (COPR, system/packages/repos.txt).
+install bindet außerdem git-delta ein (include.path theme/out/delta.gitconfig in ~/.gitconfig) und füllt den tldr-Cache.
+Backup einer fremden ~/.zshrc: ~/.local/state/desktop/zshrc.backup
+"""
+import os
+import pathlib
+import pwd
+import shutil
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOME = pathlib.Path.home()
+RC = HOME / ".zshrc"
+TARGET = ROOT / "config/zsh/zshrc"
+BACKUP = HOME / ".local/state/desktop/zshrc.backup"
+FZF_TAB = HOME / ".local/share/zsh/plugins/fzf-tab"
+USER = pwd.getpwuid(os.getuid()).pw_name
+DELTA = ROOT / "theme/out/delta.gitconfig"
+
+
+def git_includes() -> list:
+    r = subprocess.run(["git", "config", "--global", "--get-all", "include.path"], capture_output=True, text=True)
+    return r.stdout.split()
+
+
+def ours(p: pathlib.Path) -> bool:
+    return p.is_symlink() and str(ROOT) in os.readlink(p)
+
+
+def login_shell() -> str:
+    return pwd.getpwuid(os.getuid()).pw_shell
+
+
+def set_shell(shell: str):
+    if login_shell() != shell:
+        print(f"  Standard-Shell -> {shell} (Passwortfenster)")
+        subprocess.run(["pkexec", "usermod", "-s", shell, USER], check=True)
+    # Laufende Sitzung: Kitty nimmt $SHELL aus der Umgebung (sonst erst nach neuem Login)
+    subprocess.run(["systemctl", "--user", "set-environment", f"SHELL={shell}"], check=False)
+    subprocess.run(["dbus-update-activation-environment", "--systemd", f"SHELL={shell}"], check=False)
+    # Hyprland gibt seine eigene Umgebung an `uwsm app` (Super+Return) weiter
+    if shutil.which("hyprctl") and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        subprocess.run(["hyprctl", "keyword", "env", f"SHELL,{shell}"], check=False, stdout=subprocess.DEVNULL)
+
+
+def install():
+    for gen in ("zsh.py", "bat.py", "delta.py", "yazi.py", "lazygit.py"):
+        subprocess.run([sys.executable, "-I", str(ROOT / "theme/gen" / gen)], cwd=ROOT, check=True)
+    if str(DELTA) not in git_includes():
+        subprocess.run(["git", "config", "--global", "--add", "include.path", str(DELTA)], check=True)
+        print(f"  ~/.gitconfig: include.path {DELTA}")
+    if shutil.which("tldr"):
+        subprocess.run(["tldr", "--update"], check=False, stdout=subprocess.DEVNULL)
+    if not FZF_TAB.exists():
+        FZF_TAB.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/Aloxaf/fzf-tab.git", str(FZF_TAB)], check=True)
+    if RC.exists() and not ours(RC):
+        BACKUP.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(RC), BACKUP)
+        print(f"  Backup: {BACKUP}")
+    if RC.is_symlink():
+        RC.unlink()
+    RC.symlink_to(TARGET)
+    print(f"  {RC} -> {TARGET}")
+    set_shell(shutil.which("zsh") or "/usr/bin/zsh")
+    print("zsh an (neue Fenster). Zurück: scripts/zsh-setup off")
+
+
+def off():
+    if str(DELTA) in git_includes():
+        subprocess.run(["git", "config", "--global", "--fixed-value", "--unset", "include.path", str(DELTA)], check=False)
+        print("  ~/.gitconfig: delta-Include entfernt")
+    if ours(RC):
+        RC.unlink()
+        print(f"  entfernt: {RC}")
+    if BACKUP.exists() and not RC.exists():
+        shutil.move(str(BACKUP), RC)
+        print(f"  zurück: {RC}")
+    set_shell("/bin/bash")
+    print("Wieder bash (neue Fenster).")
+
+
+def status():
+    print(f"~/.zshrc: {'an (Symlink auf Repo)' if ours(RC) else ('fremd/vorhanden' if RC.exists() else 'nicht da')}")
+    print(f"fzf-tab: {'da' if FZF_TAB.exists() else 'fehlt'}")
+    print(f"git-delta: {'an' if str(DELTA) in git_includes() else 'aus'}")
+    print(f"Standard-Shell: {login_shell()}")
+
+
+cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
+{"install": install, "off": off, "status": status}.get(cmd, lambda: sys.exit(__doc__))()

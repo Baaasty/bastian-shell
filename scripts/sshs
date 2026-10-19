@@ -1,0 +1,704 @@
+#!/usr/bin/env python3
+"""sshs – Server aus dem Terminal: auswählen, verbinden, Dateien ansehen, mehrere Tabs.
+
+  sshs                Liste aller Server (fzf): Enter verbindet · Strg+N neuer Server · Strg+E Liste bearbeiten
+  sshs <name>         direkt verbinden
+  sshs <name> --files verbinden und gleich die Dateien (yazi) zeigen, sobald die Anmeldung steht
+  sshs add          neuen Server anlegen (Name, Adresse, Benutzer, Port, Schlüssel; optional Schlüssel hochladen)
+  sshs edit [name]    Server bearbeiten (Formular, prüft danach den Schlüssel) · Strg+D löschen · Strg+O Datei öffnen
+  sshs rm <name>      Server entfernen
+  sshs up [name] [ordner]    Dateien hochladen: lokale Auswahl (fzf, Tab = mehrere), Ziel-Ordner auf dem Server (Standard ~)
+  sshs down [name] [ordner]  Dateien herunterladen: Auswahl auf dem Server (fzf, Tab = mehrere) → ~/Downloads
+  sshs put <name> <ziel> <dateien…> [--notify]   ohne Rückfrage hochladen (scp, für die Shell; --notify = Benachrichtigung)
+  sshs list [--json]  Server als Liste (--json: maschinenlesbar, zuletzt benutzte zuerst)
+  sshs sync           yazi-SFTP-Einträge (~/.config/yazi/vfs.toml) aus der SSH-Konfiguration neu schreiben
+  sshs install|off|status
+
+Ein Server = ein eigenes Kitty-Fenster (Klasse "sshs", config/sshs/kitty.conf):
+  Strg+Leertaste   Terminal <-> Dateien (yazi per SFTP), der Ordner wandert jeweils mit
+  Strg+Shift+T     neuer Tab zum selben Server, im aktuellen Ordner
+  Strg+Shift+U     Dateien hochladen in den Ordner, der gerade offen ist (Terminal oder Dateien)
+  Strg+Shift+D     Dateien aus diesem Ordner herunterladen (→ ~/Downloads)
+  sonst alles wie in Kitty (Strg+Tab, Strg+Shift+W, Strg+Shift+P …)
+
+Server stehen in ~/.ssh/config.d/sshs.conf (nicht im Repo; eingebunden per "Include" ganz oben in ~/.ssh/config),
+ältere Host-Einträge in ~/.ssh/config tauchen genauso auf. Schlüssel bleiben in ~/.ssh.
+Dateien (yazi) melden sich über den SSH-Agenten an (ssh-agent.socket, AddKeysToAgent): Die Terminal-Verbindung
+legt den Schlüssel dort ab, Passwörter speichert sshs nie.
+
+Auf dem Server: Jede Verbindung kopiert config/sshs/remote (+ eza) nach ~/.local/share/sshs und startet die Bash
+darüber – normale Startdateien, dazu ls/ll/la/lt mit eza. Sonst bleibt der Server unverändert.
+"""
+import glob
+import os
+import pathlib
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOME = pathlib.Path.home()
+SSH = HOME / ".ssh"
+SSH_CONFIG = SSH / "config"
+SERVERS = SSH / "config.d/sshs.conf"
+INCLUDE = "Include config.d/sshs.conf"
+KITTY = HOME / ".config/kitty"
+YAZI = HOME / ".config/yazi"
+VFS = YAZI / "vfs.toml"
+MARK = "# sshs: erzeugt von scripts/sshs sync – nicht von Hand ändern"
+LINKS = {
+    KITTY / "sshs.conf": ROOT / "config/sshs/kitty.conf",
+    KITTY / "sshs_kitten.py": ROOT / "config/sshs/sshs_kitten.py",
+    YAZI / "init.lua": ROOT / "config/yazi/init.lua",
+    HOME / ".local/bin/sshs": ROOT / "scripts/sshs",
+}
+GIT_HOSTS = {"github.com", "gitlab.com", "codeberg.org", "bitbucket.org", "ssh.dev.azure.com"}
+EZA_VERSION = "v0.23.5"
+EZA = HOME / ".cache/sshs/eza"      # statisch (musl), läuft auf jedem x86_64-Server
+REMOTE_DIR = ".local/share/sshs"
+AGENT_SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "ssh-agent.socket")
+
+
+# ---------- SSH-Konfiguration lesen ----------
+
+def _config_files(path: pathlib.Path, seen=None) -> list:
+    seen = seen or set()
+    if path in seen or not path.exists():
+        return []
+    seen.add(path)
+    out = [path]
+    for line in path.read_text(errors="ignore").splitlines():
+        m = re.match(r"\s*Include\s+(.+)", line, re.I)
+        if m:
+            for pat in shlex.split(m.group(1)):
+                pat = os.path.expanduser(pat)
+                if not os.path.isabs(pat):
+                    pat = str(SSH / pat)
+                for f in sorted(glob.glob(pat)):
+                    out += _config_files(pathlib.Path(f), seen)
+    return out
+
+
+def hosts() -> list:
+    """Alle Host-Namen ohne Muster (* ?) und ohne Git-Dienste, in Datei-Reihenfolge."""
+    names = []
+    for f in _config_files(SSH_CONFIG):
+        for line in f.read_text(errors="ignore").splitlines():
+            m = re.match(r"\s*Host\s+(.+)", line, re.I)
+            if m:
+                for h in shlex.split(m.group(1)):
+                    if not re.search(r"[*?!]", h) and h not in GIT_HOSTS and h not in names:
+                        names.append(h)
+    return names
+
+
+def resolved(host: str) -> dict:
+    """ssh -G: was ssh wirklich benutzen würde."""
+    r = subprocess.run(["ssh", "-G", host], capture_output=True, text=True)
+    out = {}
+    for line in r.stdout.splitlines():
+        k, _, v = line.partition(" ")
+        if k == "identityfile":
+            out.setdefault("identityfile", []).append(v)
+        else:
+            out.setdefault(k, v)
+    return out
+
+
+def vfs_name(host: str) -> str:
+    """yazi-VFS-Namen: kebab-case, höchstens 20 Zeichen."""
+    n = re.sub(r"[^a-z0-9]+", "-", host.lower()).strip("-")[:20].strip("-")
+    return n or "server"
+
+
+# ---------- yazi-SFTP-Einträge ----------
+
+def sync(quiet=False):
+    if VFS.exists() and MARK not in VFS.read_text(errors="ignore"):
+        sys.exit(f"Abbruch: {VFS} ist von Hand angelegt – bitte zusammenführen oder umbenennen.")
+    lines = [MARK, "# Quelle: ~/.ssh/config (+ config.d/sshs.conf). Anmeldung über den SSH-Agenten.", ""]
+    used = set()
+    for h in hosts():
+        c = resolved(h)
+        name = vfs_name(h)
+        while name in used:
+            name = (name[:18] + "-x")[:20]
+        used.add(name)
+        lines += [f"[sftp.{name}]", f'host = "{c.get("hostname", h)}"', f'user = "{c.get("user", "root")}"',
+                  f'port = {c.get("port", "22")}', ""]
+    YAZI.mkdir(parents=True, exist_ok=True)
+    VFS.write_text("\n".join(lines))
+    if not quiet:
+        print(f"  {VFS}: {len(used)} Server")
+
+
+# ---------- Verbinden ----------
+
+def _agent_env() -> dict:
+    env = dict(os.environ)
+    if not env.get("SSH_AUTH_SOCK") and os.path.exists(AGENT_SOCK):
+        env["SSH_AUTH_SOCK"] = AGENT_SOCK
+    return env
+
+
+def _ensure_eza(quiet=True) -> bool:
+    if EZA.exists():
+        return True
+    import io, tarfile, urllib.request
+    url = (f"https://github.com/eza-community/eza/releases/download/{EZA_VERSION}/"
+           "eza_x86_64-unknown-linux-musl.tar.gz")
+    try:
+        data = urllib.request.urlopen(url, timeout=20).read()
+        with tarfile.open(fileobj=io.BytesIO(data)) as t:
+            member = next(m for m in t.getmembers() if os.path.basename(m.name) == "eza" and m.isfile())
+            blob = t.extractfile(member).read()
+    except Exception as e:
+        if not quiet:
+            print(f"  eza nicht geladen ({e}) – auf dem Server bleibt das normale ls")
+        return False
+    EZA.parent.mkdir(parents=True, exist_ok=True)
+    tmp = EZA.with_suffix(".part")
+    tmp.write_bytes(blob)
+    tmp.chmod(0o755)
+    tmp.rename(EZA)
+    if not quiet:
+        print(f"  eza {EZA_VERSION} → {EZA}")
+    return True
+
+
+def ssh_exec(host: str, cwd: str = ""):
+    """kitten ssh mit sshs-Shell auf dem Server (eigene bashrc, eza). Läuft im Kitty-Fenster, auch für neue Tabs."""
+    argv = ["kitten", "ssh",
+            "--kitten", f"copy=--dest {REMOTE_DIR} {ROOT / 'config/sshs/remote'}",
+            "--kitten", f"login_shell=${{HOME}}/{REMOTE_DIR}/bin/bash"]
+    if _ensure_eza():
+        argv += ["--kitten", f"copy=--dest {REMOTE_DIR}/bin/eza {EZA}"]
+    if cwd:
+        argv += ["--kitten", f"cwd={cwd}"]
+    os.execvp("kitten", argv + [host])
+
+
+def connect(host: str, files: bool = False):
+    if host not in hosts():
+        sys.exit(f"Unbekannter Server: {host}  (sshs add · sshs list)")
+    _touch(host)
+    sync(quiet=True)
+    _ensure_eza()
+    session = tempfile.NamedTemporaryFile("w", prefix="sshs-", suffix=".session", delete=False)
+    v = vfs_name(host)
+    # --files: Watcher schaltet auf Dateien um, sobald die Terminal-Anmeldung an der Prompt ist (Schlüssel im Agenten)
+    watch = f"--watcher {shlex.quote(str(ROOT / 'config/sshs/sshs_watcher.py'))} " if files else ""
+    session.write(f"launch --var sshs=shell --var sshs_host={shlex.quote(host)} --var sshs_vfs={v} {watch}"
+                  f"{shlex.quote(str(HOME / '.local/bin/sshs'))} _ssh {shlex.quote(host)}\n")
+    session.close()
+    cmd = ["kitty", "--config", str(KITTY / "sshs.conf"), "--class", "sshs", "--session", session.name]
+    if shutil.which("uwsm"):
+        cmd = ["uwsm", "app", "--", *cmd]
+    subprocess.Popen(cmd, env=_agent_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def _row(h: str) -> str:
+    c = resolved(h)
+    port = c.get("port", "22")
+    where = f"{c.get('user', '')}@{c.get('hostname', h)}" + ("" if port == "22" else f":{port}")
+    return f"{h}\t{where}"
+
+
+# ---------- zuletzt benutzt (für die Bar: list --json) ----------
+
+RECENT = pathlib.Path(os.environ.get("XDG_STATE_HOME") or HOME / ".local/state") / "sshs/recent.json"
+
+
+def _recent() -> dict:
+    try:
+        import json
+        d = json.loads(RECENT.read_text())
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _touch(host: str):
+    import json, time
+    d = _recent()
+    d[host] = int(time.time())
+    try:
+        RECENT.parent.mkdir(parents=True, exist_ok=True)
+        tmp = RECENT.with_suffix(".part")
+        tmp.write_text(json.dumps(d))
+        tmp.rename(RECENT)
+    except OSError:
+        pass
+
+
+def list_json():
+    """Server als JSON (Name, Adresse, Benutzer, Port, zuletzt benutzt), zuletzt benutzte zuerst. Liest nur ssh -G."""
+    import json
+    names, last = hosts(), _recent()
+    rows = []
+    for h in names:
+        c = resolved(h)
+        rows.append({"name": h, "host": c.get("hostname", h), "user": c.get("user", ""),
+                     "port": int(c.get("port", "22") or 22), "last": int(last.get(h, 0) or 0)})
+    rows.sort(key=lambda r: (-r["last"], names.index(r["name"])))
+    print(json.dumps(rows))
+
+
+def _notify(summary: str, body: str = "", replace: str = "", urgency: str = "normal") -> str:
+    if not shutil.which("notify-send"):
+        return ""
+    cmd = ["notify-send", "-a", "Servers", "-i", "network-server", "-u", urgency, "-p"]
+    if replace:
+        cmd += ["-r", replace]
+    r = subprocess.run(cmd + [summary, body], capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+def put(args: list):
+    """Nicht-interaktiv hochladen: sshs put <name> <ziel> <dateien…> [--notify]. Fragt nie nach (BatchMode):
+    Schlüssel muss im Agenten liegen oder ohne Passphrase sein. Exit 0 = alles oben."""
+    notify = "--notify" in args
+    args = [a for a in args if a != "--notify"]
+    if len(args) < 3:
+        sys.exit("sshs put <name> <ziel> <dateien…> [--notify]")
+    host, remote, files = args[0], args[1], args[2:]
+    if host not in hosts():
+        sys.exit(f"Unbekannter Server: {host}")
+    missing = [f for f in files if not os.path.exists(f)]
+    if missing:
+        sys.exit("Nicht gefunden: " + ", ".join(missing))
+    _touch(host)
+    where = remote.rstrip("/") or "~"
+    if where.startswith("~/"):                       # scp-Ziel relativ = ab ~
+        where = where[2:]
+    target = f"{host}:" + ("" if where == "~" else where + "/")
+    label = f"{host}:{'~' if where == '~' else where}"
+    what = os.path.basename(files[0].rstrip("/")) if len(files) == 1 else f"{len(files)} files"
+    nid = _notify(f"Uploading {what}", f"→ {label}", urgency="low") if notify else ""
+    r = subprocess.run(["scp", "-r", "-p", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", *files, target],
+                       env=_agent_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.PIPE, text=True)
+    if r.returncode == 0:
+        if notify:
+            _notify(f"Uploaded {what}", f"→ {label}", replace=nid)
+        print(f"  fertig: {len(files)} → {label}")
+        return
+    err = (r.stderr.strip().splitlines() or ["scp failed"])[-1]
+    if "Permission denied" in r.stderr or "passphrase" in r.stderr.lower():
+        err = "Login failed – connect once via Terminal (unlocks the key), then try again"
+    if notify:
+        _notify(f"Upload to {host} failed", err, replace=nid, urgency="critical")
+    print(err, file=sys.stderr)
+    sys.exit(1)
+
+
+def pick():
+    names = hosts()
+    if not shutil.which("fzf"):
+        sys.exit("fzf fehlt")
+    rows = "\n".join(_row(h) for h in names)
+    r = subprocess.run(
+        ["fzf", "--delimiter=\t", "--with-nth=1,2", "--tabstop=24", "--expect=ctrl-n,ctrl-e",
+         "--prompt=ssh ❯ ", "--header=enter connect · ctrl-n new · ctrl-e edit",
+         "--no-multi", "--height=40%", "--layout=reverse", "--border=rounded", "--border-label= sshs "],
+        input=rows, capture_output=True, text=True)
+    lines = r.stdout.splitlines()
+    if not lines:
+        return
+    key = lines[0]
+    if key == "ctrl-n":
+        return add()
+    if key == "ctrl-e":
+        return edit()
+    if len(lines) > 1:
+        connect(lines[1].split("\t")[0])
+
+
+# ---------- Hochladen ----------
+
+LOCAL_LIST = "fd --hidden --follow --exclude .git --exclude node_modules --exclude .cache . ~"
+LOCAL_PREVIEW = ("[[ -d {} ]] && eza -1 --icons=always --color=always --group-directories-first {} "
+                 "|| bat --color=always --style=numbers --line-range=:100 {}")
+
+
+def _pick_server() -> str:
+    r = subprocess.run(["fzf", "--delimiter=\t", "--with-nth=1,2", "--tabstop=24", "--prompt=Server ❯ ",
+                        "--height=40%", "--layout=reverse", "--border=rounded"],
+                       input="\n".join(_row(h) for h in hosts()), capture_output=True, text=True)
+    return r.stdout.split("\t")[0].strip()
+
+
+def upload(host: str = "", remote: str = ""):
+    host = host or _pick_server()
+    if not host:
+        return
+    if host not in hosts():
+        sys.exit(f"Unbekannter Server: {host}")
+    _touch(host)
+    where = remote or "~"
+    r = subprocess.run(
+        f"{LOCAL_LIST} | fzf --multi --scheme=path --prompt='hochladen ❯ ' "
+        f"--header={shlex.quote(f'→ {host}:{where}   Tab = mehrere · Enter = hochladen · Esc = abbrechen')} "
+        f"--preview={shlex.quote(LOCAL_PREVIEW)} --height=100% --layout=reverse --border=rounded "
+        f"--border-label=' sshs · hochladen '",
+        shell=True, executable="/bin/bash", stdout=subprocess.PIPE, text=True)
+    files = [f for f in r.stdout.splitlines() if f]
+    if not files:
+        return
+    target = f"{host}:{remote.rstrip('/') + '/' if remote else ''}"
+    print(f"\n  {len(files)} Datei(en) → {host}:{where}\n")
+    ok = subprocess.run(["scp", "-r", "-p", "--", *files, target], env=_agent_env()).returncode == 0
+    print("\n  fertig." if ok else "\n  Hochladen fehlgeschlagen (siehe oben).")
+    _hold()
+
+
+# ---------- Herunterladen ----------
+
+def _mux() -> list:
+    """Eine geteilte Verbindung für Liste, Vorschau und Kopieren (sonst meldet sich jeder Schritt neu an)."""
+    d = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "sshs")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return ["-o", "ControlMaster=auto", "-o", f"ControlPath={d}/cm-%C", "-o", "ControlPersist=60"]
+
+
+def _downloads() -> pathlib.Path:
+    r = subprocess.run(["xdg-user-dir", "DOWNLOAD"], capture_output=True, text=True)
+    d = pathlib.Path(r.stdout.strip() or HOME / "Downloads")
+    return d if d != HOME else HOME / "Downloads"
+
+
+def download(host: str = "", remote: str = ""):
+    host = host or _pick_server()
+    if not host:
+        return
+    if host not in hosts():
+        sys.exit(f"Unbekannter Server: {host}")
+    _touch(host)
+    where = remote.rstrip("/") or "~"
+    if where.startswith("~/"):                       # ssh startet im Home: relativ = ab ~
+        where = where[2:]
+    cd = "cd" if where == "~" else f"cd -- {shlex.quote(where)}"
+    mux, env = _mux(), _agent_env()
+    skip = "-name .git -o -name node_modules -o -name .cache -o -name kitty-ssh-kitten -o -path ./.local/share/sshs"
+    ls = f"{cd} && find . -mindepth 1 -maxdepth 4 \\( {skip} \\) -prune -o -printf '%y %P\\n' 2>/dev/null | head -20000"
+    r = subprocess.run(["ssh", *mux, host, ls], capture_output=True, text=True, env=env)
+    if r.returncode not in (0, 141) and not r.stdout:
+        print(r.stderr.strip() or "Ordner nicht lesbar")
+        return _hold()
+    rows = []
+    for line in r.stdout.splitlines():
+        kind, _, rel = line.partition(" ")
+        if rel:
+            rows.append(rel + ("/" if kind == "d" else ""))
+    rows.sort(key=lambda p: (p.count("/") - p.endswith("/"), p))
+    me = shlex.quote(str(HOME / ".local/bin/sshs"))
+    preview = f"{me} _peek {shlex.quote(host)} {shlex.quote(where)} {{}}"
+    r = subprocess.run(
+        ["fzf", "--multi", "--scheme=path", "--prompt=herunterladen ❯ ",
+         f"--header=← {host}:{where}   Tab = mehrere · Enter = nach {_tilde(str(_downloads()))} · Esc = abbrechen",
+         f"--preview={preview}", "--preview-window=right,50%",
+         "--height=100%", "--layout=reverse", "--border=rounded", "--border-label= sshs · herunterladen "],
+        input="\n".join(rows), stdout=subprocess.PIPE, text=True, env=env)
+    picked = [p.rstrip("/") for p in r.stdout.splitlines() if p]
+    if not picked:
+        return
+    base = "" if where == "~" else where + "/"
+    target = _downloads()
+    target.mkdir(parents=True, exist_ok=True)
+    print(f"\n  {len(picked)} Datei(en) ← {host}:{where}  →  {_tilde(str(target))}\n")
+    ok = subprocess.run(["scp", *mux, "-r", "-p", "--", *[f"{host}:{base}{p}" for p in picked], str(target)],
+                        env=env).returncode == 0
+    print(f"\n  {OK}✓{R} fertig: {_tilde(str(target))}" if ok else "\n  Herunterladen fehlgeschlagen (siehe oben).")
+    _hold()
+
+
+def _peek(host: str, where: str, item: str):
+    """fzf-Vorschau beim Herunterladen: Ordnerinhalt oder Dateianfang, über die geteilte Verbindung."""
+    q = shlex.quote((item if where == "~" else f"{where}/{item}").rstrip("/"))   # relativ = ab ~
+    cmd = (f"if [ -d {q} ]; then ls -la --color=always -- {q}; "
+           f"elif [ ! -s {q} ] || grep -Iq . -- {q}; then head -c 20000 -- {q}; "
+           f"else ls -la -- {q}; echo; echo '(Binärdatei)'; fi")
+    subprocess.run(["ssh", *_mux(), host, cmd], env=_agent_env())
+
+
+def _hold():
+    if os.environ.get("SSHS_OVERLAY"):
+        try:
+            input("  Enter schließt … ")
+        except (EOFError, KeyboardInterrupt):
+            pass
+
+
+# ---------- Server verwalten ----------
+
+B, D, ACC, OK, WARN, R = "\033[1m", "\033[2m", "\033[33m", "\033[32m", "\033[31m", "\033[0m"
+
+
+def _ask(label: str, default: str = "") -> str:
+    hint = f" {D}{default}{R}" if default else ""
+    try:
+        v = input(f"  {label:<10}{hint}  {ACC}❯{R} ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(1)
+    return v or default
+
+
+def _yes(label: str, default: bool) -> bool:
+    return _ask(f"{label} {D}j/n{R}", "j" if default else "n").lower().startswith("j")
+
+
+def _ensure_include():
+    SERVERS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    SERVERS.touch(mode=0o600, exist_ok=True)
+    text = SSH_CONFIG.read_text() if SSH_CONFIG.exists() else ""
+    if INCLUDE not in text:
+        SSH_CONFIG.write_text(f"{INCLUDE}\n\n{text}")
+        SSH_CONFIG.chmod(0o600)
+        print(f"  ~/.ssh/config: „{INCLUDE}“ oben eingefügt")
+
+
+# sshs.conf als Liste von Servern: {"name": …, "opts": [[Schlüsselwort, Wert], …]} (Kommentare: Schlüsselwort "")
+def _servers() -> list:
+    out = []
+    for line in (SERVERS.read_text() if SERVERS.exists() else "").splitlines():
+        m = re.match(r"\s*Host\s+(\S+)\s*$", line, re.I)
+        if m:
+            out.append({"name": m.group(1), "opts": []})
+        elif out and line.strip():
+            k, _, v = line.strip().partition(" ")
+            out[-1]["opts"].append(["", line.strip()] if k.startswith("#") else [k, v.strip()])
+    return out
+
+
+def _write_servers(servers: list):
+    blocks = []
+    for s in servers:
+        lines = [f"Host {s['name']}"] + [f"  {v}" if not k else f"  {k} {v}" for k, v in s["opts"]]
+        blocks.append("\n".join(lines) + "\n")
+    SERVERS.write_text("\n".join(blocks))
+
+
+def _opt(s: dict, key: str, default: str = "") -> str:
+    return next((v for k, v in s["opts"] if k.lower() == key.lower()), default)
+
+
+def _set(s: dict, key: str, value: str):
+    s["opts"] = [o for o in s["opts"] if o[0].lower() != key.lower()]
+    if value:
+        s["opts"].append([key, value])
+
+
+def _tilde(path: str) -> str:
+    return path.replace(str(HOME), "~", 1)
+
+
+def _pick_key(name: str, current: str = "") -> str:
+    keys = sorted(p[:-4] for p in glob.glob(str(SSH / "*.pub")))
+    cur = os.path.basename(os.path.expanduser(current)) if current else ""
+    options = [os.path.basename(k) for k in keys]
+    if cur in options:
+        options.remove(cur)
+        options.insert(0, cur)
+    options.append("+ neuen Schlüssel erzeugen")
+    header = f"aktuell: {cur}" if cur else "Schlüssel für diesen Server"
+    r = subprocess.run(["fzf", "--prompt=Schlüssel ❯ ", f"--header={header}", "--height=30%", "--layout=reverse",
+                        "--border=rounded", f"--border-label= {name} "],
+                       input="\n".join(options), capture_output=True, text=True)
+    choice = r.stdout.strip()
+    if not choice:
+        if current:
+            return os.path.expanduser(current)
+        sys.exit(1)
+    if choice.startswith("+"):
+        path = SSH / f"id_ed25519_{name}"
+        subprocess.run(["ssh-keygen", "-t", "ed25519", "-f", str(path), "-C", f"{os.environ.get('USER')}@{name}"],
+                       check=True)
+        return str(path)
+    return str(SSH / choice)
+
+
+def _check_key(name: str, key: str):
+    """Fragt den Server (ohne Passwort-Abfrage), welchen Schlüssel er annimmt."""
+    print(f"\n  {D}prüfe Anmeldung …{R}", end="", flush=True)
+    r = subprocess.run(["ssh", "-v", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6", name, "true"],
+                       capture_output=True, text=True, env=_agent_env(), stdin=subprocess.DEVNULL)
+    accepted = re.findall(r"Server accepts key: (\S+)", r.stderr)
+    want = os.path.expanduser(key)
+    print("\r\033[K", end="")
+    if r.returncode == 0 or want in accepted:
+        print(f"  {OK}✓{R} Server nimmt {B}{os.path.basename(want)}{R} an")
+        return
+    if "Offering public key" not in r.stderr:
+        print(f"  {WARN}!{R} Server nicht erreichbar – Schlüssel nicht geprüft")
+        return
+    print(f"  {WARN}!{R} Server lehnt {B}{os.path.basename(want)}{R} ab", end="")
+    print(f", nimmt aber {B}{os.path.basename(accepted[0])}{R}" if accepted else "")
+    if _yes(f"{os.path.basename(want)} auf dem Server eintragen (ssh-copy-id)?", True):
+        subprocess.run(["ssh-copy-id", "-i", want + ".pub", name], env=_agent_env())
+
+
+def _form(title: str, s: dict) -> dict:
+    """Felder nacheinander abfragen, Enter behält den Wert."""
+    print(f"\n  {ACC}╭{R} {B}{title}{R}  {D}Enter behält den Wert{R}\n")
+    name = re.sub(r"\s+", "-", _ask("Name", s["name"]))
+    if not name or (name != s["name"] and name in hosts()):
+        sys.exit("Name fehlt oder gibt es schon.")
+    addr = _ask("Adresse", _opt(s, "HostName"))
+    if not addr:
+        sys.exit("Adresse fehlt.")
+    user = _ask("Benutzer", _opt(s, "User", "root"))
+    port = _ask("Port", _opt(s, "Port", "22"))
+    key = _pick_key(name, _opt(s, "IdentityFile"))
+    print(f"  {'Schlüssel':<10} {ACC}❯{R} {_tilde(key)}")
+    s["name"] = name
+    _set(s, "HostName", addr)
+    _set(s, "User", user)
+    _set(s, "Port", "" if port == "22" else port)
+    _set(s, "IdentityFile", _tilde(key))
+    _set(s, "IdentitiesOnly", "yes")
+    return s
+
+
+def add():
+    _ensure_include()
+    servers = _servers()
+    s = _form("Neuer Server", {"name": "", "opts": []})
+    servers.append(s)
+    _write_servers(servers)
+    print(f"\n  {OK}✓{R} gespeichert in {_tilde(str(SERVERS))}")
+    if _yes("Öffentlichen Schlüssel auf den Server kopieren (ssh-copy-id)?", False):
+        subprocess.run(["ssh-copy-id", "-i", os.path.expanduser(_opt(s, "IdentityFile")) + ".pub", s["name"]])
+    sync(quiet=True)
+    if _yes("Jetzt verbinden?", True):
+        connect(s["name"])
+
+
+def edit(name: str = ""):
+    _ensure_include()
+    servers = _servers()
+    if not name:
+        r = subprocess.run(
+            ["fzf", "--delimiter=\t", "--with-nth=1,2", "--tabstop=24", "--expect=ctrl-d,ctrl-o",
+             "--prompt=bearbeiten ❯ ", "--header=enter edit · ctrl-d delete · ctrl-o open file",
+             "--no-multi", "--height=40%", "--layout=reverse", "--border=rounded", "--border-label= sshs · edit "],
+            input="\n".join(_row(s["name"]) for s in servers), capture_output=True, text=True)
+        lines = r.stdout.splitlines()
+        if len(lines) < 2:
+            return
+        key, name = lines[0], lines[1].split("\t")[0]
+        if key == "ctrl-o":
+            subprocess.run([os.environ.get("EDITOR", "nano"), str(SERVERS)])
+            return sync()
+        if key == "ctrl-d":
+            return rm(name, ask=True)
+    s = next((s for s in servers if s["name"] == name), None)
+    if not s:
+        sys.exit(f"{name} steht nicht in {SERVERS} (ältere Einträge: ~/.ssh/config von Hand)")
+    _form(f"{name} bearbeiten", s)
+    _write_servers(servers)
+    print(f"\n  {OK}✓{R} gespeichert")
+    sync(quiet=True)
+    _check_key(s["name"], _opt(s, "IdentityFile"))
+
+
+def rm(name: str, ask: bool = False):
+    servers = _servers()
+    keep = [s for s in servers if s["name"] != name]
+    if len(keep) == len(servers):
+        sys.exit(f"{name} steht nicht in {SERVERS} (ältere Einträge: ~/.ssh/config von Hand)")
+    if ask and not _yes(f"{name} wirklich löschen?", False):
+        return
+    _write_servers(keep)
+    print(f"  {name} entfernt")
+    sync()
+
+
+# ---------- install / off ----------
+
+def ours(p: pathlib.Path) -> bool:
+    return p.is_symlink() and str(ROOT) in os.readlink(p)
+
+
+def install():
+    for link, target in LINKS.items():
+        if link.exists() and not ours(link):
+            sys.exit(f"Abbruch: {link} ist fremd")
+        if link.is_symlink():
+            link.unlink()
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target)
+        print(f"  {link} -> {target}")
+    _ensure_include()
+    _ensure_eza(quiet=False)
+    subprocess.run(["systemctl", "--user", "enable", "--now", "ssh-agent.socket"], check=False)
+    subprocess.run(["systemctl", "--user", "set-environment", f"SSH_AUTH_SOCK={AGENT_SOCK}"], check=False)
+    print("  SSH-Agent: ssh-agent.socket an")
+    sync()
+    print("sshs an. Zurück: sshs off")
+
+
+def off():
+    for link in LINKS:
+        if ours(link):
+            link.unlink()
+            print(f"  entfernt: {link}")
+    if VFS.exists() and MARK in VFS.read_text(errors="ignore"):
+        VFS.unlink()
+        print(f"  entfernt: {VFS}")
+    if SSH_CONFIG.exists() and INCLUDE in SSH_CONFIG.read_text():
+        SSH_CONFIG.write_text(SSH_CONFIG.read_text().replace(f"{INCLUDE}\n\n", "").replace(f"{INCLUDE}\n", ""))
+        print("  ~/.ssh/config: Include entfernt (Server-Liste config.d/sshs.conf bleibt liegen)")
+    subprocess.run(["systemctl", "--user", "disable", "--now", "ssh-agent.socket"], check=False)
+    print("sshs aus.")
+
+
+def status():
+    for link in LINKS:
+        print(f"{link.name}: {'an' if ours(link) else ('fremd' if link.exists() else 'nicht da')}")
+    r = subprocess.run(["systemctl", "--user", "is-active", "ssh-agent.socket"], capture_output=True, text=True)
+    print(f"SSH-Agent: {r.stdout.strip()}")
+    print(f"Server: {len(hosts())}")
+
+
+def main():
+    a = sys.argv[1:]
+    if not a:
+        return pick()
+    cmd = a[0]
+    if cmd in ("-h", "--help", "help"):
+        print(__doc__)
+    elif cmd == "add":
+        add()
+    elif cmd == "edit":
+        edit(a[1] if len(a) > 1 else "")
+    elif cmd == "rm" and len(a) > 1:
+        rm(a[1])
+    elif cmd in ("up", "upload"):
+        upload(*a[1:3])
+    elif cmd in ("down", "download"):
+        download(*a[1:3])
+    elif cmd == "_peek" and len(a) > 3:
+        _peek(*a[1:4])
+    elif cmd == "_ssh" and len(a) > 1:
+        ssh_exec(*a[1:3])
+    elif cmd == "list" and "--json" in a[1:]:
+        list_json()
+    elif cmd == "list":
+        for h in hosts():
+            print(_row(h).replace("\t", "  "))
+    elif cmd == "put":
+        put(a[1:])
+    elif cmd == "sync":
+        sync()
+    elif cmd in ("install", "off", "status"):
+        {"install": install, "off": off, "status": status}[cmd]()
+    else:
+        connect(cmd, files="--files" in a[1:])
+
+
+main()

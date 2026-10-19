@@ -1,0 +1,1588 @@
+#!/usr/bin/python3 -I
+"""Neue Mails sofort melden, Einmal-Codes kopieren, Code-Mails später in den Papierkorb (wie Apple).
+
+Läuft als User-Dienst systemd/desktop-mail-watch.service (eingebunden über scripts/rice feeds_on/feeds_off).
+Konten wie bei mail-status: secrets.json, Abschnitt "accounts" (Konto braucht "mail"). Pro Konto optional:
+  "codes": {"autoCopy": true, "trashAfterMin": 5}
+    autoCopy       Einmal-Codes erkennen und per wl-copy kopieren (Standard true)
+    trashAfterMin  Minuten nach dem Kopieren -> Code-Mail in den Papierkorb (Standard 5,
+                   0 = sofort, null/negativ = nie)
+  "mail": {..., "notify": true}   Benachrichtigung bei neuer Mail (Standard true)
+  "magicLinks": {"autoOpen": true, "pairs": {...}}   Anmelde-Links (pro Konto, in "mail" oder global in
+                 secrets.json; fehlt es, gelten autoOpen=true + DEFAULT_LINK_PAIRS; altes "domains" ohne "pairs"
+                 = nur Meldung). Regeln: Abschnitt Magic-Links.
+
+Ablauf pro Konto (eigener Thread): Login, Ordner per EXAMINE (nur lesen), dann IMAP IDLE
+(alle 5 min neu; ohne IDLE: Polling alle 30 s). Neue UIDs > zuletzt gesehene UID -> Header + Anfang
+des Inhalts per BODY.PEEK (nichts wird gelesen markiert). Beim ersten Start / neuer UIDVALIDITY wird nur
+die Grenze gemerkt, es gibt keine Meldungen für schon vorhandene Mails.
+Zustand: ~/.local/state/desktop/mail-watch.json (nur UIDs + Fälligkeiten, keine Inhalte).
+Papierkorb: eigene kurze Verbindung, SELECT, Ordner mit SPECIAL-USE \\Trash (sonst bekannte Namen wie
+"Deleted Messages"), UID MOVE bzw. COPY + \\Deleted (+ UID EXPUNGE nur mit UIDPLUS). Markierte (\\Flagged)
+oder schon verschobene Mails bleiben unberührt.
+
+Log (journalctl --user -u desktop-mail-watch): nur Zustände und Zahlen – nie Passwort, Absender, Betreff, Code,
+Link (bei Anmelde-Links höchstens die Domain).
+
+  mail-watch              Dienst
+  mail-watch --selftest   Code- und Anmelde-Link-Erkennung mit Beispieltexten prüfen
+  mail-watch --check      pro Konto: Login, Fähigkeiten, Papierkorb-Ordner, kurz IDLE (nur lesen)
+"""
+import email
+import email.policy
+import email.utils
+import hashlib
+import html
+import html.parser
+import imaplib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import socket
+import ssl
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.parse
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+CONFIG = os.path.join(os.path.dirname(HERE), "secrets.json")
+STATE_DIR = os.path.join(os.path.expanduser("~"), ".local", "state", "desktop")
+STATE = os.path.join(STATE_DIR, "mail-watch.json")
+
+# Thunderbird: natives RPM zuerst, sonst das Flatpak – entscheidet scripts/app-run (auch fürs Starten)
+APP_RUN = os.path.join(HERE, "app-run")
+CLIENT_NATIVE = "net.thunderbird.Thunderbird"   # .desktop-ID des Fedora-RPMs (Symbol: thunderbird)
+CLIENT_FLATPAK = "org.mozilla.thunderbird_esr"  # altes Flatpak (Fallback bis zum Umzug)
+
+
+def client_entry():
+    """(.desktop-ID, Symbol) des Thunderbirds, der gerade gilt – für Meldungen."""
+    try:
+        r = subprocess.run([APP_RUN, "--which", "thunderbird"], capture_output=True, text=True, timeout=10)
+        if r.stdout.strip() == "native":
+            return CLIENT_NATIVE, "thunderbird"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return CLIENT_FLATPAK, CLIENT_FLATPAK
+TIMEOUT = 30            # s, Socket-Timeout für normale Befehle
+IDLE_SECS = 300         # IDLE alle 5 min neu anstoßen (hält NAT/Server wach, fängt verlorene Pushes)
+POLL_SECS = 30          # ohne IDLE
+FETCH_BYTES = 200000    # so viel vom Anfang der Mail reicht für Header + Text
+NOTIFY_MAX_AGE = 12 * 3600   # ältere "neue" Mails (z. B. zurück in den Posteingang verschoben) nicht melden
+CODE_MAX_AGE = 20 * 60       # Codes nur aus frischen Mails
+BURST = 4                    # mehr neue Mails auf einmal -> eine Sammelmeldung
+ACTION_WAIT = 15 * 60        # so lange wartet eine Meldung auf "Open"
+AUTH_RETRY = 15 * 60         # falsches Passwort: nicht hämmern (Apple sperrt sonst)
+DEFAULT_CODES = {"autoCopy": True, "trashAfterMin": 5}
+TRASH_NAMES = ("deleted messages", "trash", "papierkorb", "gelöschte elemente", "deleted items", "deleted")
+
+
+def _mail_status():
+    """Login-/Konfig-Helfer aus scripts/mail-status wiederverwenden (gleiche Konten, gleiche Logik)."""
+    path = os.path.join(HERE, "mail-status")
+    loader = importlib.machinery.SourceFileLoader("mail_status", path)
+    spec = importlib.util.spec_from_loader("mail_status", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+MS = _mail_status()
+
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Code-Erkennung
+
+# Schlüsselwörter (de/en); "\w*code" deckt Bestätigungscode, Sicherheitscode, Anmeldecode, Login-Code … ab
+KW = re.compile(
+    r"\b(?:\w*code|codes|verification|verify|verifizier\w*|verifikation\w*|passcode|otp|pin|2fa|mfa|tan|mtan|"
+    r"login|log[\s-]?in|sign[\s-]?in|anmeld\w*|einmal\w*|one[\s-]?time|two[\s-]?factor|zwei[\s-]?faktor|"
+    r"authenti\w*|sicherheits\w*|security|kennwort|passwort|password)\b", re.I)
+# starke Hinweise: ohne einen davon (oder "Code" im Betreff) gibt es keinen Code
+STRONG = re.compile(
+    r"\b(?:\w*(?:bestätigungs|sicherheits|anmelde|login|verifizierungs|verification|security|einmal|zugangs|"
+    r"access|confirmation|authentication|authentifizierungs|auth|sign[\s-]?in|log[\s-]?in|one[\s-]?time)[\s-]?code|"
+    r"verification|verify|verifizier\w*|otp|2fa|mfa|m?tan|passcode|one[\s-]?time|einmal\w*|two[\s-]?factor|"
+    r"zwei[\s-]?faktor|authenti\w*|(?:your|ihr|dein)e?\s+(?:\w+\s+)?(?:code|pin))\b", re.I)
+# "Code" in anderer Bedeutung zählt nicht
+NOT_CODE_WORD = re.compile(
+    r"(?:gutschein|rabatt|promo|aktions|qr|post|zip|source|quell|länder|country|bar|farb|color|colour|dress|"
+    r"einladungs|invite|geschenk|gift|referral|tracking|html|embed|iso|swift|bank|sort|area|vorwahl|"
+    r"discount|coupon|voucher|kunden)[\s-]?codes?$", re.I)
+NOT_CODE_BEFORE = re.compile(
+    r"\b(?:promo|discount|coupon|voucher|gift|referral|invite|invitation|zip|postal|post|source|country|area|"
+    r"bar|qr|tracking|html|color|colour|dress|bank|sort|swift|iso)[\s-]*$", re.I)
+# "Code" in der Nähe von Anmelden/Bestätigen zählt auch als starker Hinweis ("Use code ABC-123 to sign in")
+NEAR_LOGIN = re.compile(
+    r"\bcodes?\b.{0,50}\b(?:sign|log|anmeld|einlogg|verif|bestätig|confirm|zugang|access)|"
+    r"\b(?:sign|log|anmeld|einlogg|verif|bestätig|confirm|zugang|access)\w*\b.{0,50}\bcodes?\b", re.I | re.S)
+PROMO = re.compile(r"\b(?:rabatt|discount|gutschein|coupon|voucher|promo\w*|sale|angebot\w*|sparen|spare)\b|\d+\s?%\s?(?:off|rabatt)", re.I)
+# Kandidaten: 4–8 Ziffern, 3+3 / 4+4 mit Leerzeichen/Bindestrich, kurze Buchstaben-Ziffern-Codes
+DIGITS = re.compile(r"(?<![\w.,:/+#=&%€$£@])(\d{3}[ -]\d{3}(?![\d])|\d{4}[ -]\d{4}|\d{4,8})(?![\w%€$£@])")
+ALNUM = re.compile(r"(?<![\w.,:/+#=&%€$£@-])((?=[A-Z0-9-]*\d)(?=[A-Z0-9-]*[A-Z])(?:[A-Z0-9]{3,4}-[A-Z0-9]{3,4}|[A-Z0-9]{5,8}))(?![\w@-])")
+CLUSTER = re.compile(r"[+(]?\d+(?:[ /().,:-]{1,2}\d+)*")
+URLS = re.compile(r"https?://\S+|www\.\S+|[\w.+-]+@[\w-]+(?:\.[\w-]+)+|#[0-9a-fA-F]{3,8}\b")
+UNIT_AFTER = re.compile(
+    r"\s?(?:€|eur\b|euro|usd\b|\$|%|chf\b|£|uhr\b|h\b|min\b|minuten|minutes|sek\b|sec\b|sekunden|seconds|stunden|"
+    r"hours|tage\b|days\b|kb\b|mb\b|gb\b|km\b|kg\b|px\b|stück|stk\b|pcs\b|x\b)", re.I)
+UNIT_BEFORE = re.compile(r"(?:€|\$|£|eur|usd|chf|nr\.?|no\.?|#|©|\(c\))\s?$", re.I)
+# Bezeichner für andere Nummern: steht so einer vor der Zahl (und kein Schlüsselwort dazwischen) -> kein Code
+LABELS = re.compile(
+    r"(?:bestell\w*|\border\b|auftrag\w*|rechnung\w*|invoice|kunden\w*|customer|account\s*(?:number|no)|ticket|"
+    r"tracking|sendung\w*|paket\w*|referenz|reference|\bref\b|vorgang\w*|\bcase\b|artikel\w*|\bitem\b|\btel\b|"
+    r"telefon\w*|phone|\bfax\b|mobil\w*|hotline|iban|\bbic\b|\bblz\b|\bplz\b|postleitzahl|\bzip\b|straße|str\.|"
+    r"vertrag\w*|contract|mitglied\w*|member\w*|transaktion\w*|transaction|buchung\w*|booking|kennung|\bid\b|"
+    r"\bnr\b|nummer|number|\braum\b|\broom\b|zimmer|gebäude|building|etage|\bfloor\b|\bgate\b|\bplatz\b|\bseat\b|\bflug\w*|flight|"
+    r"lieferung|delivery|versand|shipping|plz)", re.I)
+ASSIGN = re.compile(r"(?:code|pin|otp|tan|passcode|kennwort|passwort|password)\W{0,3}(?:is|ist|lautet|:)?\s*[:\-–]?\s*$", re.I)
+YEAR = re.compile(r"(?:19|20)\d\d")
+ZIP_AFTER = re.compile(r" [A-ZÄÖÜ][a-zäöüß]+")
+INVISIBLE = re.compile("[­͏؜ᅟᅠ឴឵᠎​-‏‪-‮⁠-⁯﻿]")
+
+
+class _Text(html.parser.HTMLParser):
+    """HTML -> Text; Blöcke werden Zeilen, style/script/head fallen weg."""
+    BLOCK = {"p", "div", "br", "tr", "td", "th", "li", "ul", "ol", "table", "h1", "h2", "h3", "h4", "h5", "h6",
+             "section", "header", "footer", "center", "blockquote", "hr"}
+    SKIP = {"style", "script", "head", "title"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out = []
+        self.skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skip += 1
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self.skip = max(0, self.skip - 1)
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.out.append(data)
+
+
+def html_text(src):
+    p = _Text()
+    try:
+        p.feed(src)
+        p.close()
+    except (AssertionError, ValueError):
+        pass
+    return "".join(p.out)
+
+
+def clean(text):
+    text = INVISIBLE.sub("", html.unescape(text) if "&" in text else text).replace("\xa0", " ").replace("\r", "")
+    lines = [re.sub(r"[ \t]+", " ", ln).strip() for ln in text.split("\n")]
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+    # Links, Adressen, Farbwerte ausblenden (Positionen bleiben gleich)
+    return URLS.sub(lambda m: " " * len(m.group()), text)
+
+
+def _keywords(text):
+    out = []
+    for m in KW.finditer(text):
+        word = m.group()
+        if NOT_CODE_WORD.search(word) or NOT_CODE_BEFORE.search(text[max(0, m.start() - 14):m.start()]):
+            continue
+        if re.match(r"\s+of\s+conduct", text[m.end():m.end() + 12], re.I):
+            continue
+        out.append(m)
+    return out
+
+
+def _candidates(text, alnum_ok):
+    found = []
+    alnum_spans = []
+    if alnum_ok:
+        for m in ALNUM.finditer(text):
+            tok = m.group(1)
+            if re.fullmatch(r"\d+(?:-\d+)?", tok):   # nur Ziffern -> DIGITS
+                continue
+            alnum_spans.append((m.start(1), m.end(1)))
+            found.append((m.start(1), m.end(1), tok, tok, "alnum"))
+    for m in DIGITS.finditer(text):
+        s, e = m.start(1), m.end(1)
+        if any(a <= s and e <= b for a, b in alnum_spans):
+            continue
+        # "G-123456" ist ok, "2026-10…" nicht
+        if s >= 2 and text[s - 1] == "-" and not re.search(r"(?<![A-Za-z])[A-Z]$", text[max(0, s - 3):s - 1]):
+            continue
+        found.append((s, e, m.group(1), re.sub(r"\D", "", m.group(1)), "digits"))
+    return found
+
+
+def find_code(subject, bodies):
+    """Einmal-Code aus Betreff + Text(en) oder None. Lieber einen verpassen als einen falschen kopieren.
+
+    bodies: Text oder Liste von Texten (Text- und HTML-Teil werden getrennt bewertet)."""
+    subject = clean(subject or "")
+    bodies = [clean(b or "") for b in ([bodies] if isinstance(bodies, str) else bodies)]
+    whole = "\n".join([subject] + bodies)
+    has_strong = bool(STRONG.search(whole) or NEAR_LOGIN.search(whole)) or bool(
+        re.search(r"\w*code\b", subject, re.I) and not NOT_CODE_WORD.search(subject))
+    if not has_strong:
+        return None
+    alnum_ok = not PROMO.search(whole)
+    subject_kw = bool(_keywords(subject))
+    best = None
+    seen = {}
+    for where, text in [("subject", subject)] + [("body", b) for b in bodies]:
+        kws = _keywords(text)
+        lines = text.split("\n")
+        starts = []
+        pos = 0
+        for ln in lines:
+            starts.append(pos)
+            pos += len(ln) + 1
+        for s, e, raw, value, kind in _candidates(text, alnum_ok):
+            if kind == "digits":
+                cl = next((c for c in CLUSTER.finditer(text, max(0, s - 40)) if c.start() <= s and e <= c.end()), None)
+                if cl and len(re.sub(r"\D", "", cl.group())) > len(value):
+                    continue                 # Telefonnummer, Datum, IBAN, Betrag …
+                if UNIT_AFTER.match(text, e) or UNIT_BEFORE.search(text[max(0, s - 6):s]):
+                    continue
+            before = text[max(0, s - 45):s]
+            lab = None
+            for lab in LABELS.finditer(before):
+                pass
+            if lab and not any(k.start() >= max(0, s - 45) + lab.end() and k.end() <= s for k in kws):
+                continue
+            if not kws:
+                # Schlüsselwort nur im Betreff: Code im Text zählt, aber schwächer
+                dist = 150 if subject_kw else 999
+            else:
+                dist = min((s - k.end()) if k.end() <= s else (k.start() - e) * 1.3 if k.start() >= e else 0
+                           for k in kws)
+            i = max(j for j, st in enumerate(starts) if st <= s)
+            line = lines[i].strip()
+            standalone = bool(re.fullmatch(r"[^\w]*(?:[\w äöüÄÖÜß-]{0,30}[:：]\s*)?" + re.escape(raw) + r"[^\w]*", line))
+            if dist > 250 and not (standalone and dist <= 600):
+                continue
+            score = 100 - min(dist, 300) / 3
+            if standalone:
+                score += 35
+            if where == "subject":
+                score += 15
+            if ASSIGN.search(text[max(0, s - 30):s]):
+                score += 25
+            if kind == "alnum":
+                score -= 10 if dist <= 60 or standalone else 60
+            else:
+                n = len(value)
+                score += 10 if n == 6 else 0 if n in (4, 8) else -5
+                if n == 4 and YEAR.fullmatch(value):
+                    score -= 45
+                if n == 5 and ZIP_AFTER.match(text, e):
+                    score -= 50
+            seen[value] = seen.get(value, 0) + 1
+            if seen[value] > 1:
+                score += 5
+            if score >= 60 and (best is None or score > best[0]):
+                best = (score, value)
+    return best[1] if best else None
+
+
+SELFTEST = [
+    # (Betreff, Text, erwarteter Code oder None)
+    ("Your verification code", "Your verification code is: 482913\nThis code will expire in 10 minutes.", "482913"),
+    ("Bestätigung", "Ihr Bestätigungscode lautet 7342. Er ist 15 Minuten gültig.", "7342"),
+    ("Google verification code", "G-582014 is your Google verification code.", "582014"),
+    ("Sicherheitscode", "Hallo Bastian,\n\nhier ist dein Sicherheitscode:\n\n 381 204 \n\nGültig bis 18.10.2026 14:30 Uhr.", "381204"),
+    ("Anmeldung", "Ihr Einmalpasswort (OTP) für die Anmeldung lautet: 095173. Teilen Sie es mit niemandem.", "095173"),
+    ("Sign in to Example", "Use code ABC-123 to sign in to your account.", "ABC-123"),
+    ("Verify your email",
+     "<html><head><style>.x{color:#123456}</style></head><body><h1>Verify your email</h1><p>Enter this code:</p>"
+     "<div style='font-size:32px'>604&nbsp;112</div><p>&copy; 2026 Example Inc, Hauptstr. 5, 10115 Berlin</p></body></html>",
+     "604112"),
+    ("Your Discord login code", "Here is your login code: 23849102\nIf you didn't request this, ignore this email.", "23849102"),
+    ("mTAN", "Ihre mTAN für die Überweisung über 1.250,00 EUR an DE89 3704 0044 0532 0130 00 lautet 739104.", "739104"),
+    ("123456 is your Instagram code", "Hi bastian, someone tried to log in to your account.", "123456"),
+    ("Dein Anmeldecode", "Hallo!\n\nDein Code für die Anmeldung bei Beispiel:\n\nK7P2QX\n\nDer Code ist 10 Minuten gültig.", "K7P2QX"),
+    ("Two-factor authentication", "Your two-factor authentication code: 4417 8820", "44178820"),
+    # Negativfälle
+    ("Bestellbestätigung", "Bestellnummer: 30215587\nGesamt: 49,99 €\nLieferung am 21.10.2026", None),
+    ("Your order has shipped", "Your order 4025 has shipped. Tracking number 1Z999AA10123456784.", None),
+    ("Termin", "Termin am 18.10.2026 um 14:30 Uhr, Raum 2041. Login-Daten folgen per Mail.", None),
+    ("Herbst-Sale", "Spare 20 % mit dem Code SUMMER24 – nur bis 31.10.! Gutscheincode im Warenkorb eingeben.", None),
+    ("Anmeldung", "Bei Fragen zur Anmeldung erreichen Sie uns unter +49 30 1234567 oder 0800 1234567.", None),
+    ("Verify your email", "Click the link to verify your email: https://example.com/verify?code=834201", None),
+    ("New messages", "Sign in to see your new messages.\n© 2026 Example GmbH, Musterstr. 12, 10115 Berlin", None),
+    ("Rechnung", "Rechnung 2026-1043 über 120,00 EUR. Ihr Login für das Kundenportal: bastian", None),
+    ("Verification call", "Your verification is scheduled for 14:30 on 2026-10-20.", None),
+    ("Willkommen", "Kundennummer 4711 – Ihre Anmeldung war erfolgreich.", None),
+    ("Security alert", "We noticed a new sign-in from Berlin at 09:41. Your account was charged 1500 € last month.", None),
+    ("Newsletter", "Unser Code of Conduct wurde 2026 aktualisiert. Version 2041 gilt ab sofort.", None),
+    ("Paket", "Ihr Paket 00340434161234567890 kommt am Montag. Abholcode an der Packstation: 845231", None),
+    ("Bestätigung", "Dein Bestätigungscode wurde angefordert. Bestellnummer 30215587, Kundennummer 4711, "
+     "Hotline 0800 1234567.", None),
+    ("Sicherheit", "Wir haben die Zwei-Faktor-Authentifizierung am 18.10.2026 um 14:30 aktiviert. Kundennummer 4711.", None),
+    ("Verify your account", "Please verify your account. Order #30215587, total $49.99, placed 2026-10-18.", None),
+    # gemischt: Code + andere Nummern
+    ("Your verification code", "Your verification code is 482913. Your order 30215587 was placed on 18.10.2026. "
+     "Questions? Call +49 30 1234567.", "482913"),
+    ("Dein Anmeldecode", "Hallo,\n\n582014\n\nViele Grüße\nDein Team", "582014"),
+    ("Ihr PayPal-Sicherheitscode", "Ihr PayPal-Sicherheitscode lautet 123456. Gültig für 10 Minuten. "
+     "Rufen Sie uns nie an: 0800 7234567.", "123456"),
+    ("Microsoft-Kontosicherheitscode", "Verwenden Sie den folgenden Sicherheitscode für das Microsoft-Konto "
+     "b*****@outlook.de.\n\nSicherheitscode: 4821\n\nWenn Sie das nicht waren, ändern Sie Ihr Kennwort.", "4821"),
+    ("Your Steam account", "Here is the Steam Guard code you need to login to account bastian:\n\nF7K2P\n\n", "F7K2P"),
+    ("Verify your sign-in", "We detected a sign-in from Chrome (IP 84.112.33.120) on October 18, 2026 at 14:32.\n"
+     "Enter this code to verify: 902 117", "902117"),
+    ("Your DHL shipment", "Sendungsnummer 00340434161234567890. Verify the delivery address: Musterstr. 12, "
+     "10115 Berlin. Login at dhl.de", None),
+    ("Willkommen bei Example", "Dein Konto wurde erstellt. Deine Mitgliedsnummer ist 48213977. Melde dich an.", None),
+    ("Zahlung erhalten", "Wir haben 1234,00 EUR erhalten. Transaktionscode 8F3K-29QX.", None),
+]
+
+
+def selftest():
+    bad = 0
+    for subject, body, want in SELFTEST:
+        text = html_text(body) if body.lstrip().startswith("<") else body
+        got = find_code(subject, text)
+        ok = got == want
+        bad += not ok
+        print("%s  %-36s -> %s%s" % ("ok  " if ok else "FAIL", subject[:36], got, "" if ok else "  (want %s)" % want))
+    print("%d/%d ok" % (len(SELFTEST) - bad, len(SELFTEST)))
+    return 1 if bad else 0
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Magic-Links (Anmelde-/Bestätigungslinks ohne Code)
+#
+# Automatisch geöffnet wird nur, wenn ALLES stimmt: Anmelde-Mail erkannt, Absender-Domain steht in den Paaren
+# (exakt) und der Link-Host ist für genau diesen Absender erlaubt (exakt, ggf. nur bestimmte Pfade), https,
+# keine Weiterleitung auf fremde Ziele (continue=/url=/next= …), keine Mail mit fremdem Inhalt (Benachrichtigungen,
+# Kommentare, Einladungen, Freigaben), Mail < 10 min, Link noch nie geöffnet, und der EIGENE Mailserver bestätigt
+# dkim=pass oder dmarc=pass für die Absender-Domain (Authentication-Results mit eigener authserv-id, oberhalb des
+# ersten Received). Sonst: Meldung mit "Open link". Ist kein Link eindeutig, gibt es gar keinen.
+# Links (enthalten Tokens) landen nie im Log oder Zustand – nur die Domain bzw. ein Hash.
+
+_CLAUDE_HOSTS = ["claude.ai", "claude.com"]
+_APPLE_HOSTS = ["appleid.apple.com", "account.apple.com", "idmsa.apple.com"]
+# Absender-Domain (exakt, keine Subdomains) -> erlaubte Link-Hosts (exakt). {"host", "path"}: der ganze Pfad muss
+# zum Regex passen; "*." am Host-Anfang = genau ein Label davor (nur zusammen mit "path").
+# Tracker-/Weiterleitungs-Hosts (click.*, links.*, google.com/url, t.co …) nur, wenn sie hier ausdrücklich stehen.
+DEFAULT_LINK_PAIRS = {
+    "anthropic.com": _CLAUDE_HOSTS,
+    "mail.anthropic.com": _CLAUDE_HOSTS,
+    "github.com": [{"host": "github.com", "path": r"/users/[^/]+/emails/[^/]+/confirm_verification/[^/]+"}],
+    "google.com": ["accounts.google.com"],
+    "accounts.google.com": ["accounts.google.com"],
+    "apple.com": _APPLE_HOSTS,
+    "id.apple.com": _APPLE_HOSTS,
+    # Slack-Magic-Login: https://<workspace>.slack.com/z-app-…  (Einladungen über join.slack.com passen nicht)
+    "slack.com": [{"host": "*.slack.com", "path": r"/[xz]-[A-Za-z0-9-]+/?"}],
+    "notion.so": ["www.notion.so"],
+    "vercel.com": ["vercel.com"],
+    "figma.com": ["www.figma.com"],
+    "linear.app": ["linear.app"],
+    "discord.com": [{"host": "discord.com", "path": r"/verify/?"}, {"host": "click.discord.com", "path": r"/ls/click/?"}],
+}
+# Absender, deren Mails fremden Inhalt tragen (Benachrichtigungen, Kommentare, Einladungen, Freigaben) -> nie auto
+USER_CONTENT_FROM = re.compile(
+    r"^(?:notifications?|notify|comments?(?:-noreply)?|mentions?|invit\w*|feedback|digest|calendar-notification|"
+    r"calendar-server|drive-shares-[\w-]*|forms-receipts-noreply|[\w.-]*-notifications?)(?:[+.-].*)?$", re.I)
+USER_CONTENT_SUBJ = re.compile(
+    r"\b(?:invited\s+you|invitation|einladung|eingeladen|shared\s+with\s+you|geteilt|mentioned\s+you|erwähnt|"
+    r"comment(?:ed)?|kommentar\w*|kommentiert)\b", re.I)
+# Parameter-/Pfadwert, der selbst ein Ziel ist (Weiterleitung)
+EMBEDDED_URL = re.compile(r"^\s*(?:[a-z][a-z0-9+.-]*:)?[/\\]{2}|^\s*(?:javascript|data|file|vbscript):", re.I)
+LINK_MAX_AGE = 10 * 60          # nur frische Mails automatisch öffnen
+LINK_MEMORY = 30 * 86400        # geöffnete Links (Hash) so lange merken
+# Endungen, bei denen die registrierbare Domain drei Teile hat (ohne Public-Suffix-Liste, reicht hier)
+TWO_LEVEL_TLDS = {
+    "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "com.au", "net.au", "org.au", "co.nz", "co.jp", "ne.jp",
+    "or.jp", "com.br", "com.cn", "com.tw", "com.hk", "co.kr", "co.in", "com.mx", "com.ar", "com.tr", "co.za",
+    "com.sg", "co.il", "com.pl", "co.at", "or.at", "github.io", "vercel.app", "netlify.app", "pages.dev",
+    "herokuapp.com", "appspot.com", "web.app", "firebaseapp.com", "azurewebsites.net", "cloudfront.net"}
+
+# Betreff: Anmelde-/Bestätigungs-Mail
+LOGIN_SUBJ = re.compile(
+    r"\b(?:sign[\s-]?in|log[\s-]?in|magic[\s-]?link|verify\s+(?:your\s+)?e-?mail|confirm\s+(?:your\s+)?e-?mail|"
+    r"verify\s+(?:your\s+)?(?:email\s+)?address|secure\s+link|anmelde\w*|anmelden|einlogg\w*|einloggen|"
+    r"best[äa]tige\s+(?:deine|ihre)\s+e-?mail\w*|e-?mail(?:-adresse)?\s+best[äa]tigen|verifiziere\s+(?:deine|ihre)\s+e-?mail\w*)",
+    re.I)
+# Text: nur eindeutige Formulierungen (ein "Log in" im Newsletter-Footer reicht nicht)
+LOGIN_BODY = re.compile(
+    r"\b(?:magic[\s-]?link|(?:sign[\s-]?in|log[\s-]?in|login|anmelde)[\s-]?link|"
+    r"(?:click|tap|use|press|klicke?|tippe?|nutze?)\b.{0,60}\b(?:to|zum|um)\s+(?:sign|log)[\s-]?in(?:to)?\b|"
+    r"(?:click|tap|klicke?|tippe?)\b.{0,60}\bum\s+dich\s+(?:anzumelden|einzuloggen)|"
+    r"verify\s+(?:your\s+)?e-?mail(?:\s+address)?|confirm\s+(?:your\s+)?e-?mail(?:\s+address)?|"
+    r"best[äa]tige\s+(?:deine|ihre)\s+e-?mail|e-?mail(?:-adresse)?\s+zu\s+best[äa]tigen)", re.I | re.S)
+# Warnungen/Zurücksetzen: nie automatisch öffnen (Links dort führen zu Konto-Änderungen)
+LOGIN_NOT = re.compile(
+    r"\b(?:new\s+(?:sign|log)[\s-]?in|neue\s+anmeldung|(?:sign|log)[\s-]?in\s+(?:attempt|alert|from)|"
+    r"security\s+alert|sicherheitswarnung|sicherheitshinweis|password\s+(?:reset|changed?)|reset\s+(?:your\s+)?password|"
+    r"passwort\s+(?:zurücksetzen|geändert|ändern)|kennwort\s+(?:zurücksetzen|geändert)|suspicious|verdächtig|"
+    r"delete\s+(?:your\s+)?account|konto\s+löschen)\b", re.I)
+# Link-Text eines Anmelde-Knopfs
+LINK_TEXT = re.compile(
+    r"^\W*(?:(?:sign|log)[\s-]?in|login|anmelden|einloggen|jetzt\s+anmelden|verify|verifizieren|bestätigen|"
+    r"confirm|continue|weiter|fortfahren|open\s+claude|magic\s+link|"
+    r"(?:sign|log)[\s-]?in\s+(?:to|bei|zu)\b.{0,40}|(?:verify|confirm)\s+(?:my\s+|your\s+)?(?:e-?mail|address|account)\b.{0,30}|"
+    r"(?:e-?mail(?:-adresse)?|konto)\s+(?:bestätigen|verifizieren)|continue\s+(?:to|with)\b.{0,30}|"
+    r"bei\s+.{1,30}\s+anmelden)\W*$", re.I)
+LINK_PATH = re.compile(r"(?:magic|login|log-in|signin|sign-in|sign_in|verify|verification|confirm|auth|token|callback|"
+                       r"session|activate)", re.I)
+# Nie: Abmelden, Datenschutz, Hilfe, Social, "Das war ich nicht", Konto-Einstellungen …
+LINK_BAD = re.compile(
+    r"(?:unsubscribe|\babmeld|abbestell|opt[\s_-]?out|privacy|datenschutz|\bterms\b|nutzungsbedingungen|\bagb\b|impressum|"
+    r"imprint|\blegal\b|\bhelp\b|hilfe|support|\bfaq\b|preferences|einstellungen|settings|manage|verwalten|\breport|"
+    r"\bmelden\b|not\s+you|wasn'?t\s+(?:me|you)|nicht\s+ich|secure\s+your|reset|zurücksetzen|log[\s-]?out|sign[\s-]?out|"
+    r"view\s+in\s+browser|im\s+browser|webversion|learn\s+more|mehr\s+erfahren|download|app\s+store|google\s+play)", re.I)
+# dasselbe für Pfade, nur ganze Segmente (Tokens dürfen zufällig "faq" o. ä. enthalten)
+LINK_BAD_PATH = re.compile(
+    r"(?:^|[/_.-])(?:unsubscribe|optout|opt-out|privacy|datenschutz|terms|legal|impressum|imprint|help|hilfe|support|"
+    r"faq|preferences|settings|einstellungen|manage|logout|log-out|signout|sign-out|reset|abmelden|abbestellen|"
+    r"report|download)(?=$|[/_.-])", re.I)
+SOCIAL_HOSTS = {"facebook.com", "twitter.com", "x.com", "linkedin.com", "instagram.com", "youtube.com", "tiktok.com",
+                "t.co", "bit.ly", "threads.net", "mastodon.social", "bsky.app", "reddit.com"}
+TEXT_URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
+
+
+def reg_domain(host):
+    """Registrierbare Domain (example.co.uk, mail.anthropic.com -> anthropic.com)."""
+    parts = (host or "").lower().strip(".").split(".")
+    if len(parts) < 2:
+        return ""
+    n = 3 if ".".join(parts[-2:]) in TWO_LEVEL_TLDS else 2
+    return ".".join(parts[-n:])
+
+
+def domain_in(host, domains):
+    host = (host or "").lower().strip(".")
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def sender_domain(msg):
+    _, addr = email.utils.parseaddr(str(msg.get("From", "") or ""))
+    dom = addr.rpartition("@")[2].lower().strip(".").rstrip(">")
+    return dom if re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", dom) else ""
+
+
+def safe_url(url):
+    """(url, host) wenn eine harmlose https-URL, sonst (None, None)."""
+    url = (url or "").strip()
+    if not url or len(url) > 4000 or re.search(r"[\s\x00-\x1f\x7f\\]", url):
+        return None, None
+    try:
+        u = urllib.parse.urlsplit(url)
+        port = u.port
+    except ValueError:
+        return None, None
+    host = (u.hostname or "").lower()
+    if u.scheme.lower() != "https" or not host or u.username or u.password or port not in (None, 443):
+        return None, None
+    if not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", host) or re.fullmatch(r"[\d.]+", host):
+        return None, None          # IP, Punycode-Sonderzeichen, Unicode-Hosts
+    return url, host
+
+
+class _Links(html.parser.HTMLParser):
+    """<a href> + sichtbarer Text."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links = []
+        self.cur = None
+        self.skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("style", "script", "head"):
+            self.skip += 1
+        elif tag == "a":
+            href = dict(attrs).get("href")
+            self.cur = [href, []] if href else None
+        elif tag == "img" and self.cur is not None:
+            alt = dict(attrs).get("alt")
+            if alt:
+                self.cur[1].append(" " + alt + " ")
+
+    def handle_endtag(self, tag):
+        if tag in ("style", "script", "head"):
+            self.skip = max(0, self.skip - 1)
+        elif tag == "a" and self.cur is not None:
+            self.links.append((self.cur[0], re.sub(r"\s+", " ", "".join(self.cur[1])).strip()))
+            self.cur = None
+
+    def handle_data(self, data):
+        if self.cur is not None and not self.skip:
+            self.cur[1].append(data)
+
+
+def html_links(src):
+    p = _Links()
+    try:
+        p.feed(src)
+        p.close()
+    except (AssertionError, ValueError):
+        pass
+    return p.links
+
+
+def message_parts(msg):
+    """(Klartext-Teile, HTML-Teile roh) – für die Link-Auswahl."""
+    plain, rich = [], []
+    for part in msg.walk():
+        if part.is_multipart() or part.get_content_disposition() == "attachment":
+            continue
+        ctype = part.get_content_type()
+        if ctype not in ("text/plain", "text/html"):
+            continue
+        try:
+            content = part.get_content()
+        except (LookupError, ValueError, AssertionError, KeyError, TypeError):
+            payload = part.get_payload(decode=True) or b""
+            content = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        if isinstance(content, str):
+            (plain if ctype == "text/plain" else rich).append(content[:200000])
+    return plain, rich
+
+
+def is_login_mail(subject, texts):
+    subject = INVISIBLE.sub("", subject or "")
+    whole = "\n".join([subject] + [INVISIBLE.sub("", t or "") for t in texts])
+    if LOGIN_NOT.search(subject) or LOGIN_NOT.search(whole[:3000]):
+        return False
+    return bool(LOGIN_SUBJ.search(subject) or LOGIN_BODY.search(whole))
+
+
+def pick_link(plains, htmls):
+    """Den einen Anmelde-Link oder None. Mehrere verschiedene gleich gute Kandidaten -> None."""
+    cands = {}
+
+    def add(url, text, context=False):
+        # kein zweites html.unescape: der HTML-Parser hat href schon dekodiert, Klartext hat keine Entities
+        # (sonst wird z. B. "&param=" zu "¶m=" und "&amp;amp;" zu "&" -> anderer Link als in der Mail)
+        url, host = safe_url(url)
+        if not url or reg_domain(host) in SOCIAL_HOSTS or host in SOCIAL_HOSTS:
+            return
+        path = urllib.parse.unquote(urllib.parse.urlsplit(url).path + "?" + urllib.parse.urlsplit(url).query)
+        text = INVISIBLE.sub("", text or "").strip()
+        if LINK_BAD.search(text) or LINK_BAD_PATH.search(urllib.parse.unquote(urllib.parse.urlsplit(url).path)):
+            return
+        score = 0
+        if text and (LINK_TEXT.search(text) if not context else re.search(
+                r"(?:sign|log)[\s-]?in|anmelde|einlogg|magic\s+link|verify|confirm|bestätig|verifizier", text, re.I)):
+            score += 2 if not context else 1
+        if LINK_PATH.search(urllib.parse.unquote(urllib.parse.urlsplit(url).path)) or re.search(
+                r"(?:token|code|magic|otp|auth)\w*=", path, re.I):
+            score += 1
+        if score:
+            cands[url] = max(cands.get(url, 0), score)
+
+    for src in htmls:
+        for href, text in html_links(src):
+            add(href, text)
+    for src in plains:
+        for m in TEXT_URL.finditer(src):
+            url = m.group().rstrip(".,;:!?")
+            # Klartext hat keinen Link-Text: Zeile davor/gleiche Zeile als Kontext (schwächer)
+            before = src[max(0, m.start() - 120):m.start()].rstrip()
+            add(url, before.rsplit("\n\n", 1)[-1], context=True)
+    if not cands:
+        return None
+    top = max(cands.values())
+    best = [u for u, s in cands.items() if s == top]
+    return best[0] if len(best) == 1 else None
+
+
+AUTH_RES = re.compile(r"\b(dkim|dmarc|spf)\s*=\s*([a-z]+)\b([^;]*)", re.I)
+AUTH_KEY = {"dkim": r"header\.(?:d|i)", "dmarc": r"header\.from", "spf": r"(?:smtp\.mailfrom|header\.from)"}
+
+
+def _own_auth_results(msg, trusted):
+    """Ergebnis-Teile der Authentication-Results des EIGENEN Servers.
+
+    Zählt nur, wenn die authserv-id (vor dem ersten ";") auf eine eigene Domain endet UND der Header über dem
+    ersten Received steht: der eigene Server schreibt sein Urteil ganz oben, alles unterhalb kann vom Absender
+    stammen (ein gefälschtes "dkim-verifier.icloud.com; dkim=pass" in der Mail hilft also nicht)."""
+    out = []
+    for name, value in msg.items():
+        name = name.lower()
+        if name == "received":
+            break
+        if name != "authentication-results":
+            continue
+        value = re.sub(r"\([^()]*\)", " ", str(value))      # Kommentare wie "(2048-bit key)" weg
+        head, _, rest = value.partition(";")
+        sid = (head.split() or [""])[0].lower().strip(".")
+        if sid and domain_in(sid, trusted):
+            out.append(rest)
+    return out
+
+
+def auth_verdict(msg, dom, trusted):
+    """'pass' / 'fail' / 'none' für die Absender-Domain – nur nach dem Urteil des eigenen Servers.
+
+    pass = dkim=pass (Signatur-Domain = Absender-Domain) oder dmarc=pass für sie, und nichts Negatives.
+    none = kein verwertbares Urteil (kein Header, fremde authserv-id, nur andere Domains) -> auch kein Auto-Öffnen."""
+    rd = reg_domain(dom)
+    passed = False
+    for part in _own_auth_results(msg, trusted):
+        for m in AUTH_RES.finditer(part):
+            kind, res, props = m.group(1).lower(), m.group(2).lower(), m.group(3)
+            d = re.search(AUTH_KEY[kind] + r"\s*=\s*(?:[^@\s;]*@)?([\w.-]+)", props, re.I)
+            pd = reg_domain(d.group(1)) if d else ""
+            bad = res in ("fail", "permerror", "policy", "softfail")
+            if kind == "spf":
+                if res == "fail" and pd == rd:
+                    return "fail"
+                continue
+            if pd != rd:
+                if kind == "dmarc" and not pd and bad:
+                    return "fail"
+                continue          # z. B. dkim=pass header.d=sendgrid.net – zählt nicht für den Absender
+            if res == "pass":
+                passed = True
+            elif bad:
+                return "fail"
+    return "pass" if passed else "none"
+
+
+def parse_pairs(raw):
+    """{Absender: [(Host, Pfad-Regex oder None)]} aus dem Konfig-Format; Ungültiges fällt weg."""
+    out = {}
+    for sender, rules in (raw or {}).items():
+        if not isinstance(sender, str) or "." not in sender or not isinstance(rules, list):
+            continue
+        lst = []
+        for r in rules:
+            host, path = (r, None) if isinstance(r, str) else (
+                (r.get("host"), r.get("path")) if isinstance(r, dict) else (None, None))
+            if not isinstance(host, str) or "." not in host:
+                continue
+            host = host.lower().strip(".")
+            try:
+                pat = re.compile(path) if isinstance(path, str) and path else None
+            except re.error:
+                continue
+            if host.startswith("*.") and pat is None:
+                continue          # Platzhalter nur mit Pfad-Muster
+            lst.append((host, pat))
+        if lst:
+            out[sender.lower().strip(".")] = lst
+    return out
+
+
+def default_trusted(acc):
+    """authserv-ids des eigenen Servers: iCloud -> icloud.com/me.com/apple.com, sonst Domain des IMAP-Hosts."""
+    rd = reg_domain((acc.get("mail") or {}).get("host", ""))
+    if rd in ("me.com", "icloud.com", "mac.com", "apple.com"):
+        return ("icloud.com", "me.com", "apple.com")
+    return (rd,) if rd else ()
+
+
+def links_cfg(acc, top=None):
+    """(autoOpen, cfg) – Konto-Eintrag "magicLinks" vor globalem "magicLinks" vor Standard.
+
+    cfg: pairs (Absender -> Link-Regeln), legacy (nur altes "domains" ohne "pairs" -> nie automatisch, nur Meldung),
+    trusted (authserv-ids des eigenen Servers; "authservIds" überschreibt)."""
+    c = acc.get("magicLinks") if isinstance(acc.get("magicLinks"), dict) else (
+        (acc.get("mail") or {}).get("magicLinks") if isinstance((acc.get("mail") or {}).get("magicLinks"), dict) else
+        (top if isinstance(top, dict) else {}))
+    auto = c.get("autoOpen", True) is not False
+    raw = c.get("pairs")
+    legacy = not isinstance(raw, dict) and isinstance(c.get("domains"), list)
+    pairs = parse_pairs(raw if isinstance(raw, dict) else DEFAULT_LINK_PAIRS)
+    ids = c.get("authservIds")
+    trusted = tuple(i.lower().strip(".") for i in ids if isinstance(i, str) and "." in i) \
+        if isinstance(ids, list) else default_trusted(acc)
+    return auto, {"pairs": pairs, "legacy": legacy, "trusted": trusted}
+
+
+def _rule_ok(host, path, rules, any_path=False):
+    for h, pat in rules:
+        ok = re.fullmatch(r"[a-z0-9-]+\." + re.escape(h[2:]), host) if h.startswith("*.") else host == h
+        if ok and (any_path or pat is None or pat.fullmatch(path or "/")):
+            return True
+    return False
+
+
+def redirects_elsewhere(url, rules):
+    """True, wenn der Link per Parameter/Pfad auf ein Ziel außerhalb der erlaubten Hosts zeigen kann."""
+    u = urllib.parse.urlsplit(url)
+    path = u.path
+    for _ in range(3):                          # auch mehrfach kodiert (https%253A%252F%252F…)
+        if re.search(r"(?i)(?:https?|javascript|data|file):|[/\\]{2}", path):
+            return True
+        nxt = urllib.parse.unquote(path)
+        if nxt == path:
+            break
+        path = nxt
+    vals = [v for _, v in urllib.parse.parse_qsl(u.query, keep_blank_values=True)] + \
+        [v for _, v in urllib.parse.parse_qsl(u.fragment, keep_blank_values=True)]
+    for v in vals:
+        for _ in range(3):
+            if EMBEDDED_URL.search(v):
+                t = v.strip().replace("\\", "/")
+                _, th = safe_url("https:" + t if t.startswith("//") else t)
+                if not th or not _rule_ok(th, "", rules, any_path=True):
+                    return True
+                break
+            nxt = urllib.parse.unquote(v)
+            if nxt == v:
+                break
+            v = nxt
+    return False
+
+
+def link_decision(msg, subject, age, cfg, seen=()):
+    """(url, auto, reason) – url None = keine Anmelde-Mail/kein eindeutiger Link. reason nur für Log/Test."""
+    plains, htmls = message_parts(msg)
+    texts = plains + [html_text(h)[:30000] for h in htmls]
+    if not is_login_mail(subject, texts):
+        return None, False, "not-login"
+    url = pick_link(plains, htmls)
+    if not url:
+        return None, False, "no-link"
+    u = urllib.parse.urlsplit(url)
+    host = (u.hostname or "").lower()
+    if cfg.get("legacy"):
+        return url, False, "legacy-config"       # altes "domains": zu großzügig -> nur Meldung
+    dom = sender_domain(msg)
+    rules = cfg.get("pairs", {}).get(dom) if dom else None
+    if not rules:
+        return url, False, "sender-not-allowed"
+    local = email.utils.parseaddr(str(msg.get("From", "") or ""))[1].rpartition("@")[0]
+    # GitHub-Benachrichtigungen u. ä. tragen fremden Inhalt (jeder kann @bastian erwähnen und beliebige Links setzen,
+    # DKIM ist trotzdem echt); mehrere From-Header: DMARC prüft evtl. einen anderen als wir -> nie auto
+    if (len(msg.get_all("From") or []) != 1 or msg.get("X-GitHub-Reason") is not None
+            or USER_CONTENT_FROM.match(local) or USER_CONTENT_SUBJ.search(subject or "")):
+        return url, False, "user-content"
+    if not _rule_ok(host, u.path, rules):
+        return url, False, "foreign-link-host"
+    if redirects_elsewhere(url, rules):
+        return url, False, "redirect"
+    if age is None or age > LINK_MAX_AGE:
+        return url, False, "old"
+    if link_hash(url) in seen:
+        return url, False, "seen"
+    verdict = auth_verdict(msg, dom, cfg.get("trusted") or ())
+    if verdict != "pass":
+        return url, False, "auth-" + verdict
+    return url, True, "ok"
+
+
+def link_hash(url):
+    return hashlib.sha256(url.encode("utf-8", "replace")).hexdigest()[:32]
+
+
+def _mk(frm, subject, html_body=None, text_body=None, auth=None, extra=()):
+    """Testmail. auth: A-R-Wert oder Liste; extra: weitere (Name, Wert) in dieser Reihenfolge danach."""
+    from email.message import EmailMessage
+    m = EmailMessage()
+    for a in ([auth] if isinstance(auth, str) else auth or []):
+        m["Authentication-Results"] = a
+    m["From"] = frm
+    m["Subject"] = subject
+    if text_body is not None and html_body is not None:
+        m.set_content(text_body)
+        m.add_alternative(html_body, subtype="html")
+    elif html_body is not None:
+        m.set_content(html_body, subtype="html")
+    else:
+        m.set_content(text_body or "")
+    head, sep, body = m.as_bytes().partition(b"\n\n")
+    # roh anhängen: EmailMessage verbietet z. B. einen zweiten From (genau das soll getestet werden)
+    head += b"".join(("\n%s: %s" % kv).encode() for kv in extra)
+    return email.message_from_bytes(head + sep + body, policy=email.policy.default)
+
+
+def link_selftest():
+    footer = ('<p><a href="https://www.anthropic.com/legal/privacy">Privacy Policy</a> · '
+              '<a href="https://twitter.com/AnthropicAI">Twitter</a></p>')
+    ok_ant = "dkim-verifier.icloud.com; dkim=pass (2048-bit key) header.d=mail.anthropic.com header.i=@mail.anthropic.com"
+    ok_dmarc = lambda d: "dmarc.icloud.com; dmarc=pass header.from=" + d     # noqa: E731
+    cfg = {"pairs": parse_pairs(DEFAULT_LINK_PAIRS), "legacy": False, "trusted": ("icloud.com", "me.com", "apple.com")}
+    legacy = dict(cfg, legacy=True)
+    cases = [
+        # (Name, Mail, Alter, erwartet: (url-Präfix oder None, auto)[, cfg])
+        ("Anthropic login (button + text)", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Secure link to log in to Claude.ai",
+            '<p>Click the button below to log in to Claude.ai.</p><a href="https://claude.ai/magic-link#abc123">'
+            'Sign in to Claude.ai</a>' + footer,
+            "Click the link below to log in:\nhttps://claude.ai/magic-link#abc123\n", ok_ant), 30,
+         ("https://claude.ai/magic-link#abc123", True)),
+        ("Anthropic, nur dmarc=pass", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Secure link to log in to Claude.ai",
+            '<a href="https://claude.ai/magic-link#d1">Sign in to Claude.ai</a>', auth=ok_dmarc("mail.anthropic.com")),
+         30, ("https://claude.ai/magic-link#d1", True)),
+        ("Anthropic via click-tracker (nicht im Paar)", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Your Claude login link",
+            '<a href="https://links.mail.anthropic.com/ls/click?upn=XYZ">Log in</a>'
+            '<a href="https://links.mail.anthropic.com/ls/click?upn=UNSUB">Unsubscribe</a>', auth=ok_ant), 60,
+         ("https://links.mail.anthropic.com/ls/click?upn=XYZ", False)),
+        ("GitHub verify email", _mk(
+            "GitHub <noreply@github.com>", "[GitHub] Please verify your email address.",
+            '<p>Almost done, @bastian! To complete your GitHub sign up, we just need to verify your email address.</p>'
+            '<a href="https://github.com/users/bastian/emails/123/confirm_verification/tok">Verify email address</a>'
+            '<a href="https://docs.github.com/articles/github-terms-of-service">Terms</a>'
+            '<a href="https://github.com/settings/emails">Settings</a>',
+            auth=ok_dmarc("github.com")), 120,
+         ("https://github.com/users/bastian/emails/123/confirm_verification/tok", True)),
+        ("GitHub: anderer Pfad", _mk(
+            "GitHub <noreply@github.com>", "Sign in to GitHub",
+            '<a href="https://github.com/login/magic?t=2">Sign in</a>', auth=ok_dmarc("github.com")), 30,
+         ("https://github.com/login/magic?t=2", False)),
+        ("GitHub -> claude.ai (nicht im Paar)", _mk(
+            "GitHub <noreply@github.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#fremd">Sign in</a>', auth=ok_dmarc("github.com")), 30,
+         ("https://claude.ai/magic-link#fremd", False)),
+        ("GitHub-Benachrichtigung (fremder Inhalt)", _mk(
+            "attacker <notifications@github.com>", "[x/login] Sign in to continue (Issue #1)",
+            '<a href="https://github.com/users/x/emails/1/confirm_verification/fremd">Sign in</a>',
+            auth=ok_dmarc("github.com"), extra=[("X-GitHub-Reason", "mention")]), 30,
+         ("https://github.com/users/x/emails/1/confirm_verification/fremd", False)),
+        ("Phishing: Absender ok, Link fremd", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude-login.example.net/magic?t=1">Sign in to Claude</a>', auth=ok_ant), 30,
+         ("https://claude-login.example.net/", False)),
+        ("Phishing: gefälschter Absender (DKIM fail)", _mk(
+            "Anthropic <no-reply@anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#x">Sign in</a>',
+            auth="dkim-verifier.icloud.com; dkim=fail header.d=anthropic.com"), 30,
+         ("https://claude.ai/magic-link#x", False)),
+        ("Phishing: DKIM nur fremde Domain", _mk(
+            "Anthropic <no-reply@anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#y">Sign in</a>',
+            auth="mx.icloud.com; dkim=pass header.d=evil.example; spf=pass smtp.mailfrom=evil.example"), 30,
+         ("https://claude.ai/magic-link#y", False)),
+        ("Kein Authentication-Results", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#n">Sign in</a>'), 30, ("https://claude.ai/magic-link#n", False)),
+        ("A-R mit fremder authserv-id", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#f">Sign in</a>',
+            auth="mx.evil.example; dkim=pass header.d=mail.anthropic.com"), 30, ("https://claude.ai/magic-link#f", False)),
+        ("icloud-A-R gefälscht unter Received", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#r">Sign in</a>',
+            auth=["dkim-verifier.icloud.com; dkim=none"],
+            extra=[("Received", "from mail.evil.example by mx.icloud.com"),
+                   ("Authentication-Results", "dkim-verifier.icloud.com; dkim=pass header.d=mail.anthropic.com")]), 30,
+         ("https://claude.ai/magic-link#r", False)),
+        ("Zwei From-Header", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#2">Sign in</a>', auth=ok_ant, extra=[("From", "x@evil.example")]),
+         30, ("https://claude.ai/magic-link#2", False)),
+        ("Google: Weiterleitung continue=fremd", _mk(
+            "Google <no-reply@accounts.google.com>", "Verify your email address",
+            '<a href="https://accounts.google.com/signin/verify?t=1&continue=https%3A%2F%2Fevil.example%2F">Verify</a>',
+            auth=ok_dmarc("accounts.google.com")), 30, ("https://accounts.google.com/signin/verify", False)),
+        ("Google: google.com/url (nicht im Paar)", _mk(
+            "Google <no-reply@accounts.google.com>", "Verify your email address",
+            '<a href="https://www.google.com/url?q=https://evil.example/&sa=D">Verify</a>',
+            auth=ok_dmarc("accounts.google.com")), 30, ("https://www.google.com/url", False)),
+        ("Google-Docs-Freigabe (fremder Inhalt)", _mk(
+            "Eve (via Google Docs) <drive-shares-dm-noreply@google.com>", "Sign in to continue",
+            '<a href="https://accounts.google.com/ServiceLogin?t=1">Sign in</a>', auth=ok_dmarc("google.com")), 30,
+         ("https://accounts.google.com/ServiceLogin", False)),
+        ("Slack Magic-Login", _mk(
+            "Slack <no-reply@slack.com>", "Slack confirmation: sign in to Bastian",
+            '<a href="https://bastian.slack.com/z-app-123-456-abcdef">Sign in to Slack</a>',
+            auth=ok_dmarc("slack.com")), 30, ("https://bastian.slack.com/z-app-123-456-abcdef", True)),
+        ("Slack-Einladung", _mk(
+            "Slack <no-reply@slack.com>", "Eve has invited you to work with them in Slack",
+            '<p>Click to sign in to your new workspace</p><a href="https://evil.slack.com/x-123-456/join">Sign in to Evil</a>',
+            auth=ok_dmarc("slack.com")), 30, ("https://evil.slack.com/", False)),
+        ("Unbekannter Absender", _mk(
+            "Shop <hello@shop.example>", "Dein Anmeldelink",
+            '<p>Klicke hier, um dich anzumelden:</p><a href="https://shop.example/auth/magic?t=9">Anmelden</a>'
+            '<a href="https://shop.example/abmelden">Newsletter abmelden</a>'), 30,
+         ("https://shop.example/auth/magic?t=9", False)),
+        ("Altes domains-Schema -> nur Meldung", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#l">Sign in</a>', auth=ok_ant), 30,
+         ("https://claude.ai/magic-link#l", False), legacy),
+        ("Zu alt", _mk(
+            "Anthropic <no-reply@mail.anthropic.com>", "Sign in to Claude",
+            '<a href="https://claude.ai/magic-link#o">Sign in</a>', auth=ok_ant), 15 * 60,
+         ("https://claude.ai/magic-link#o", False)),
+        ("http statt https", _mk(
+            "GitHub <noreply@github.com>", "Sign in to GitHub", '<a href="http://github.com/login?t=2">Sign in</a>'), 30,
+         (None, False)),
+        ("Newsletter mit Log-in im Footer", _mk(
+            "Notion <team@mail.notion.so>", "What's new in Notion – October",
+            '<h1>New features</h1><a href="https://notion.so/blog/oct">Read more</a>'
+            '<p><a href="https://notion.so/login">Log in</a> · <a href="https://notion.so/unsubscribe">Unsubscribe</a></p>'),
+         30, (None, False)),
+        ("Sicherheitswarnung", _mk(
+            "Google <no-reply@accounts.google.com>", "Security alert: new sign-in on Linux",
+            '<p>New sign-in to your account.</p><a href="https://accounts.google.com/AccountChooser?continue=x">'
+            'Check activity</a>'), 30, (None, False)),
+        ("Zwei verschiedene Anmelde-Links", _mk(
+            "Slack <no-reply@slack.com>", "Sign in to Slack",
+            '<a href="https://a.slack.com/z/login?t=1">Sign in</a><a href="https://b.slack.com/z/login?t=2">Sign in</a>'),
+         30, (None, False)),
+        ("Mail mit Code (kein Link)", _mk(
+            "GitHub <noreply@github.com>", "[GitHub] Sign in code", text_body="Your sign-in code is 482913."), 30,
+         (None, False)),
+        ("Nur Text, Discord verify", _mk(
+            "Discord <noreply@discord.com>", "Verify Email Address for Discord",
+            text_body="Hey bastian,\n\nThanks for registering. Verify your email address:\n\n"
+                      "https://click.discord.com/ls/click?upn=ABC\n\nNeed help? https://support.discord.com/hc\n",
+            auth=ok_dmarc("discord.com")), 30,
+         ("https://click.discord.com/ls/click?upn=ABC", True)),
+        ("Discord-Benachrichtigung", _mk(
+            "Discord <notifications@discord.com>", "Verify your email",
+            text_body="Eve: verify your email here:\n\nhttps://click.discord.com/ls/click?upn=EVE\n",
+            auth=ok_dmarc("discord.com")), 30, ("https://click.discord.com/ls/click?upn=EVE", False)),
+        ("Userinfo-Trick im Link", _mk(
+            "GitHub <noreply@github.com>", "Sign in to GitHub",
+            '<a href="https://github.com@evil.example/login">Sign in</a>'), 30, (None, False)),
+    ]
+    bad = 0
+    for name, msg, age, want, *c in cases:
+        want_url, want_auto = want
+        url, auto, why = link_decision(msg, str(msg["Subject"]), age, c[0] if c else cfg)
+        ok = auto == want_auto and (url is None if want_url is None else bool(url) and url.startswith(want_url))
+        bad += not ok
+        print("%s  %-42s -> %s %s%s" % ("ok  " if ok else "FAIL", name[:42], "auto" if auto else "----", why,
+                                       "" if ok else "  (url=%s)" % url))
+    print("%d/%d ok" % (len(cases) - bad, len(cases)))
+    return bad
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Mail lesen
+
+def message_text(msg):
+    """Text- und HTML-Teile als Klartext (Anhänge ignoriert, abgeschnittene Teile tolerant)."""
+    plain, rich = [], []
+    for part in msg.walk():
+        if part.is_multipart() or part.get_content_disposition() == "attachment":
+            continue
+        ctype = part.get_content_type()
+        if ctype not in ("text/plain", "text/html"):
+            continue
+        try:
+            content = part.get_content()
+        except (LookupError, ValueError, AssertionError, KeyError, TypeError):
+            payload = part.get_payload(decode=True) or b""
+            content = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        if not isinstance(content, str):
+            continue
+        (plain if ctype == "text/plain" else rich).append(content[:30000] if ctype == "text/plain" else html_text(content[:200000])[:30000])
+    # beide nehmen (manche Text-Teile sind nur "im Browser ansehen"), find_code bewertet sie getrennt
+    return plain + rich
+
+
+def internal_ts(meta):
+    m = re.search(rb'INTERNALDATE "([^"]+)"', meta)
+    if m:
+        t = imaplib.Internaldate2tuple(b'INTERNALDATE "' + m.group(1) + b'"')
+        if t:
+            return time.mktime(t)
+    return 0
+
+
+def valid_mid(mid):
+    return mid if mid and re.fullmatch(r"[^\s<>\"']{1,250}", mid) else ""
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Desktop
+
+def spawn_app(argv, description=None):
+    """Apps nie direkt starten (sterben sonst mit dem Dienst) -> eigener Scope in app.slice.
+
+    description: sonst steht die ganze Befehlszeile (bei Links samt Token) als Unit-Name im Journal."""
+    desc = ["--description=" + description] if description else []
+    try:
+        subprocess.Popen(["systemd-run", "--user", "--scope", "--slice=app.slice", "--quiet"] + desc + ["--"] + argv,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as e:
+        log("launch failed: " + type(e).__name__)
+
+
+def open_mail(mid):
+    mid = valid_mid(mid)
+    spawn_app([APP_RUN, "thunderbird"] + (["mid:" + mid] if mid else []), description="mail-watch: open Thunderbird")
+
+
+def open_link(url):
+    """Anmelde-Link im Standardbrowser (nur nach erneuter Prüfung)."""
+    url, _ = safe_url(url)
+    if url:
+        spawn_app(["xdg-open", url], description="mail-watch: open login link")
+
+
+def _close_notification(nid):
+    subprocess.run(["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
+                    "--object-path", "/org/freedesktop/Notifications",
+                    "--method", "org.freedesktop.Notifications.CloseNotification", str(nid)],
+                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+
+
+def notify(summary, body, mid=None, on_open=None, label="Open", quiet=False):
+    """Meldung an die Shell (org.freedesktop.Notifications); Klick/"Open" öffnet die Mail (oder den Posteingang).
+
+    on_open: statt der Mail das hier ausführen (z. B. Anmelde-Link öffnen), label = Knopftext.
+    quiet:   niedrige Dringlichkeit, keine Aktion, nicht warten."""
+    entry, icon = client_entry()
+    argv = ["notify-send", "-a", "Mail", "-n", icon, "-h", "string:desktop-entry:" + entry]
+    if quiet:
+        argv += ["-u", "low", "--", summary[:200], body[:300]]
+        try:
+            subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log("notify failed: " + type(e).__name__)
+        return
+    argv += ["-p", "-A", "default=" + label, "-A", "open=" + label, "--", summary[:200], body[:300]]
+
+    def run():
+        try:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True)
+        except OSError as e:
+            log("notify failed: " + type(e).__name__)
+            return
+        first = proc.stdout.readline().strip()
+        nid = int(first) if first.isdigit() else 0
+        timer = None
+        if nid:
+            # Popup ist längst weg -> Meldung schließen, damit notify-send nicht ewig wartet
+            timer = threading.Timer(ACTION_WAIT, _close_notification, (nid,))
+            timer.daemon = True
+            timer.start()
+        rest = proc.stdout.read().split()
+        proc.wait()
+        if timer:
+            timer.cancel()
+        if any(a in ("default", "open") for a in rest + ([first] if not nid else [])):
+            if on_open:
+                on_open()
+            else:
+                open_mail(mid)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def copy(text):
+    """Über stdin an wl-copy (nicht in argv sichtbar); eigener Scope, damit die Auswahl einen Dienst-Neustart übersteht."""
+    try:
+        r = subprocess.run(["systemd-run", "--user", "--scope", "--slice=app.slice", "--quiet", "--", "wl-copy", "-n"],
+                           input=text, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        return r.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def refresh_tile():
+    """mail-status sofort laufen lassen, damit die Dashboard-Kachel stimmt."""
+    # TimeoutExpired fing niemand ab -> Konto-Thread war still tot, Dienst lief "active" weiter
+    try:
+        subprocess.run(["systemctl", "--user", "start", "--no-block", "desktop-mail.service"],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+    except (OSError, subprocess.SubprocessError) as e:
+        log("tile refresh failed: " + type(e).__name__)
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Zustand
+
+class State:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.data = {"accounts": {}, "trash": [], "links": {}}
+        try:
+            with open(STATE, encoding="utf-8") as f:
+                d = json.load(f)
+            if isinstance(d, dict):
+                self.data["accounts"] = d.get("accounts") if isinstance(d.get("accounts"), dict) else {}
+                self.data["trash"] = [t for t in d.get("trash") or [] if isinstance(t, dict)]
+                links = d.get("links") if isinstance(d.get("links"), dict) else {}
+                now = time.time()
+                # nur Hash + Zeitpunkt, nie den Link selbst
+                self.data["links"] = {h: t for h, t in links.items()
+                                      if isinstance(t, (int, float)) and now - t < LINK_MEMORY}
+        except (OSError, ValueError):
+            pass
+
+    def save(self):
+        os.makedirs(STATE_DIR, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=".mail-watch.", suffix=".tmp")
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, indent=1)
+                f.flush()
+                os.fsync(f.fileno())          # erst auf Platte, dann umbenennen (kein leerer Zustand nach Absturz)
+            os.replace(tmp, STATE)
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+
+
+# ---------------------------------------------------------------------------------------------------------
+# IMAP
+
+class AuthFailed(Exception):
+    pass
+
+
+def account_user(acc):
+    cfg = acc.get("mail") or {}
+    return cfg.get("user") or acc.get("user") or ""
+
+
+def connect(acc):
+    cfg = acc.get("mail") or {}
+    imap = imaplib.IMAP4_SSL(cfg.get("host", ""), int(cfg.get("port", 993)),
+                             ssl_context=ssl.create_default_context(), timeout=TIMEOUT)
+    pw = MS.password(acc)
+    try:
+        imap.login(account_user(acc), pw or "")
+    except imaplib.IMAP4.error:
+        try:
+            imap.logout()
+        except (OSError, imaplib.IMAP4.error):
+            pass
+        raise AuthFailed() from None
+    finally:
+        pw = None
+    return imap
+
+
+def logout(imap):
+    try:
+        imap.logout()
+    except (OSError, imaplib.IMAP4.error, ssl.SSLError):
+        pass
+
+
+def status_numbers(imap, folder):
+    typ, data = imap.status(MS.quote(folder), "(UIDVALIDITY UIDNEXT)")
+    if typ != "OK" or not data or not data[0]:
+        raise imaplib.IMAP4.error("status failed")
+    uv = re.search(rb"UIDVALIDITY (\d+)", data[0])
+    nx = re.search(rb"UIDNEXT (\d+)", data[0])
+    return (int(uv.group(1)) if uv else 0), (int(nx.group(1)) if nx else 0)
+
+
+LIST_RE = re.compile(rb'\((?P<flags>[^)]*)\) (?P<delim>"(?:[^"\\]|\\.)*"|NIL) (?P<name>.+)$')
+
+
+def find_trash(imap):
+    """Papierkorb: SPECIAL-USE \\Trash, sonst übliche Namen. Name roh (modified UTF-7) zurück."""
+    typ, data = imap.list()
+    if typ != "OK":
+        return None
+    boxes = []
+    for item in data or []:
+        if isinstance(item, tuple):          # Name als Literal
+            head, name = item[0], item[1]
+            m = LIST_RE.match(head.rstrip() + b" x")
+            flags = m.group("flags") if m else b""
+        elif isinstance(item, bytes):
+            m = LIST_RE.match(item)
+            if not m:
+                continue
+            flags, name = m.group("flags"), m.group("name").strip()
+            if name.startswith(b'"') and name.endswith(b'"'):
+                name = re.sub(rb'\\(.)', rb'\1', name[1:-1])
+        else:
+            continue
+        boxes.append((flags.lower(), name.decode("utf-8", errors="replace")))
+    for flags, name in boxes:
+        if b"\\trash" in flags.split():
+            return name
+    for want in TRASH_NAMES:
+        for flags, name in boxes:
+            if name.lower().rsplit("/", 1)[-1].rsplit(".", 1)[-1] == want and b"\\noselect" not in flags:
+                return name
+    return None
+
+
+def codes_cfg(acc):
+    c = acc.get("codes") if isinstance(acc.get("codes"), dict) else {}
+    auto = c.get("autoCopy", DEFAULT_CODES["autoCopy"])
+    after = c.get("trashAfterMin", DEFAULT_CODES["trashAfterMin"])
+    if not isinstance(after, (int, float)) or isinstance(after, bool) or after < 0:
+        after = None
+    return bool(auto), after
+
+
+class Watcher:
+    def __init__(self, acc, state):
+        self.acc = acc
+        self.name = acc["name"]
+        self.folder = (acc.get("mail") or {}).get("folder") or "INBOX"
+        self.notify_on = (acc.get("mail") or {}).get("notify", True) is not False
+        self.auto_copy, self.trash_after = codes_cfg(acc)
+        self.link_auto, self.link_cfg = links_cfg(acc, top_cfg().get("magicLinks"))
+        self.state = state
+
+    # --- Hauptschleife mit Backoff
+    def run(self):
+        backoff = 5
+        while True:
+            started = time.monotonic()
+            try:
+                self.session()
+            except AuthFailed:
+                log("%s: login failed, retry in %d min" % (self.name, AUTH_RETRY // 60))
+                time.sleep(AUTH_RETRY)
+                continue
+            except (OSError, EOFError, imaplib.IMAP4.error, imaplib.IMAP4.abort, ssl.SSLError, ValueError) as e:
+                if time.monotonic() - started > 120:
+                    backoff = 5
+                log("%s: %s, reconnect in %d s" % (self.name, MS.reason(e) or type(e).__name__, backoff))
+            except Exception as e:  # noqa: BLE001
+                # Unerwartetes darf den Konto-Thread nicht still beenden (Prozess lebt weiter, Restart greift nie);
+                # nur der Typ ins Log, nie die Meldung (könnte Mail-Inhalt enthalten)
+                log("%s: unexpected %s, reconnect in %d s" % (self.name, type(e).__name__, backoff))
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 300)
+
+    def session(self):
+        imap = connect(self.acc)
+        try:
+            uv, uidnext = status_numbers(imap, self.folder)
+            typ, _ = imap.select(MS.quote(self.folder), readonly=True)   # EXAMINE
+            if typ != "OK":
+                raise imaplib.IMAP4.error("cannot open folder")
+            with self.state.lock:
+                s = self.state.data["accounts"].get(self.name)
+                if not isinstance(s, dict) or s.get("uidvalidity") != uv or s.get("folder") != self.folder:
+                    # Erststart / Ordner neu nummeriert: nur Grenze merken, nichts melden
+                    self.state.data["accounts"][self.name] = {"folder": self.folder, "uidvalidity": uv,
+                                                              "last": max(0, uidnext - 1)}
+                    self.state.save()
+                    log("%s: baseline set" % self.name)
+            idle = "IDLE" in imap.capabilities
+            log("%s: connected (%s)" % (self.name, "IDLE" if idle else "polling"))
+            while True:
+                self.check_new(imap)
+                self.trash_due()
+                wait = self.next_wait()
+                if idle:
+                    changed = False
+                    with imap.idle(duration=wait) as idler:
+                        for typ, _ in idler:
+                            if typ in ("EXISTS", "RECENT"):
+                                break
+                            # gelöscht/verschoben (EXPUNGE) oder gelesen markiert (FETCH mit Flags):
+                            # Kachel gleich nachziehen statt bis zum nächsten 2-min-Abruf zu warten
+                            if typ in ("EXPUNGE", "FETCH"):
+                                changed = True
+                                break
+                    if changed:
+                        refresh_tile()
+                else:
+                    time.sleep(min(POLL_SECS, wait))
+                    imap.noop()
+        finally:
+            logout(imap)
+
+    def next_wait(self):
+        now = time.time()
+        with self.state.lock:
+            due = [t["due"] for t in self.state.data["trash"] if t.get("account") == self.name]
+        return max(1, min([IDLE_SECS] + [d - now + 1 for d in due]))
+
+    # --- neue Mails
+    def check_new(self, imap):
+        with self.state.lock:
+            last = int(self.state.data["accounts"][self.name].get("last", 0))
+        typ, data = imap.uid("SEARCH", None, "UID %d:*" % (last + 1))
+        if typ != "OK":
+            raise imaplib.IMAP4.error("search failed")
+        uids = sorted(u for u in (int(x) for x in (data[0] or b"").split()) if u > last)
+        if not uids:
+            return
+        meta = {}
+        typ, data = imap.uid("FETCH", ",".join(map(str, uids)), "(UID FLAGS INTERNALDATE)")
+        for item in data if typ == "OK" else []:
+            line = item[0] if isinstance(item, tuple) else item
+            if not isinstance(line, bytes):
+                continue
+            m = re.search(rb"UID (\d+)", line)
+            if m:
+                meta[int(m.group(1))] = line
+        now = time.time()
+        fresh = []          # (uid, from, subject, mid, text, age)
+        for uid in uids:
+            line = meta.get(uid)
+            if line is None:
+                continue
+            if b"\\Seen" in line:          # woanders schon gelesen
+                continue
+            ts = internal_ts(line)
+            age = now - ts if ts else 0
+            if age > NOTIFY_MAX_AGE:
+                continue
+            typ, data = imap.uid("FETCH", str(uid), "(BODY.PEEK[]<0.%d>)" % FETCH_BYTES)
+            raw = next((p[1] for p in (data if typ == "OK" else []) if isinstance(p, tuple)), None)
+            if raw is None:
+                continue
+            # eine kaputte Mail darf die Schleife nicht blockieren (sonst ewig: Absturz -> gleiche UID)
+            try:
+                msg = email.message_from_bytes(raw, policy=email.policy.default)
+                subject = str(msg.get("Subject", "") or "").strip()
+                fresh.append((uid, MS.sender(msg).strip() or "Unknown sender", subject,
+                              str(msg.get("Message-ID", "") or "").strip().strip("<>"), msg, age))
+            except Exception as e:  # noqa: BLE001
+                log("%s: unreadable message skipped (%s)" % (self.name, type(e).__name__))
+        with self.state.lock:
+            self.state.data["accounts"][self.name]["last"] = max(uids)
+            self.state.save()
+        if not fresh:
+            if uids:
+                refresh_tile()
+            return
+
+        normal = []
+        codes = links = 0
+        for uid, sender, subject, mid, msg, age in fresh:
+            code = None
+            if self.auto_copy and age <= CODE_MAX_AGE:
+                try:
+                    code = find_code(subject, message_text(msg))
+                except Exception as e:  # noqa: BLE001
+                    log("%s: code check failed (%s)" % (self.name, type(e).__name__))
+            if code and copy(code):
+                codes += 1
+                notify("Code copied", "%s · %s" % (code, sender), mid)
+                if self.trash_after is not None:
+                    with self.state.lock:
+                        self.state.data["trash"].append({"account": self.name, "folder": self.folder,
+                                                         "uidvalidity": self.state.data["accounts"][self.name]["uidvalidity"],
+                                                         "uid": uid, "due": time.time() + self.trash_after * 60,
+                                                         "tries": 0})
+                        self.state.save()
+            elif not code and self.handle_link(sender, subject, mid, msg, age, meta.get(uid)):
+                links += 1
+            else:
+                normal.append((sender, subject or "(no subject)", mid))
+        if self.notify_on and normal:
+            if len(normal) <= BURST:
+                for sender, subject, mid in normal:
+                    notify(sender, subject, mid)
+            else:
+                names = list(dict.fromkeys(s for s, _, _ in normal))
+                notify("%d new messages" % len(normal),
+                       ", ".join(names[:3]) + (" and others" if len(names) > 3 else ""))
+        log("%s: %d new%s%s" % (self.name, len(fresh), ", %d code copied" % codes if codes else "",
+                                ", %d login link(s)" % links if links else ""))
+        refresh_tile()
+
+    # --- Anmelde-Links
+    def handle_link(self, sender, subject, mid, msg, age, line):
+        """True = Mail war eine Anmelde-Mail mit eindeutigem Link (geöffnet oder als Meldung angeboten)."""
+        try:
+            # Alter: INTERNALDATE (Server) und, falls vorhanden, Date-Header – beides muss frisch sein
+            ages = [age] if line is not None and internal_ts(line) else []
+            ms = MS.date_ms(msg, 0)
+            if ms:
+                ages.append(max(0, time.time() - ms / 1000))
+            with self.state.lock:
+                seen = set(self.state.data["links"])
+            url, auto, why = link_decision(msg, subject, max(ages) if ages else None, self.link_cfg, seen)
+        except Exception as e:  # noqa: BLE001
+            log("%s: link check failed (%s)" % (self.name, type(e).__name__))
+            return False
+        if not url:
+            return False
+        _, host = safe_url(url)
+        h = link_hash(url)
+        with self.state.lock:
+            self.state.data["links"][h] = time.time()
+            self.state.save()
+        if auto and self.link_auto:
+            log("%s: login link opened (%s)" % (self.name, reg_domain(host)))
+            open_link(url)
+            notify("Login link opened", sender, quiet=True)
+        else:
+            log("%s: login link offered (%s, %s)" % (self.name, reg_domain(host), "auto off" if auto else why))
+            notify("Login link · " + sender, "%s · %s" % (subject or "(no subject)", host),
+                   on_open=lambda: open_link(url), label="Open link")
+        return True
+
+    # --- Papierkorb
+    def trash_due(self):
+        now = time.time()
+        with self.state.lock:
+            due = [t for t in self.state.data["trash"] if t.get("account") == self.name and t.get("due", 0) <= now]
+        if not due:
+            return
+        done = set()
+        conn = None
+        try:
+            conn = connect(self.acc)
+            trash = find_trash(conn)
+            if not trash:
+                log("%s: no trash folder found, keeping code mails" % self.name)
+                done.update(id(t) for t in due)
+                return
+            uv, _ = status_numbers(conn, self.folder)
+            typ, _ = conn.select(MS.quote(self.folder))        # lesend + schreibend
+            if typ != "OK":
+                raise imaplib.IMAP4.error("cannot open folder")
+            caps = conn.capabilities
+            moved = 0
+            for t in due:
+                done.add(id(t))
+                if t.get("folder") != self.folder or t.get("uidvalidity") != uv:
+                    continue
+                uid = str(int(t["uid"]))
+                typ, data = conn.uid("FETCH", uid, "(FLAGS)")
+                line = next((d for d in (data if typ == "OK" else []) if isinstance(d, bytes) and b"FLAGS" in d), None)
+                if line is None:
+                    continue                                 # schon weg/verschoben
+                if b"\\Flagged" in line:
+                    continue                                 # markiert = behalten
+                conn.uid("STORE", uid, "+FLAGS.SILENT", r"(\Seen)")
+                if "MOVE" in caps:
+                    typ, _ = conn.uid("MOVE", uid, MS.quote(trash))
+                else:
+                    typ, _ = conn.uid("COPY", uid, MS.quote(trash))
+                    if typ == "OK":
+                        conn.uid("STORE", uid, "+FLAGS.SILENT", r"(\Deleted)")
+                        if "UIDPLUS" in caps:
+                            conn.uid("EXPUNGE", uid)
+                if typ == "OK":
+                    moved += 1
+                else:
+                    done.discard(id(t))
+            if moved:
+                log("%s: %d code mail(s) moved to trash" % (self.name, moved))
+                refresh_tile()
+        except AuthFailed:
+            log("%s: trash: login failed" % self.name)
+        except (OSError, EOFError, imaplib.IMAP4.error, imaplib.IMAP4.abort, ssl.SSLError, ValueError) as e:
+            log("%s: trash: %s" % (self.name, MS.reason(e) or type(e).__name__))
+        finally:
+            if conn is not None:
+                logout(conn)          # LOGOUT, nicht CLOSE: kein Expunge fremder \Deleted-Mails
+            with self.state.lock:
+                keep = []
+                for t in self.state.data["trash"]:
+                    if any(t is d for d in due):
+                        if id(t) in done:
+                            continue
+                        t["tries"] = t.get("tries", 0) + 1
+                        if t["tries"] >= 5:
+                            continue
+                        t["due"] = time.time() + 60 * t["tries"]
+                    keep.append(t)
+                self.state.data["trash"] = keep
+                self.state.save()
+
+
+# ---------------------------------------------------------------------------------------------------------
+
+def top_cfg():
+    """Globale Einstellungen aus secrets.json (nur "magicLinks" wird hier gelesen)."""
+    try:
+        with open(CONFIG, encoding="utf-8") as f:
+            data = json.load(f)
+        return {"magicLinks": data.get("magicLinks")} if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def mail_accounts():
+    status, accounts = MS.load_accounts()
+    return [a for a in accounts if isinstance(a.get("mail"), dict) and account_user(a) and MS.password(a)]
+
+
+def check():
+    """Nur lesen: Login, Fähigkeiten, Papierkorb, 3 s IDLE."""
+    accs = mail_accounts()
+    if not accs:
+        print("no mail account with user + password in secrets.json")
+        return 1
+    rc = 0
+    for acc in accs:
+        name = acc["name"]
+        try:
+            imap = connect(acc)
+        except AuthFailed:
+            print("%s: login failed" % name)
+            rc = 1
+            continue
+        except (OSError, imaplib.IMAP4.error, ssl.SSLError) as e:
+            print("%s: %s" % (name, MS.reason(e)))
+            rc = 1
+            continue
+        try:
+            caps = imap.capabilities
+            folder = (acc.get("mail") or {}).get("folder") or "INBOX"
+            uv, nx = status_numbers(imap, folder)
+            trash = find_trash(imap)
+            imap.select(MS.quote(folder), readonly=True)
+            idle_ok = "no"
+            if "IDLE" in caps:
+                with imap.idle(duration=3) as idler:
+                    for _ in idler:
+                        pass
+                idle_ok = "ok"
+            auto, after = codes_cfg(acc)
+            lauto, lcfg = links_cfg(acc, top_cfg().get("magicLinks"))
+            print("%s: login ok · IDLE %s · MOVE %s · UIDPLUS %s · trash %r · codes autoCopy=%s trashAfterMin=%s"
+                  " · magicLinks autoOpen=%s (%s, authserv %s)"
+                  % (name, idle_ok, "MOVE" in caps, "UIDPLUS" in caps, trash, auto, after, lauto,
+                     "old domains -> notify only" if lcfg["legacy"] else "%d senders" % len(lcfg["pairs"]),
+                     "/".join(lcfg["trusted"]) or "-"))
+        except (OSError, EOFError, imaplib.IMAP4.error, ssl.SSLError) as e:
+            print("%s: %s" % (name, MS.reason(e)))
+            rc = 1
+        finally:
+            logout(imap)
+    return rc
+
+
+def main():
+    if "--selftest" in sys.argv:
+        rc = selftest()
+        print()
+        sys.exit(1 if link_selftest() or rc else 0)
+    if "--check" in sys.argv:
+        sys.exit(check())
+    socket.setdefaulttimeout(TIMEOUT)
+    accs = mail_accounts()
+    try:
+        mtime = os.stat(CONFIG).st_mtime
+    except OSError:
+        mtime = 0
+    state = State()
+    for acc in accs:
+        threading.Thread(target=Watcher(acc, state).run, name=acc["name"], daemon=True).start()
+    log("watching %d account(s)" % len(accs))
+    # secrets.json geändert (Konto/Passwort/Einstellungen) -> neu starten
+    while True:
+        time.sleep(30)
+        try:
+            now = os.stat(CONFIG).st_mtime
+        except OSError:
+            now = 0
+        if now != mtime:
+            log("config changed, restarting")
+            os.execv(sys.executable, [sys.executable, "-I", os.path.realpath(__file__)])
+
+
+if __name__ == "__main__":
+    main()

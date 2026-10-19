@@ -1,0 +1,37 @@
+# ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/lazygit.py
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jesseduffield/lazygit/v0.47.2/schema/config.json
+gui:
+  theme:
+    activeBorderColor:
+      - "#DB6B4C"
+      - "bold"
+    inactiveBorderColor:
+      - "#67503C"
+    searchingActiveBorderColor:
+      - "#E0AE55"
+      - "bold"
+    optionsTextColor:
+      - "#F2A58A"
+    selectedLineBgColor:
+      - "#5C392D"
+    inactiveViewSelectedLineBgColor:
+      - "#45372E"
+    cherryPickedCommitFgColor:
+      - "#2B1A12"
+    cherryPickedCommitBgColor:
+      - "#A07C5C"
+    markedBaseCommitFgColor:
+      - "#2B1A12"
+    markedBaseCommitBgColor:
+      - "#E0AE55"
+    unstagedChangesColor:
+      - "#E0604F"
+    defaultFgColor:
+      - "#F6ECDD"
+  nerdFontsVersion: "3"
+  showFileIcons: true
+  border: "rounded"
+git:
+  paging:
+    colorArg: "always"
+    pager: "delta --dark --paging=never"

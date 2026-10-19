@@ -1,0 +1,23 @@
+{
+  "name": "desktop-theme",
+  "displayName": "Desktop",
+  "description": "Warmes Braun, Creme und Terrakotta-Akzent. ERZEUGT aus theme/palette.json (hearth).",
+  "version": "0.2.0",
+  "publisher": "desktop",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Desktop",
+        "uiTheme": "vs-dark",
+        "path": "./themes/desktop-color-theme.json"
+      }
+    ]
+  }
+}

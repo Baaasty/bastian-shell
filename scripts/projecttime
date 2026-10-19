@@ -1,0 +1,134 @@
+#!/usr/bin/env -S python3 -I
+"""Zeit pro Projekt (Doku: docs/PROJECTTIME.md). Gemessen von der Shell (shell/services/ProjectTime.qml),
+hier nur lesen und zusammenzählen. Läuft auch ohne Shell.
+
+  projecttime today [--json]                    heute je Projekt
+  projecttime week [--offset N] [--json]        Woche Mo–So (0 = diese, -1 = letzte …)
+  projecttime month [YYYY-MM] [--json]          Monat je Projekt
+
+Daten: ~/.local/state/desktop/projecttime/YYYY-MM-DD.json
+  { "day": "…", "total": { "<projekt-id>": sekunden }, "spans": [["<projekt-id>", start, ende], …] }  (Unix-Sekunden)
+"""
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DATA = Path.home() / ".local" / "state" / "desktop" / "projecttime"
+# projects.json ist lokal (gitignored); ohne sie gilt die Beispiel-Datei
+PROJECTS = ROOT / "projects" / "projects.json"
+if not PROJECTS.exists():
+    PROJECTS = ROOT / "projects" / "projects.example.json"
+
+
+def names():
+    try:
+        p = json.loads(PROJECTS.read_text()).get("projects", {})
+        return {k: (v.get("name") or k) for k, v in p.items()}
+    except (OSError, ValueError):
+        return {}
+
+
+def load(day: dt.date):
+    try:
+        d = json.loads((DATA / f"{day.isoformat()}.json").read_text())
+    except (OSError, ValueError):
+        return {"total": {}, "spans": []}
+    tot = {k: int(v) for k, v in (d.get("total") or {}).items() if isinstance(v, (int, float)) and v > 0}
+    spans = [s for s in (d.get("spans") or []) if isinstance(s, list) and len(s) == 3]
+    return {"total": tot, "spans": spans}
+
+
+def days(a: dt.date, b: dt.date):
+    while a <= b:
+        yield a
+        a += dt.timedelta(days=1)
+
+
+def week_range(offset: int = 0):
+    today = dt.date.today()
+    mon = today - dt.timedelta(days=today.weekday()) + dt.timedelta(weeks=offset)
+    return mon, mon + dt.timedelta(days=6)
+
+
+def month_range(ym: str | None = None, offset: int = 0):
+    if ym:
+        y, m = (int(x) for x in ym.split("-"))
+    else:
+        t = dt.date.today()
+        y, m = t.year, t.month + offset
+        while m < 1:
+            y, m = y - 1, m + 12
+    first = dt.date(y, m, 1)
+    nxt = dt.date(y + (m == 12), m % 12 + 1, 1)
+    return first, nxt - dt.timedelta(days=1)
+
+
+def hm(sec: int) -> str:
+    m = round(sec / 60)
+    return f"{m // 60}:{m % 60:02d}"
+
+
+def summary(a: dt.date, b: dt.date):
+    nm = names()
+    per_day, per_proj = [], {}
+    for d in days(a, b):
+        t = load(d)["total"]
+        per_day.append({"day": d.isoformat(), "total": sum(t.values()), "projects": t})
+        for k, v in t.items():
+            per_proj[k] = per_proj.get(k, 0) + v
+    projs = sorted(({"id": k, "name": nm.get(k, k), "sec": v} for k, v in per_proj.items()), key=lambda x: -x["sec"])
+    return {"from": a.isoformat(), "to": b.isoformat(), "today": dt.date.today().isoformat(),
+            "total": sum(per_proj.values()), "days": per_day, "projects": projs}
+
+
+def print_summary(s, title):
+    print(f"{title}  {s['from']} – {s['to']}   total {hm(s['total'])} h")
+    if not s["projects"]:
+        print("  (no project time)")
+    for p in s["projects"]:
+        print(f"  {hm(p['sec']):>7}  {p['name']}")
+
+
+def main(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    flags = {a for a in argv if a.startswith("--")}
+
+    def opt(name, default=None):
+        if name in argv:
+            i = argv.index(name)
+            if i + 1 < len(argv):
+                return argv[i + 1]
+        return default
+
+    for name in ("--offset",):
+        v = opt(name)
+        if v is not None and v in args:
+            args.remove(v)
+    as_json = "--json" in flags
+    cmd = args[0] if args else "today"
+
+    if cmd in ("-h", "help", "hilfe") or "--help" in flags:
+        print(__doc__.strip())
+        return 0
+    if cmd == "today":
+        t = dt.date.today()
+        s = summary(t, t)
+    elif cmd == "week":
+        s = summary(*week_range(int(opt("--offset", "0"))))
+    elif cmd == "month":
+        s = summary(*month_range(args[1] if len(args) > 1 else None))
+    else:
+        print(f"unknown command '{cmd}'\n\n{__doc__.strip()}", file=sys.stderr)
+        return 2
+
+    if as_json:
+        print(json.dumps(s))
+    else:
+        print_summary(s, cmd)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

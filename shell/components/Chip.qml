@@ -1,0 +1,46 @@
+import QtQuick
+import qs.config
+import qs.services
+
+// Klickbarer Bereich in der Bar (30 px hoch); Inhalt kommt als Kinder in die Row
+Rectangle {
+    id: chip
+
+    property bool active: false
+    property alias hovered: area.containsMouse
+    property alias pressed: area.pressed
+    default property alias content: row.data
+    property int padding: 10
+    property bool alignLeft: false   // in Menüs: Inhalt linksbündig
+    property string hintKey: ""      // Bar-Modus (Super+B): Buchstabe, der dieses Popout öffnet (BarKeys.qml)
+    signal clicked(var mouse)
+    signal doubleClicked(var mouse)
+
+    implicitWidth: row.implicitWidth + padding * 2
+    implicitHeight: 30
+    radius: Theme.radiusSm
+    // aktiv deutlich, Hover leise (beides deckend auf der Fläche darunter)
+    color: active ? Qt.alpha(Theme.text, 0.14) : area.containsMouse ? Theme.raise : "transparent"
+    Behavior on color { ColorAnimation { duration: Theme.fade } }
+
+    Row {
+        id: row
+        x: chip.alignLeft ? chip.padding + 4 : (chip.width - width) / 2
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 10
+    }
+
+    KeyHint {
+        key: chip.hintKey
+    }
+
+    MouseArea {
+        id: area
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        cursorShape: Qt.PointingHandCursor
+        onClicked: mouse => chip.clicked(mouse)
+        onDoubleClicked: mouse => chip.doubleClicked(mouse)
+    }
+}

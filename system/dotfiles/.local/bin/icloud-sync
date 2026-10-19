@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -uo pipefail
+STATE="$HOME/.local/state/icloud-sync"; LOG="$STATE/sync.log"; FAIL="$STATE/failed"
+notify(){ notify-send -a "iCloud Sync" -u "$1" -i folder-cloud "$2" "$3" 2>/dev/null || true; }
+if [[ -f "$STATE/last-auth" ]]; then
+  age=$(( ($(date +%s) - $(stat -c %Y "$STATE/last-auth")) / 86400 ))
+  (( age >= 27 )) && notify normal "iCloud-Login läuft bald ab" "Seit $age Tagen. Terminal: icloud-login"
+fi
+exec 9>"$STATE/lock"; flock -n 9 || exit 0
+out=$(rclone bisync icloud: "$HOME/Data/iCloud/Drive" --compare size,modtime --no-update-dir-modtime \
+  --resilient --recover --max-lock 5m --conflict-resolve newer --conflict-loser num \
+  --filters-file "$HOME/.config/rclone/icloud-filter.txt" -v 2>&1); rc=$?
+{ echo "=== $(date '+%F %T') rc=$rc"; echo "$out"; } >> "$LOG"
+tail -n 5000 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+if (( rc == 0 )); then
+  [[ -f "$FAIL" ]] && { rm -f "$FAIL"; notify low "iCloud Sync" "Läuft wieder."; }; exit 0
+fi
+touch "$FAIL"
+if grep -qiE '423|401|PCS|trust.?token|authenticat|2fa|reconnect|unauthori' <<<"$out"; then
+  notify critical "iCloud: Neu anmelden" "Terminal: icloud-login"
+elif grep -qi 'resync' <<<"$out"; then
+  notify critical "iCloud: Resync nötig" "Log: ~/.local/state/icloud-sync/sync.log"
+else
+  notify normal "iCloud Sync fehlgeschlagen" "Log: ~/.local/state/icloud-sync/sync.log"
+fi
+exit $rc

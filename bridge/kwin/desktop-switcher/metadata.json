@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "KWin/WindowSwitcher",
+    "KPlugin": {
+        "Authors": [{ "Name": "Bastian Möller" }],
+        "Description": "Window switcher in the Desktop look: preview, icon and title on a warm card",
+        "Icon": "preferences-system-windows-switcher-thumbnail-grid",
+        "Id": "desktop-switcher",
+        "License": "GPL-2.0-or-later",
+        "Name": "Desktop: Window Switcher",
+        "Version": "1.0"
+    },
+    "X-Plasma-API": "declarativeappletscript"
+}

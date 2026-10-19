@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Konsole entschlacken: keine Werkzeugleisten, keine Menüleiste, Tab-Leiste nur bei mehreren Tabs.
+
+  scripts/konsole-ui on       alten Stand sichern, dann umstellen (wirkt in NEUEN Konsole-Fenstern)
+  scripts/konsole-ui off      alten Stand zurück
+  scripts/konsole-ui status
+
+Wird von `scripts/rice theme on|off` mit aufgerufen. Profil-Sachen (Cursor, Scrollbar, Rand)
+stehen im Profil "Desktop" (theme/gen/konsole.py), nicht hier.
+
+Wo Konsole 26.08 (KF6) das speichert:
+  ~/.config/konsolerc              [TabBar] TabBarVisibility/SearchTabsButton/NewTabButton
+                                   (Menüleiste ist schon per /etc/xdg/konsolerc MenuBar=Disabled aus)
+  ~/.local/state/konsolestaterc    [MainWindow] State = QMainWindow::saveState() (Base64).
+                                   Darin pro Werkzeugleiste ein Sichtbar-Bit; eine Einstellung dafür gibt es nicht
+                                   (nur `konsole --hide-toolbars`). Wir kippen genau dieses Bit.
+Menü bleibt erreichbar: Rechtsklick ins Terminal oder Strg+Shift+M (Menüleiste ein/aus).
+"""
+import base64
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+
+HOME = pathlib.Path.home()
+RC = "konsolerc"
+STATERC = str(HOME / ".local/state/konsolestaterc")
+BACKUP = HOME / ".local/state/desktop/konsole-ui-backup.json"
+FILES = HOME / ".local/state/desktop/konsole-ui-files"  # Notfall-Kopien der Originaldateien (vom ersten "on")
+TOOLBARS = ["mainToolBar", "sessionToolbar"]
+
+# (Gruppe, Schlüssel, Wert) in konsolerc
+SETTINGS = [
+    ("TabBar", "TabBarVisibility", "ShowTabBarWhenNeeded"),
+    ("TabBar", "SearchTabsButton", "HideSearchTabsButton"),
+    ("TabBar", "NewTabButton", "false"),
+]
+
+
+def read(file: str, group: str, key: str) -> str:
+    return subprocess.run(["kreadconfig6", "--file", file, "--group", group, "--key", key],
+                          capture_output=True, text=True).stdout.rstrip("\n")
+
+
+def write(file: str, group: str, key: str, value):
+    """value None = Schlüssel löschen (Konsole nimmt dann den eingebauten Standard)."""
+    cmd = ["kwriteconfig6", "--file", file, "--group", group, "--key", key]
+    subprocess.run(cmd + (["--delete"] if value is None else [value]), check=True)
+
+
+def flags_offsets(state: bytes) -> dict:
+    """Position des Sichtbar-Bytes je Werkzeugleiste: QString (Länge + UTF-16BE), danach 1 Byte (Bit 0 = sichtbar)."""
+    found = {}
+    for name in TOOLBARS:
+        raw = name.encode("utf-16-be")
+        needle = len(raw).to_bytes(4, "big") + raw
+        i = state.find(needle)
+        if i >= 0:
+            found[name] = i + len(needle)
+    return found
+
+
+def get_state():
+    s = read(STATERC, "MainWindow", "State")
+    return bytearray(base64.b64decode(s)) if s else None
+
+
+def set_toolbars(visible: dict):
+    """visible: {name: bool}. Fehlt ein State (Konsole nie benutzt), gibt es nichts zu kippen."""
+    state = get_state()
+    if state is None:
+        return False
+    for name, off in flags_offsets(bytes(state)).items():
+        if name in visible:
+            state[off] = (state[off] & ~1) | (1 if visible[name] else 0)
+    write(STATERC, "MainWindow", "State", base64.b64encode(bytes(state)).decode())
+    return True
+
+
+def toolbars_visible() -> dict:
+    state = get_state()
+    if state is None:
+        return {}
+    return {n: bool(state[o] & 1) for n, o in flags_offsets(bytes(state)).items()}
+
+
+def on():
+    if not BACKUP.exists():
+        BACKUP.parent.mkdir(parents=True, exist_ok=True)
+        old = {"rc": {f"{g}/{k}": read(RC, g, k) for g, k, _ in SETTINGS}, "toolbars": toolbars_visible()}
+        BACKUP.write_text(json.dumps(old, indent=1) + "\n")
+        FILES.mkdir(exist_ok=True)
+        for f in [HOME / ".config" / RC, pathlib.Path(STATERC)]:
+            if f.exists() and not (FILES / f.name).exists():
+                shutil.copy2(f, FILES / f.name)
+    for g, k, v in SETTINGS:
+        write(RC, g, k, v)
+    ok = set_toolbars({n: False for n in TOOLBARS})
+    print("Konsole schlank (neue Fenster)." + ("" if ok else " Werkzeugleisten: noch kein Fensterstand, einmal Konsole öffnen und erneut ausführen."))
+
+
+def off():
+    if not BACKUP.exists():
+        print("Kein Backup, nichts zu tun.")
+        return
+    old = json.loads(BACKUP.read_text())
+    for g, k, _ in SETTINGS:
+        v = old["rc"].get(f"{g}/{k}", "")
+        write(RC, g, k, v or None)
+    if old.get("toolbars"):
+        set_toolbars(old["toolbars"])
+    BACKUP.unlink()
+    print("Konsole: alter Stand zurück (neue Fenster).")
+
+
+def status():
+    for g, k, _ in SETTINGS:
+        print(f"{g}/{k} = {read(RC, g, k) or '(Standard)'}")
+    print("Werkzeugleisten sichtbar:", toolbars_visible() or "(kein Fensterstand)")
+    print("Backup:", BACKUP if BACKUP.exists() else "keins")
+
+
+if __name__ == "__main__":
+    {"on": on, "off": off, "status": status}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: print(__doc__))()

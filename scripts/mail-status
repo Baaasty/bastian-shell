@@ -1,0 +1,190 @@
+#!/usr/bin/python3 -I
+"""Ungelesene Mails pro Konto (IMAP, nur lesen) -> ~/.cache/desktop/mail.json.
+
+Konten: secrets.json im Repo-Root, Abschnitt "accounts" (Vorlage: secrets.example.json),
+inkl. app-spezifischem Passwort. Das Passwort bleibt im Speicher, nie in argv, Log oder Ausgabe.
+
+Pro Konto: STATUS UNSEEN der INBOX + Absender/Betreff/Datum der letzten 5 ungelesenen.
+Ordner wird nur per EXAMINE (readonly) geöffnet, Header per BODY.PEEK -> nichts wird als gelesen markiert.
+
+Ausgabe:
+{ "updated": ms, "status": "ok" | "no-config" | "config-error",
+  "total": n,
+  "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "auth" | "error",
+                 "error", "unread", "messages": [{ "from", "subject", "date" (ms), "mid" (Message-ID ohne <>) }] }] }
+"""
+import email
+import email.policy
+import email.utils
+import imaplib
+import json
+import os
+import re
+import socket
+import ssl
+import tempfile
+import time
+
+CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "secrets.json")
+CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "desktop")
+OUT = os.path.join(CACHE_DIR, "mail.json")
+LATEST = 5
+TIMEOUT = 20
+
+
+def load_accounts():
+    """(status, accounts) – fehlende/kaputte Konfig ist ein Zustand, kein Absturz."""
+    try:
+        with open(CONFIG, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return "no-config", []
+    except (OSError, ValueError):
+        return "config-error", []
+    accounts = data.get("accounts") if isinstance(data, dict) else None
+    accounts = [a for a in accounts if isinstance(a, dict) and a.get("name")] if isinstance(accounts, list) else []
+    return ("ok" if accounts else "no-config"), accounts
+
+
+def password(acc):
+    """App-spezifisches Passwort aus dem Konto-Eintrag oder None."""
+    pw = acc.get("password")
+    return pw if isinstance(pw, str) and pw else None
+
+
+def quote(folder):
+    return folder if re.fullmatch(r"[A-Za-z0-9_./-]+", folder) else '"' + folder.replace('"', '\\"') + '"'
+
+
+def sender(msg):
+    h = msg.get("From")
+    if h is None:
+        return ""
+    try:
+        addrs = h.addresses
+        if addrs:
+            return addrs[0].display_name or addrs[0].addr_spec
+    except (AttributeError, IndexError):
+        pass
+    return str(h)
+
+
+def date_ms(msg, internal):
+    try:
+        d = email.utils.parsedate_to_datetime(str(msg.get("Date", "")))
+        if d is not None:
+            return int(d.timestamp() * 1000)
+    except (TypeError, ValueError, IndexError):
+        pass
+    if internal:
+        t = imaplib.Internaldate2tuple(b'INTERNALDATE "' + internal + b'"')
+        if t:
+            return int(time.mktime(t) * 1000)
+    return 0
+
+
+def reason(e):
+    """Kurzer, harmloser Fehlertext (nie Zugangsdaten)."""
+    if isinstance(e, socket.gaierror):
+        return "Offline"
+    if isinstance(e, TimeoutError):
+        return "Timeout"
+    if isinstance(e, ssl.SSLError):
+        return "TLS error"
+    if isinstance(e, OSError):
+        return type(e).__name__
+    text = e.args[0] if e.args else ""
+    return (text.decode(errors="replace") if isinstance(text, bytes) else str(text))[:120]
+
+
+def check(acc):
+    out = {"name": acc["name"], "label": acc.get("label") or acc["name"], "status": "ok",
+           "error": "", "unread": 0, "messages": []}
+    cfg = acc.get("mail") or {}
+    user = cfg.get("user") or acc.get("user") or ""
+    if not user:
+        out["status"] = "no-user"
+        return out
+    pw = password(acc)
+    if pw is None:
+        out["status"] = "no-password"
+        return out
+
+    folder = cfg.get("folder") or "INBOX"
+    imap = None
+    try:
+        imap = imaplib.IMAP4_SSL(cfg.get("host", ""), int(cfg.get("port", 993)),
+                                 ssl_context=ssl.create_default_context(), timeout=TIMEOUT)
+        try:
+            imap.login(user, pw)
+        except imaplib.IMAP4.error:
+            out["status"] = "auth"
+            out["error"] = "Login failed"
+            return out
+        finally:
+            pw = None
+
+        typ, data = imap.status(quote(folder), "(UNSEEN)")
+        if typ == "OK" and data and data[0]:
+            m = re.search(rb"UNSEEN (\d+)", data[0])
+            out["unread"] = int(m.group(1)) if m else 0
+
+        # EXAMINE: Ordner nur lesend öffnen
+        typ, _ = imap.select(quote(folder), readonly=True)
+        if typ != "OK":
+            raise imaplib.IMAP4.error("cannot open " + folder)
+        typ, data = imap.uid("SEARCH", None, "UNSEEN")
+        found = data[0].split() if typ == "OK" and data and data[0] else []
+        uids = sorted(found, key=int)[-LATEST:]
+        if uids:
+            typ, data = imap.uid("FETCH", b",".join(uids).decode(),
+                                 "(INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])")
+            msgs = []
+            for part in data if typ == "OK" else []:
+                if not isinstance(part, tuple):
+                    continue
+                m = re.search(rb'INTERNALDATE "([^"]+)"', part[0])
+                msg = email.message_from_bytes(part[1], policy=email.policy.default)
+                mid = str(msg.get("Message-ID", "")).strip().strip("<>")
+                msgs.append({"from": sender(msg).strip(), "subject": str(msg.get("Subject", "")).strip(),
+                             "date": date_ms(msg, m.group(1) if m else None), "mid": mid})
+            out["messages"] = sorted(msgs, key=lambda x: x["date"], reverse=True)
+        # UNSEEN aus STATUS kann fehlen (manche Server) -> wenigstens die gefundenen zählen
+        if not out["unread"]:
+            out["unread"] = len(found)
+    except (OSError, imaplib.IMAP4.error, ssl.SSLError, ValueError) as e:
+        out["status"] = "error"
+        out["error"] = reason(e)
+    finally:
+        if imap is not None:
+            try:
+                imap.logout()
+            except (OSError, imaplib.IMAP4.error):
+                pass
+    return out
+
+
+def write(result):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=CACHE_DIR, prefix=".mail.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, OUT)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def main():
+    status, accounts = load_accounts()
+    results = [check(a) for a in accounts if a.get("mail")]
+    if status == "ok" and not results:
+        status = "no-config"
+    write({"updated": int(time.time() * 1000), "status": status,
+           "total": sum(r["unread"] for r in results), "accounts": results})
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,12 @@
+# GoXLR: beim Entsperren (und bei jeder anderen Sperr-Änderung) den Fader-Stand abgleichen.
+# Die Sperre schreibt „locked“/„unlocked“ nach $XDG_RUNTIME_DIR/desktop-lock (shell/modules/lock, scripts/lock).
+# Installieren/entfernen: Befehle in docs/setup/goxlr.md. Doku: docs/setup/goxlr.md
+[Unit]
+Description=Desktop: GoXLR-Fader nach dem Entsperren wiederherstellen (Pfad)
+
+[Path]
+PathChanged=%t/desktop-lock
+Unit=desktop-goxlr-unlock.service
+
+[Install]
+WantedBy=default.target

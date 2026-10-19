@@ -1,0 +1,15 @@
+[Default Applications]
+x-scheme-handler/http=helium.desktop
+x-scheme-handler/https=helium.desktop
+text/html=helium.desktop
+x-scheme-handler/claude=ubuntu-com.anthropic.Claude.desktop
+video/mp4=mpv.desktop
+video/webm=mpv.desktop
+video/x-matroska=mpv.desktop
+video/quicktime=mpv.desktop
+video/x-msvideo=mpv.desktop
+video/mpeg=mpv.desktop
+video/ogg=mpv.desktop
+
+[Added Associations]
+x-scheme-handler/claude=ubuntu-com.anthropic.Claude.desktop;

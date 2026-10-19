@@ -1,0 +1,103 @@
+/* ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern.
+ * Neu erzeugen: python3 -I theme/gen/gtk.py
+ * Rückweg: python3 -I theme/gen/gtk.py --rueckweg  (Backup unter ~/.local/state/desktop/theme-backup-*)
+ * GTK3 (Breeze-Theme mit Palette-Farben) */
+@define-color theme_fg_color_breeze #F6ECDD;
+@define-color theme_text_color_breeze #F6ECDD;
+@define-color theme_bg_color_breeze #382D26;
+@define-color theme_base_color_breeze #2F2620;
+@define-color content_view_bg_breeze #2F2620;
+@define-color theme_view_hover_decoration_color_breeze #DB6B4C;
+@define-color theme_view_active_decoration_color_breeze #DB6B4C;
+@define-color theme_hovering_selected_bg_color_breeze #E57B5C;
+@define-color theme_selected_bg_color_breeze #DB6B4C;
+@define-color theme_selected_fg_color_breeze #2B1A12;
+@define-color theme_unfocused_fg_color_breeze #F6ECDD;
+@define-color theme_unfocused_text_color_breeze #F6ECDD;
+@define-color theme_unfocused_bg_color_breeze #382D26;
+@define-color theme_unfocused_base_color_breeze #2F2620;
+@define-color theme_unfocused_selected_bg_color_breeze #924F3B;
+@define-color theme_unfocused_selected_bg_color_alt_breeze #924F3B;
+@define-color theme_unfocused_selected_fg_color_breeze #F6ECDD;
+@define-color theme_unfocused_view_text_color_breeze #B5A591;
+@define-color theme_unfocused_view_bg_color_breeze #2F2620;
+@define-color insensitive_bg_color_breeze #382D26;
+@define-color insensitive_fg_color_breeze #B5A591;
+@define-color insensitive_base_color_breeze #352A24;
+@define-color insensitive_base_fg_color_breeze #B5A591;
+@define-color insensitive_selected_bg_color_breeze #764534;
+@define-color insensitive_selected_fg_color_breeze #B5A591;
+@define-color insensitive_unfocused_fg_color_breeze #B5A591;
+@define-color insensitive_unfocused_bg_color_breeze #382D26;
+@define-color insensitive_unfocused_selected_bg_color_breeze #764534;
+@define-color insensitive_unfocused_selected_fg_color_breeze #B5A591;
+@define-color borders_breeze #605349;
+@define-color unfocused_borders_breeze #4C4038;
+@define-color insensitive_borders_breeze #4C4038;
+@define-color unfocused_insensitive_borders_breeze #4C4038;
+@define-color theme_button_background_normal_breeze #473C35;
+@define-color theme_button_background_backdrop_breeze #473C35;
+@define-color theme_button_background_insensitive_breeze #3E332C;
+@define-color theme_button_background_backdrop_insensitive_breeze #3E332C;
+@define-color theme_button_decoration_hover_breeze #DB6B4C;
+@define-color theme_button_decoration_hover_backdrop_breeze #DB6B4C;
+@define-color theme_button_decoration_focus_breeze #DB6B4C;
+@define-color theme_button_decoration_focus_backdrop_breeze #DB6B4C;
+@define-color theme_button_decoration_hover_insensitive_breeze #764534;
+@define-color theme_button_decoration_hover_backdrop_insensitive_breeze #764534;
+@define-color theme_button_decoration_focus_insensitive_breeze #764534;
+@define-color theme_button_decoration_focus_backdrop_insensitive_breeze #764534;
+@define-color theme_button_foreground_normal_breeze #F6ECDD;
+@define-color theme_button_foreground_active_breeze #F6ECDD;
+@define-color theme_button_foreground_backdrop_breeze #F6ECDD;
+@define-color theme_button_foreground_active_backdrop_breeze #F6ECDD;
+@define-color theme_button_foreground_insensitive_breeze #B5A591;
+@define-color theme_button_foreground_active_insensitive_breeze #B5A591;
+@define-color theme_button_foreground_backdrop_insensitive_breeze #B5A591;
+@define-color theme_button_foreground_active_backdrop_insensitive_breeze #B5A591;
+@define-color warning_color_breeze #E0AE55;
+@define-color warning_color_backdrop_breeze #E0AE55;
+@define-color warning_color_insensitive_breeze #785E38;
+@define-color warning_color_insensitive_backdrop_breeze #785E38;
+@define-color error_color_breeze #E78A7A;
+@define-color error_color_backdrop_breeze #E78A7A;
+@define-color error_color_insensitive_breeze #7A5046;
+@define-color error_color_insensitive_backdrop_breeze #7A5046;
+@define-color success_color_breeze #A3B083;
+@define-color success_color_backdrop_breeze #A3B083;
+@define-color success_color_insensitive_breeze #615F49;
+@define-color success_color_insensitive_backdrop_breeze #615F49;
+@define-color link_color_breeze #F2A58A;
+@define-color link_visited_color_breeze #B8788A;
+@define-color theme_titlebar_background_breeze #45372E;
+@define-color theme_titlebar_foreground_breeze #F6ECDD;
+@define-color theme_titlebar_background_light_breeze #45372E;
+@define-color theme_titlebar_foreground_backdrop_breeze #D2C2AE;
+@define-color theme_titlebar_background_backdrop_breeze #382D26;
+@define-color theme_titlebar_foreground_insensitive_breeze #B5A591;
+@define-color theme_titlebar_foreground_insensitive_backdrop_breeze #B5A591;
+@define-color theme_header_background_breeze #45372E;
+@define-color theme_header_foreground_breeze #F6ECDD;
+@define-color theme_header_background_light_breeze #45372E;
+@define-color theme_header_foreground_backdrop_breeze #D2C2AE;
+@define-color theme_header_background_backdrop_breeze #382D26;
+@define-color theme_header_foreground_insensitive_breeze #B5A591;
+@define-color theme_header_foreground_insensitive_backdrop_breeze #B5A591;
+@define-color tooltip_text_breeze #F6ECDD;
+@define-color tooltip_background_breeze #45372E;
+@define-color tooltip_border_breeze #605349;
+@define-color print_paper_backdrop_breeze #F6ECDD;
+
+/* Feinschliff: deckend, weiche Ecken, Terrakotta nur als Auswahl/Fokus */
+button.destructive-action, button.destructive-action:hover { background-image: none; background-color: #974539; color: #F6ECDD; border-color: #974539; }
+button.suggested-action, button.suggested-action:hover { background-image: none; background-color: #DB6B4C; color: #2B1A12; border-color: #DB6B4C; }
+button.suggested-action:hover { background-color: #E57B5C; }
+/* Menüs (Kontextmenü, Menüleiste, auch Helium im GTK-Modus): deckend surfaceRaised, Radius sm, ruhiger Hover */
+.csd.popup decoration { border-radius: 10px; box-shadow: 0 8px 22px rgba(12, 7, 4, 0.34); }
+menu, .menu, .context-menu { background-color: #45372E; color: #F6ECDD; border: 1px solid #6A5B50; border-radius: 10px; padding: 6px; }
+menu menuitem, .menu menuitem, .context-menu menuitem { padding: 6px 10px; min-height: 20px; border-radius: 8px; border: none; box-shadow: none; background-image: none; }
+menu menuitem:hover, .menu menuitem:hover, .context-menu menuitem:hover { background-color: #574940; color: #F6ECDD; border: none; box-shadow: none; }
+menu menuitem:disabled, menu menuitem:disabled label { color: #B5A591; }
+menu separator, .menu separator, .context-menu separator { background-color: #58493F; min-height: 1px; margin: 4px 8px; }
+menubar > menuitem { border-radius: 8px; padding: 4px 8px; }
+menubar > menuitem:hover { background-color: #574940; color: #F6ECDD; border: none; box-shadow: none; }

@@ -1,0 +1,13 @@
+# Ungelesene Mails (IMAP, nur Header) -> ~/.cache/desktop/mail.json. Läuft über desktop-mail.timer.
+# Installiert/entfernt über scripts/rice on|off (Link nach ~/.config/systemd/user).
+# Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/desktop.
+[Unit]
+Description=Desktop: Mail-Status abrufen
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/desktop/hyprland.env
+ExecStart=/bin/sh -c 'exec /usr/bin/python3 -I "$${DESKTOP:-%h/Workspace/desktop}/scripts/mail-status"'
+TimeoutStartSec=90
+Nice=10

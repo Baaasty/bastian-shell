@@ -1,0 +1,64 @@
+# hyprflow-Konfiguration für den Desktop (verlinkt nach ~/.config/hyprflow/config.toml durch `scripts/session install`).
+# Anleitung: docs/SESSION.md
+#
+# WICHTIG – Positivliste: Wiederhergestellt wird nur, was unten als [apps."<Fensterklasse>"] steht
+# (scripts/session-prepare filtert die gespeicherte Sitzung, bevor hyprflow sie liest). Alles andere
+# (Discord, Spotify, Steam/Spiele, Dialoge, Picker …) startet nie von selbst neu.
+# Fensterklasse herausfinden: hyprctl clients -j | grep '"class"'
+
+[general]
+default_session = "latest"
+restore_delay_ms = 1500            # Pause zwischen zwei Starts (Kacheln brauchen Zeit zum Setzen)
+window_detect_timeout_ms = 25000   # so lange wartet hyprflow auf das neue Fenster (VS Code/Helium sind langsam)
+autosave_retain = 20               # 20 Autosaves à 5 min = 100 min Verlauf
+
+[filters]
+# Nur zum Verkleinern der Sitzungsdateien (die Positivliste unten ist die eigentliche Sicherung).
+ignore_classes = [
+  "", "discord", "com.discordapp.Discord", "equibop", "vesktop", "spotify", "steam", "quickshell", "org.quickshell",
+  "hyprland-share-picker", "org.freedesktop.impl.portal.desktop.kde",
+  "org.kde.polkit-kde-authentication-agent-1", "xdg-desktop-portal-gtk",
+]
+
+# --- Eigene Einstellungen für scripts/session-prepare (hyprflow ignoriert diesen Abschnitt) ---
+[desktop]
+boot_max_age = "24h"       # beim Login nur wiederherstellen, wenn die Sitzung jünger ist (m/h/d)
+shell_wait_s = 90          # so lange wartet `session boot` auf die Shell (desktop-shell-hyprland)
+settle_s = 8               # danach noch etwas Luft, bis Monitore/Bar stehen
+
+# once = true: pro Klasse nur EIN Start, egal wie viele Fenster gespeichert waren
+#              (Apps, die ihre Fenster selbst wiederherstellen).
+# cwd_flag:    Option, mit der die App ein Startverzeichnis bekommt (Standard --directory = Kitty).
+
+# --- Positivliste ---------------------------------------------------------------------------------
+# Terminal (Konsole ist derzeit Super+Return; Kitty ist vorbereitet) – Arbeitsordner kommt zurück
+[apps.kitty]
+binary = "kitty"
+capture_cwd = true
+capture_last_command = false      # NICHT einschalten: hyprflow startet dann hart "zsh" (Bastian nutzt bash)
+
+[apps."org.kde.konsole"]
+binary = "konsole"
+capture_cwd = true
+[desktop.apps."org.kde.konsole"]
+cwd_flag = "--workdir"
+
+# VS Code stellt Ordner/Fenster selbst wieder her -> nur ein Start
+[apps."com.microsoft.VSCode"]
+binary = "code"
+[desktop.apps."com.microsoft.VSCode"]
+once = true
+
+# Helium: Tabs kommen vom Browser selbst (Einstellung „Beim Start: zuletzt geöffnete Seiten“) -> nur ein Start
+[apps.helium]
+binary = "helium"
+[desktop.apps.helium]
+once = true
+
+# Weitere Beispiele (Zeichen # entfernen, Klasse mit hyprctl prüfen):
+# [apps."org.kde.dolphin"]          # öffnet nur im Home-Ordner (Pfad wird nicht gemerkt)
+# binary = "dolphin"
+# [apps."thunderbird"]
+# binary = "thunderbird"
+# [desktop.apps."thunderbird"]
+# once = true

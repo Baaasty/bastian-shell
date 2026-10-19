@@ -1,0 +1,164 @@
+/* ERZEUGT aus theme/palette.json (theme/gen/share_picker.py, Variante hearth) – nicht von Hand ändern. */
+* {
+  all: unset;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: #F6ECDD;
+}
+
+/* Fenster: deckend, weiche Ecken, feiner Rand */
+.window {
+  background-color: #2A211B;
+  border: 1px solid #605349;
+  border-radius: 16px;
+}
+
+/* Reiter (Windows / Outputs / Region) als Pillen */
+notebook > header {
+  padding: 16px 20px 4px 20px;
+}
+tabs {
+  padding: 0;
+}
+tabs > tab {
+  padding: 7px 16px;
+  margin-right: 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+tabs > tab:hover {
+  background-color: #40352D;
+}
+tabs > tab:checked {
+  background-color: #5C3B2E;
+  border-color: #DB6B4C;
+}
+.tab-label {
+  color: #D2C2AE;
+  font-weight: 600;
+}
+tabs > tab:checked > .tab-label {
+  color: #F2A58A;
+}
+tabs > tab:focus-visible {
+  border-color: #605349;
+}
+
+.page {
+  padding: 14px 20px 8px 20px;
+}
+
+/* Fenster-Karten (Windows-Reiter): Vorschaubild im echten Verhältnis (Contain) auf ruhigem Grund + Titel */
+flowboxchild > .card {
+  background-color: #40352D;
+  border: 2px solid #4C4038;
+  border-radius: 14px;
+  padding: 8px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+flowboxchild:hover > .card {
+  background-color: #493E36;
+  border-color: #605349;
+}
+flowboxchild:selected > .card,
+flowboxchild:active > .card,
+flowboxchild:focus > .card {
+  background-color: #5C3B2E;
+  border-color: #DB6B4C;
+}
+flowboxchild .image {
+  border-radius: 10px;
+  border: 1px solid #605349;
+  background-color: #2A211B;
+}
+flowboxchild .image-label {
+  color: #D2C2AE;
+  font-size: 12px;
+  padding: 8px 4px 2px 4px;
+}
+flowboxchild:selected .image-label {
+  color: #F6ECDD;
+}
+
+/* Monitor-Karten (Outputs-Reiter): Der Picker streckt das Bild auf die ganze Karte (ContentFit::Fill) und gibt der
+   Karte genau die Monitorgröße im Verhältnis. Damit nichts verzerrt: KEIN Innenabstand, KEIN Rand, KEIN Titel im
+   Kartenkörper (config: show_label: false, spacing: 0). Rahmen nur als Schatten (braucht keinen Platz im Layout). */
+button > .card {
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background-color: transparent;
+  box-shadow: 0 0 0 0 transparent;
+  transition: box-shadow 120ms ease;
+}
+button > .card > .image {
+  border: none;
+  padding: 0;
+  border-radius: 10px;
+  background-color: #40352D;
+}
+button:hover > .card {
+  box-shadow: 0 0 0 3px #605349;
+}
+button:active > .card,
+button:focus > .card {
+  box-shadow: 0 0 0 3px #DB6B4C;
+}
+.card-loading {
+  opacity: 0.6;
+}
+
+/* Region-Knopf: Akzent, gut lesbar */
+.region-button {
+  background-color: #DB6B4C;
+  color: #2A211B;
+  font-weight: 600;
+  padding: 10px 22px;
+  border-radius: 999px;
+  transition: background-color 120ms ease;
+}
+.region-button:not(:disabled):hover,
+.region-button:not(:disabled):focus {
+  background-color: #E08266;
+}
+.region-button:disabled {
+  background-color: #40352D;
+  color: #B5A591;
+}
+
+/* Haken „Allow a restore token“ (nur sichtbar, wenn hide_token_restore: false) */
+.restore-button {
+  padding: 8px 22px 16px 22px;
+  color: #D2C2AE;
+}
+.restore-button check {
+  min-width: 16px;
+  min-height: 16px;
+  margin-right: 8px;
+  border: 1px solid #605349;
+  border-radius: 6px;
+  background-color: #40352D;
+}
+.restore-button check:checked {
+  background-color: #DB6B4C;
+  border-color: #DB6B4C;
+  color: #2A211B;
+  -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+}
+
+/* Scrollbalken: dünn, nur beim Hovern deutlich */
+scrollbar {
+  background: transparent;
+}
+scrollbar slider {
+  min-width: 6px;
+  min-height: 6px;
+  margin: 2px;
+  border-radius: 999px;
+  background-color: #605349;
+}
+scrollbar slider:hover {
+  background-color: #B5A591;
+}

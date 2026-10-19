@@ -1,0 +1,683 @@
+#!/usr/bin/env python3
+"""Spotify Web API für die Shell: gibt JSON auf stdout aus, erneuert das Token selbst.
+
+  scripts/spotify-api queue                      Warteschlange (GET /me/player/queue)
+  scripts/spotify-api context                    aktueller Kontext + bis zu 50 Songs um den aktuellen herum
+  scripts/spotify-api now                        queue + context in einem Aufruf
+  scripts/spotify-api playlists                  eigene/gefolgte Playlists (bis 100) + Lieblingssongs, zuletzt gehörte zuerst
+  scripts/spotify-api playlist <uri|id> [offset] Songs einer Playlist, seitenweise (50 ab offset)
+  scripts/spotify-api play-track <uri> [ctx]     Song spielen (im Kontext, falls angegeben)
+  scripts/spotify-api play-context <uri> [--from-start|--shuffle]
+                                                 Playlist/Album spielen (ab Song 1 / zufällig)
+
+Fehler kommen als {"error": "<art>", ...} (Exit 1): unconfigured, reauth, premium, forbidden,
+rate_limited (+retry_after), no_device, not_found, network, http.
+Tokens stehen nur in secrets.json und werden nie ausgegeben. Kopplung: scripts/spotify-auth
+Gesperrte (fremde/Spotify-)Playlists: Songliste aus der öffentlichen Einbett-Seite (ohne Token).
+Test-Umgebung: SPOTIFY_SECRETS, SPOTIFY_API_BASE, SPOTIFY_TOKEN_URL, SPOTIFY_CACHE, SPOTIFY_EMBED_BASE.
+"""
+import argparse
+import fcntl
+import json
+import os
+import pathlib
+import socket
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SECRETS = pathlib.Path(os.environ.get("SPOTIFY_SECRETS") or REPO / "secrets.json")
+API = os.environ.get("SPOTIFY_API_BASE") or "https://api.spotify.com/v1"
+TOKEN_URL = os.environ.get("SPOTIFY_TOKEN_URL") or "https://accounts.spotify.com/api/token"
+CACHE = pathlib.Path(os.environ.get("SPOTIFY_CACHE")
+                     or pathlib.Path(os.environ.get("XDG_CACHE_HOME") or pathlib.Path.home() / ".cache") / "desktop" / "spotify")
+LOCK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()) / "desktop-spotify.lock"
+
+WINDOW = 50          # so viele Kontext-Songs gehen an die Shell
+BEFORE = 3           # davon vor dem aktuellen Song
+MAX_SCAN = 500       # so weit wird eine Playlist höchstens nach dem aktuellen Song durchsucht
+PAGE = 50
+MAX_PLAYLISTS = 100
+COLLECTION_TTL = 600  # Lieblingssongs-Cache (s), haben keine snapshot_id
+TIMEOUT = 10
+
+
+class ApiError(Exception):
+    def __init__(self, kind: str, status: int | None = None, message: str = "", retry_after: int | None = None):
+        super().__init__(kind)
+        self.kind, self.status, self.message, self.retry_after = kind, status, message, retry_after
+
+    def as_dict(self) -> dict:
+        d = {"error": self.kind}
+        if self.status is not None:
+            d["status"] = self.status
+        if self.message:
+            d["message"] = self.message
+        if self.retry_after is not None:
+            d["retry_after"] = self.retry_after
+        return d
+
+
+# ---------- secrets.json ----------
+
+def load_secrets() -> dict:
+    try:
+        data = json.loads(SECRETS.read_text() or "{}")
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        raise ApiError("unconfigured", message="secrets.json is not valid JSON")
+    return data if isinstance(data, dict) else {}
+
+
+def save_secrets(data: dict) -> None:
+    """Atomar schreiben, Rechte 600, andere Schlüssel bleiben (Aufrufer liest frisch)."""
+    fd, tmp = tempfile.mkstemp(prefix=".secrets-", dir=SECRETS.parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp, SECRETS)
+    except BaseException:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
+    os.chmod(SECRETS, 0o600)
+
+
+def spotify_block(data: dict) -> dict:
+    sp = data.get("spotify")
+    return sp if isinstance(sp, dict) else {}
+
+
+def needs_refresh(sp: dict, now: float, margin: int = 60) -> bool:
+    return not sp.get("access_token") or float(sp.get("expires_at") or 0) - margin <= now
+
+
+def refresh_request(client_id: str, refresh_token: str) -> dict:
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": client_id,
+    }).encode()
+    req = urllib.request.Request(TOKEN_URL, data=body, method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode())
+        except Exception:
+            err = {}
+        if e.code in (400, 401) and err.get("error") in ("invalid_grant", "invalid_client"):
+            # Refresh-Token abgelaufen (6 Monate) oder widerrufen
+            raise ApiError("reauth", e.code, "re-pair: scripts/spotify-auth")
+        if e.code == 429:
+            raise ApiError("rate_limited", 429, retry_after=retry_after(e))
+        raise ApiError("http", e.code, err.get("error_description") or err.get("error") or "")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise ApiError("network", message=type(e).__name__)
+
+
+def get_token(force: bool = False) -> str:
+    """Gültiges Access-Token; erneuert bei Bedarf (mit Lock, falls zwei Aufrufe gleichzeitig laufen)."""
+    with open(LOCK, "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        data = load_secrets()
+        sp = spotify_block(data)
+        if not sp.get("client_id") or not sp.get("refresh_token"):
+            raise ApiError("unconfigured")
+        now = time.time()
+        if not force and not needs_refresh(sp, now):
+            return sp["access_token"]
+        tok = refresh_request(sp["client_id"], sp["refresh_token"])
+        if not tok.get("access_token"):
+            raise ApiError("http", message="response without access_token")
+        data = load_secrets()  # frisch lesen, nur den spotify-Block anfassen
+        sp = spotify_block(data)
+        sp["access_token"] = tok["access_token"]
+        sp["expires_at"] = int(now + int(tok.get("expires_in", 3600)))
+        if tok.get("refresh_token"):
+            sp["refresh_token"] = tok["refresh_token"]
+        data["spotify"] = sp
+        save_secrets(data)
+        return sp["access_token"]
+
+
+# ---------- HTTP ----------
+
+def retry_after(e: urllib.error.HTTPError) -> int:
+    try:
+        return max(1, int(e.headers.get("Retry-After", "5")))
+    except (TypeError, ValueError):
+        return 5
+
+
+def classify(code: int, err: dict, e: urllib.error.HTTPError | None = None) -> ApiError:
+    reason = str(err.get("reason") or "")
+    msg = str(err.get("message") or "")
+    if code == 401:
+        return ApiError("reauth", 401, msg)
+    if code == 429:
+        return ApiError("rate_limited", 429, msg, retry_after(e) if e is not None else 5)
+    if code == 403:
+        if reason == "PREMIUM_REQUIRED" or "premium" in msg.lower():
+            return ApiError("premium", 403, msg)
+        return ApiError("forbidden", 403, msg)
+    if code == 404:
+        if reason == "NO_ACTIVE_DEVICE" or "no active device" in msg.lower():
+            return ApiError("no_device", 404, msg)
+        return ApiError("not_found", 404, msg)
+    return ApiError("http", code, msg)
+
+
+def call(method: str, path: str, params: dict | None = None, body: dict | None = None, _retry: bool = True):
+    url = path if path.startswith("http") else API + path
+    if params:
+        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+    headers = {"Authorization": "Bearer " + get_token()}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    elif method in ("PUT", "POST"):
+        data = b""
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            raw = r.read()
+            if r.status == 204 or not raw.strip():
+                return None
+            try:
+                return json.loads(raw.decode())
+            except ValueError:
+                return None
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode()).get("error") or {}
+        except Exception:
+            err = {}
+        if not isinstance(err, dict):
+            err = {"message": str(err)}
+        if e.code == 401 and _retry:
+            get_token(force=True)
+            return call(method, path, params, body, _retry=False)
+        raise classify(e.code, err, e)
+    except (urllib.error.URLError, OSError) as e:
+        raise ApiError("network", message=type(e).__name__)
+
+
+# ---------- Formate ----------
+
+def pick_image(images, min_w: int = 64) -> str:
+    """Kleinstes Bild, das noch mindestens min_w breit ist (sonst das größte)."""
+    imgs = [i for i in (images or []) if isinstance(i, dict) and i.get("url")]
+    if not imgs:
+        return ""
+    w = lambda i: i.get("width") or 10_000  # ohne Angabe: als groß behandeln
+    big = [i for i in imgs if w(i) >= min_w]
+    return (min(big, key=w) if big else max(imgs, key=w))["url"]
+
+
+def track(t, fallback_image: str = "") -> dict | None:
+    if not isinstance(t, dict) or not t.get("uri"):
+        return None
+    if t.get("type") == "episode":
+        artists = (t.get("show") or {}).get("name", "")
+        images = t.get("images") or (t.get("show") or {}).get("images")
+    else:
+        artists = ", ".join(a.get("name", "") for a in t.get("artists") or [] if isinstance(a, dict))
+        images = (t.get("album") or {}).get("images")
+    return {
+        "uri": t["uri"],
+        "name": t.get("name") or "",
+        "artists": artists,
+        "image": pick_image(images) or fallback_image,
+        "duration_ms": t.get("duration_ms") or 0,
+    }
+
+
+def ctx_id(uri: str) -> str:
+    return uri.rsplit(":", 1)[-1]
+
+
+def ctx_kind(uri: str) -> str:
+    parts = (uri or "").split(":")
+    if len(parts) >= 3 and parts[-1] == "collection":
+        return "collection"
+    return parts[1] if len(parts) >= 3 else ""
+
+
+def window(items: list, current: str) -> list:
+    idx = next((i for i, t in enumerate(items) if t["uri"] == current), -1)
+    start = max(0, idx - BEFORE) if idx >= 0 else 0
+    return [dict(t, index=start + n, current=(start + n == idx)) for n, t in enumerate(items[start:start + WINDOW])]
+
+
+# ---------- Cache (nur Metadaten, keine Tokens) ----------
+
+def cache_get(key: str) -> dict | None:
+    try:
+        return json.loads((CACHE / f"{key}.json").read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def cache_put(key: str, value: dict) -> None:
+    try:
+        CACHE.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp = CACHE / f".{key}.tmp"
+        tmp.write_text(json.dumps(value, ensure_ascii=False))
+        os.replace(tmp, CACHE / f"{key}.json")
+    except OSError:
+        pass
+
+
+def cache_for(key: str, stamp) -> dict:
+    c = cache_get(key)
+    if not c or c.get("stamp") != stamp:
+        c = {"stamp": stamp, "items": [], "offset": 0, "done": False}
+    return c
+
+
+def fill(key: str, c: dict, url: str, params: dict, pick, enough, fallback_image: str = "", limit: int = MAX_SCAN) -> None:
+    """Seiten nachladen, bis enough() oder Ende/limit; Stand landet im Cache (fortsetzbar)."""
+    changed = False
+    while not c["done"] and c["offset"] < limit and not enough():
+        page = call("GET", url, dict(params, limit=PAGE, offset=c["offset"])) or {}
+        got = page.get("items") or []
+        for it in got:
+            t = track(pick(it) if isinstance(it, dict) else None, fallback_image)
+            if t:
+                c["items"].append(t)
+        c["offset"] += len(got)
+        if isinstance(page.get("total"), int):
+            c["total"] = page["total"]
+        c["done"] = not page.get("next") or not got
+        changed = True
+    if changed:
+        cache_put(key, c)
+
+
+def scan(key: str, url: str, params: dict, current: str, stamp, pick, fallback_image: str = "") -> list:
+    """Bis der aktuelle Song + genug danach geladen ist (für context)."""
+    c = cache_for(key, stamp)
+
+    def enough() -> bool:
+        idx = next((i for i, t in enumerate(c["items"]) if t["uri"] == current), -1)
+        return idx >= 0 and len(c["items"]) >= idx + WINDOW - BEFORE
+
+    fill(key, c, url, params, pick, enough, fallback_image)
+    return c["items"]
+
+
+ITEM_PARAMS = {
+    "additional_types": "track,episode",
+    "fields": "next,total,items(item(uri,name,type,duration_ms,artists(name),album(images),images,show(name,images)),"
+              "track(uri,name,type,duration_ms,artists(name),album(images)))",
+}
+pick_item = lambda it: it.get("item") or it.get("track")
+MAX_BROWSE = 10_000  # Durchstöbern: so weit darf eine Playlist nachgeladen werden
+
+
+# ---------- Befehle ----------
+
+# ---------- Ersatz für gesperrte Playlists ----------
+# Der Dev-Mode liefert Songs nur für eigene Playlists. Die öffentliche Einbett-Seite
+# (open.spotify.com/embed) zeigt die Songliste auch für fremde und Spotify-Playlists – ohne Token.
+EMBED_URL = os.environ.get("SPOTIFY_EMBED_BASE") or "https://open.spotify.com/embed/playlist/"
+EMBED_TTL = 600
+
+
+def embed_playlist(pid: str) -> dict | None:
+    """{"meta": {...}, "items": [...]} aus der Einbett-Seite oder None (privat/nicht erreichbar)."""
+    key = f"embed-{pid}"
+    stamp = int(time.time() // EMBED_TTL)
+    c = cache_get(key)
+    if c and c.get("stamp") == stamp:
+        return c
+    req = urllib.request.Request(EMBED_URL + urllib.parse.quote(pid), headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            html = r.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, socket.timeout, OSError):
+        return None
+    start = html.find('<script id="__NEXT_DATA__" type="application/json">')
+    if start < 0:
+        return None
+    start = html.find(">", start) + 1
+    end = html.find("</script>", start)
+    try:
+        e = json.loads(html[start:end])["props"]["pageProps"]["state"]["data"]["entity"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    covers = sorted((x for x in (e.get("coverArt") or {}).get("sources") or [] if isinstance(x, dict) and x.get("url")),
+                    key=lambda x: x.get("width") or 0)
+    cover = next((x["url"] for x in covers if (x.get("width") or 0) >= 128), covers[-1]["url"] if covers else "")
+    items = [{"uri": t["uri"], "name": t.get("title") or "", "artists": t.get("subtitle") or "",
+              "image": "", "duration_ms": t.get("duration") or 0}
+             for t in e.get("trackList") or [] if isinstance(t, dict) and str(t.get("uri", "")).startswith("spotify:track:")]
+    c = {"stamp": stamp, "items": items,
+         "meta": {"name": e.get("name") or e.get("title") or "", "image": cover, "owner": e.get("subtitle") or ""}}
+    cache_put(key, c)
+    return c
+
+
+def embed_page(uri: str, pid: str, offset: int, meta: dict | None = None) -> dict:
+    """Seite aus der Einbett-Seite, sonst wie bisher "restricted"."""
+    e = embed_playlist(pid)
+    base = dict(meta or {})
+    if not e:
+        return dict({"name": "", "image": "", "owner": ""}, **base, uri=uri, total=None, offset=offset,
+                    next_offset=None, tracks=[], restricted=True)
+    items = e["items"]
+    page = items[offset:offset + PAGE]
+    m = dict(e["meta"], **{k: v for k, v in base.items() if v})
+    return dict(m, uri=uri, total=len(items), offset=offset, source="embed", restricted=False,
+                tracks=[dict(t, index=offset + n) for n, t in enumerate(page)],
+                next_offset=offset + len(page) if len(items) > offset + PAGE else None)
+
+
+def cmd_queue() -> dict:
+    d = call("GET", "/me/player/queue") or {}
+    return {
+        "current": track(d.get("currently_playing")),
+        "queue": [t for t in (track(x) for x in d.get("queue") or []) if t],
+    }
+
+
+def cmd_context() -> dict:
+    p = call("GET", "/me/player", {"additional_types": "track,episode"})
+    out = {"type": None, "uri": "", "name": "", "image": "", "current": "", "tracks": [], "restricted": False}
+    if not p:
+        return out  # nichts aktiv
+    item = p.get("item") or {}
+    out["current"] = item.get("uri") or ""
+    out["shuffle"] = bool(p.get("shuffle_state"))
+    ctx = p.get("context") or {}
+    uri = ctx.get("uri") or ""
+    if not uri:
+        return out
+    kind = ctx_kind(uri)
+    out.update(type=kind, uri=uri)
+    items: list = []
+    try:
+        if kind == "playlist":
+            pid = ctx_id(uri)
+            meta = call("GET", f"/playlists/{pid}", {"fields": "name,images,snapshot_id"}) or {}
+            out["name"] = meta.get("name") or ""
+            out["image"] = pick_image(meta.get("images"))
+            try:
+                items = scan(f"playlist-{pid}", f"/playlists/{pid}/items", ITEM_PARAMS,
+                             out["current"], meta.get("snapshot_id") or "", pick_item)
+            except ApiError as e:
+                if e.kind not in ("forbidden", "not_found", "rate_limited"):
+                    raise
+                # Dev-Mode: Inhalte nur für eigene Playlists (oder Endpunkt gesperrt) – Ersatz: Einbett-Seite
+                emb = embed_playlist(pid)
+                if emb:
+                    items = emb["items"]
+                else:
+                    out["restricted"] = True
+        elif kind == "album":
+            a = call("GET", f"/albums/{ctx_id(uri)}") or {}
+            out["name"] = a.get("name") or ""
+            out["image"] = pick_image(a.get("images"))
+            items = [t for t in (track(x, out["image"]) for x in (a.get("tracks") or {}).get("items") or []) if t]
+        elif kind == "collection":
+            out["name"] = "Liked Songs"
+            stamp = int(time.time() // COLLECTION_TTL)
+            items = scan("collection", "/me/tracks", {}, out["current"], stamp,
+                         lambda it: it.get("track") or it.get("item"))
+        elif kind == "artist":
+            a = call("GET", f"/artists/{ctx_id(uri)}") or {}
+            out["name"] = a.get("name") or ""
+            out["image"] = pick_image(a.get("images"))
+            out["restricted"] = True  # Top-Tracks gibt es im Dev-Mode nicht mehr
+        else:
+            out["restricted"] = True
+    except ApiError as e:
+        # rate_limited: Spotify sperrt einzelne Endpunkte teils stundenlang (2026-10-18: Playlists ~5 h) – dann wie bei
+        # fremden Playlists über die Einbett-Seite (kein API-Kontingent)
+        if e.kind not in ("forbidden", "not_found", "rate_limited"):
+            raise
+        emb = embed_playlist(ctx_id(uri)) if kind == "playlist" else None  # Spotify-Playlists (404)
+        if emb:
+            items = emb["items"]
+            out["name"] = out["name"] or emb["meta"]["name"]
+            out["image"] = out["image"] or emb["meta"]["image"]
+        else:
+            out["restricted"] = True
+    out["tracks"] = window(items, out["current"])
+    return out
+
+
+def cmd_now() -> dict:
+    # Warteschlange und Kontext getrennt: ist nur der Kontext gesperrt (429), kommt die Warteschlange trotzdem
+    queue = cmd_queue()
+    try:
+        context = cmd_context()
+    except ApiError as e:
+        if e.kind != "rate_limited":
+            raise
+        context = {"type": None, "uri": "", "name": "", "image": "", "current": "", "tracks": [], "restricted": True}
+    return {"queue": queue, "context": context}
+
+
+def cmd_playlists() -> dict:
+    me = call("GET", "/me") or {}
+    my_id = me.get("id") or ""
+    out = []
+    if my_id:
+        out.append({"uri": f"spotify:user:{my_id}:collection", "name": "Liked Songs", "image": "",
+                    "owner": me.get("display_name") or "", "own": True, "liked": True, "total": None})
+    url, params = "/me/playlists", {"limit": PAGE}
+    n = 0
+    while url and n < MAX_PLAYLISTS:
+        page = call("GET", url, params) or {}
+        params = None  # next-Links enthalten die Parameter schon
+        for p in page.get("items") or []:
+            if not isinstance(p, dict) or not p.get("uri") or n >= MAX_PLAYLISTS:
+                continue
+            owner = p.get("owner") or {}
+            count = p.get("items") or p.get("tracks") or {}
+            out.append({
+                "uri": p["uri"],
+                "name": p.get("name") or "",
+                "image": pick_image(p.get("images")),
+                "owner": owner.get("display_name") or owner.get("id") or "",
+                "own": bool(my_id) and owner.get("id") == my_id,
+                "collaborative": bool(p.get("collaborative")),
+                "total": count.get("total") if isinstance(count, dict) else None,
+            })
+            n += 1
+        url = page.get("next")
+    return {"playlists": by_recent(out)}
+
+
+def by_recent(playlists: list) -> list:
+    """Zuletzt gehörte Playlists nach vorn (Reihenfolge der letzten 50 Songs), der Rest bleibt wie er ist.
+    Ohne Scope user-read-recently-played (alte Kopplung) einfach unsortiert."""
+    try:
+        items = (call("GET", "/me/player/recently-played", {"limit": 50}) or {}).get("items") or []
+    except ApiError as e:
+        if e.kind in ("forbidden", "http"):
+            return playlists
+        raise
+    rank = {}
+    for it in items:
+        uri = ((it or {}).get("context") or {}).get("uri") or ""
+        if uri.endswith(":collection"):
+            uri = "collection"
+        if uri and uri not in rank:
+            rank[uri] = len(rank)
+
+    def key(ip):
+        i, p = ip
+        uri = "collection" if p.get("liked") else p["uri"]
+        return (rank.get(uri, len(rank)), i)
+
+    return [p for _, p in sorted(enumerate(playlists), key=key)]
+
+
+def playlist_id(ref: str) -> str:
+    """spotify:playlist:ID, open.spotify.com/playlist/ID?… oder nur ID."""
+    ref = (ref or "").strip()
+    if "open.spotify.com/" in ref:
+        ref = urllib.parse.urlparse(ref).path.rstrip("/")
+        return ref.rsplit("/", 1)[-1]
+    return ctx_id(ref)
+
+
+def cmd_playlist(ref: str, offset: int = 0) -> dict:
+    """Eine Seite (PAGE Songs ab offset) zum Durchstöbern; Cache nach snapshot_id wie bei context."""
+    offset = max(0, offset)
+    fresh_meta = False
+    collection = ctx_kind(ref) == "collection"
+    if collection:
+        uri = ref
+        key, url, params, pick = "collection", "/me/tracks", {}, (lambda it: it.get("track") or it.get("item"))
+        c = cache_for(key, int(time.time() // COLLECTION_TTL))
+        if "meta" not in c:
+            c["meta"], fresh_meta = {"name": "Liked Songs", "image": "", "owner": ""}, True
+    else:
+        pid = playlist_id(ref)
+        if not pid:
+            raise ApiError("not_found", message="no playlist")
+        uri = f"spotify:playlist:{pid}"
+        key, url, params, pick = f"playlist-{pid}", f"/playlists/{pid}/items", ITEM_PARAMS, pick_item
+        c = cache_get(key) if offset > 0 else None  # Folgeseiten: Stand von Seite 0 gilt
+        if not c or "meta" not in c:
+            try:
+                meta = call("GET", f"/playlists/{pid}", {"fields": "name,images,snapshot_id,owner(id,display_name)"}) or {}
+            except ApiError as e:
+                if e.kind not in ("forbidden", "not_found"):
+                    raise
+                # Spotify-eigene Playlists sind im Dev-Mode gesperrt (404) – Ersatz: Einbett-Seite
+                return embed_page(uri, pid, offset)
+            c = cache_for(key, meta.get("snapshot_id") or "")
+            owner = meta.get("owner") or {}
+            c["meta"] = {"name": meta.get("name") or "", "image": pick_image(meta.get("images"), 128),
+                         "owner": owner.get("display_name") or owner.get("id") or ""}
+            fresh_meta = True
+    out = dict(c["meta"], uri=uri, offset=offset, restricted=False)
+    try:
+        fill(key, c, url, params, pick, lambda: len(c["items"]) >= offset + PAGE, limit=MAX_BROWSE)
+    except ApiError as e:
+        if e.kind not in ("forbidden", "not_found"):
+            raise
+        if collection:
+            return dict(out, total=None, next_offset=None, tracks=[], restricted=True)
+        return embed_page(uri, playlist_id(ref), offset, c["meta"])  # fremde Playlist: Einbett-Seite
+    if fresh_meta:
+        cache_put(key, c)  # meta sichern, auch wenn nichts nachgeladen wurde
+    items = c["items"]
+    page = items[offset:offset + PAGE]
+    more = len(items) > offset + PAGE or (not c["done"] and c["offset"] < MAX_BROWSE)
+    out.update(total=c.get("total"), tracks=[dict(t, index=offset + n) for n, t in enumerate(page)],
+               next_offset=offset + len(page) if more and page else None)
+    return out
+
+
+def pick_device() -> str:
+    """Dieser PC als Ziel, falls gerade kein Gerät aktiv ist."""
+    devs = (call("GET", "/me/player/devices") or {}).get("devices") or []
+    devs = [d for d in devs if d.get("id") and not d.get("is_restricted")]
+    host = socket.gethostname().split(".")[0].lower()
+    for test in (lambda d: d.get("type") == "Computer" and host and host in (d.get("name") or "").lower(),
+                 lambda d: d.get("type") == "Computer",
+                 lambda d: True):
+        hit = next((d for d in devs if test(d)), None)
+        if hit:
+            return hit["id"]
+    return ""
+
+
+def play(body: dict, shuffle: bool | None = None) -> dict:
+    """Abspielen (vorher ggf. Shuffle setzen); ohne aktives Gerät auf diesem PC."""
+    def go(dev: dict) -> None:
+        if shuffle is not None:
+            call("PUT", "/me/player/shuffle", dict(dev, state="true" if shuffle else "false"))
+        call("PUT", "/me/player/play", dev or None, body)
+    try:
+        go({})
+    except ApiError as e:
+        if e.kind != "no_device":
+            raise
+        dev = pick_device()
+        if not dev:
+            raise ApiError("no_device", 404, "Spotify is not running (no device found)")
+        go({"device_id": dev})
+    return {"ok": True}
+
+
+def play_body(uri: str, context: str = "") -> dict:
+    if context and ctx_kind(context) in ("playlist", "album", "collection"):
+        return {"context_uri": context, "offset": {"uri": uri}}
+    return {"uris": [uri]}
+
+
+def cmd_play_track(uri: str, context: str = "") -> dict:
+    return play(play_body(uri, context))
+
+
+def cmd_play_context(uri: str, mode: str = "") -> dict:
+    if mode == "shuffle":
+        return play({"context_uri": uri}, shuffle=True)
+    if mode == "from-start":
+        return play({"context_uri": uri, "offset": {"position": 0}}, shuffle=False)
+    return play({"context_uri": uri})
+
+
+def run(argv: list[str]) -> tuple[dict, int]:
+    ap = argparse.ArgumentParser(prog="spotify-api", description="Spotify Web API → JSON")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("queue", "context", "now", "playlists"):
+        sub.add_parser(name)
+    pt = sub.add_parser("play-track")
+    pt.add_argument("uri")
+    pt.add_argument("context", nargs="?", default="")
+    pc = sub.add_parser("play-context")
+    pc.add_argument("uri")
+    mode = pc.add_mutually_exclusive_group()
+    mode.add_argument("--from-start", dest="mode", action="store_const", const="from-start")
+    mode.add_argument("--shuffle", dest="mode", action="store_const", const="shuffle")
+    pl = sub.add_parser("playlist")
+    pl.add_argument("ref")
+    pl.add_argument("offset", nargs="?", type=int, default=0)
+    a = ap.parse_args(argv)
+    try:
+        if a.cmd == "queue":
+            res = cmd_queue()
+        elif a.cmd == "context":
+            res = cmd_context()
+        elif a.cmd == "now":
+            res = cmd_now()
+        elif a.cmd == "playlists":
+            res = cmd_playlists()
+        elif a.cmd == "playlist":
+            res = cmd_playlist(a.ref, a.offset)
+        elif a.cmd == "play-track":
+            res = cmd_play_track(a.uri, a.context)
+        else:
+            res = cmd_play_context(a.uri, a.mode or "")
+        return res, 0
+    except ApiError as e:
+        return e.as_dict(), 1
+    except Exception as e:  # nie mit Traceback (und damit evtl. Daten) abstürzen
+        return {"error": "internal", "message": type(e).__name__}, 1
+
+
+def main() -> None:
+    res, code = run(sys.argv[1:])
+    print(json.dumps(res, ensure_ascii=False))
+    sys.exit(code)
+
+
+if __name__ == "__main__":
+    main()

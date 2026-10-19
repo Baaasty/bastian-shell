@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Fenster verschieben, Fokus und Mauszeiger folgen dem Fenster auf den anderen Monitor.
+
+  winmove dir l|r|u|d        wie `movewindow <richtung>`
+  winmove mon <monitorname>  wie `movewindow mon:<name>`
+
+Warum: Mit cursor:no_warps bleibt der Mauszeiger auf dem alten Monitor, und Hyprland fokussiert dort das
+verbliebene Fenster, nicht das verschobene (z. B. zwei Fenster im Split, rechtes auf den nächsten Monitor).
+Wechselt das Fenster den Monitor, setzen wir Fokus und Zeiger auf das verschobene Fenster. Auf demselben
+Monitor passiert nichts weiter (Zeiger bleibt, wo er ist).
+"""
+import json
+import subprocess
+import sys
+import time
+
+
+def hc(*args):
+    return subprocess.run(["hyprctl", *args], capture_output=True, text=True, timeout=5).stdout
+
+
+def jq(what):
+    try:
+        return json.loads(hc("-j", what))
+    except Exception:
+        return None
+
+
+def main():
+    if len(sys.argv) < 3 or sys.argv[1] not in ("dir", "mon"):
+        print(__doc__)
+        return 2
+    kind, arg = sys.argv[1], sys.argv[2]
+    w = jq("activewindow")
+    if not w or not w.get("address"):
+        return 0
+    addr, mon_before = w["address"], w.get("monitor")
+    hc("dispatch", "movewindow", arg if kind == "dir" else "mon:" + arg)
+    for _ in range(10):
+        time.sleep(0.05)
+        now = next((c for c in (jq("clients") or []) if c.get("address") == addr), None)
+        if now and now.get("monitor") != mon_before:
+            cx = now["at"][0] + now["size"][0] // 2
+            cy = now["at"][1] + now["size"][1] // 2
+            hc("--batch", f"dispatch focuswindow address:{addr} ; dispatch movecursor {cx} {cy}")
+            return 0
+        if now and kind == "dir":
+            break
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

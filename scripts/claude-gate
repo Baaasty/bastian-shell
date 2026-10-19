@@ -1,0 +1,553 @@
+#!/usr/bin/env python3
+"""Claude-Code-Rückfragen auf dem Desktop beantworten (Karte oben links, shell/modules/claude).
+
+Hook-Modi (lesen das Hook-JSON von stdin, Ausgabe nur bei Entscheidung):
+  claude-gate permission [--wait S]  PermissionRequest-Hook: Erlaubnis für ein Tool
+  claude-gate question   [--wait S]  PermissionRequest- (oder PreToolUse-)Hook, Matcher AskUserQuestion
+  claude-gate clear                  PostToolUse/PostToolUseFailure/UserPromptSubmit/Stop/StopFailure/
+                                     SessionEnd: Karten der Sitzung wegräumen (Bastian hat in VS Code geantwortet)
+Für die Shell:
+  claude-gate list                   alle offenen Rückfragen als JSON-Liste (tote/abgelaufene fliegen raus)
+  claude-gate decide <id> <json>     Entscheidung der Karte ablegen
+                                     {"behavior": "allow"|"deny"|"pass", "always": bool,
+                                      "answers": {frage: label | eigener Text | [labels…, eigener Text]},
+                                      "notes": {frage: notiz}}
+Antwortformat (wie die VS-Code-Frage-UI, geprüft an Transkripten + Claude Code 2.1.30x):
+  „Other“ = der eigene Text selbst als Antwort; Mehrfachauswahl "A, B, eigener Text";
+  Notiz zu einer Auswahl = updatedInput.annotations[frage] = {"notes": "…"}.
+
+Ablauf: Hook schreibt ~/.local/state/desktop/claude-pending/<id>.json (Ordner 700, Dateien 600, atomar)
+und wartet bis zu S Sekunden (Default 30, Umgebung CLAUDE_GATE_WAIT) auf <id>.decision.json.
+Claude Code zeigt seinen eigenen Dialog parallel (Hook und VS-Code-Dialog laufen im Wettlauf, wer zuerst
+antwortet gewinnt) – deshalb darf der Hook warten. Antwortet Bastian in VS Code, löscht `clear` die
+Pending-Datei, der Hook merkt das und endet still.
+Timeout, „pass“, Fehler aller Art: exit 0 ohne Ausgabe = normaler Dialog. Darf Claude Code nie stören.
+In die Pending-Datei kommt nur eine gekürzte Anzeige (Befehl, Dateipfad …), nie der volle tool_input.
+"""
+import hashlib
+import json
+import math
+import os
+import re
+import signal
+import sys
+import tempfile
+import time
+
+# DESKTOP_STATE_DIR nur zum Testen
+STATE_DIR = os.environ.get("DESKTOP_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".local", "state", "desktop")
+DIR = os.path.join(STATE_DIR, "claude-pending")
+STAMP = os.path.join(DIR, ".changed")      # von der Shell beobachtet (FileView), Inhalt = Zeitstempel
+DEFAULT_WAIT = 30
+MAX_WAIT = 3600
+POLL = 0.15
+ID_RE = re.compile(r"^[0-9]{10,16}-[0-9]{1,8}$")
+
+_cleanup = []   # Pfade, die beim Beenden weg müssen
+
+
+# ---------- Dateien ----------
+
+def ensure_dir() -> None:
+    os.makedirs(DIR, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(DIR, 0o700)
+    except OSError:
+        pass
+
+
+def write_json(path: str, data) -> None:
+    """Atomar (tmp + rename), Rechte 600."""
+    fd, tmp = tempfile.mkstemp(dir=DIR, prefix=".gate.", suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def read_json(path: str):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def unlink(path: str) -> bool:
+    try:
+        os.unlink(path)
+        return True
+    except OSError:
+        return False
+
+
+def touch_stamp() -> None:
+    try:
+        write_json(STAMP, int(time.time() * 1000))
+    except Exception:
+        pass
+
+
+def pending_path(pid: str) -> str:
+    return os.path.join(DIR, pid + ".json")
+
+
+def decision_path(pid: str) -> str:
+    return os.path.join(DIR, pid + ".decision.json")
+
+
+# ---------- Anzeige ----------
+
+def project_of(cwd: str) -> str:
+    """Name des Git-Repos (oberster Ordner mit .git), sonst Ordnername (wie claude-status)."""
+    if not cwd:
+        return ""
+    path = os.path.abspath(cwd)
+    probe = path
+    while probe and probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, ".git")):
+            return os.path.basename(probe)
+        probe = os.path.dirname(probe)
+    return os.path.basename(path)
+
+
+def repo_of(cwd: str) -> str:
+    if not cwd:
+        return ""
+    probe = os.path.abspath(cwd)
+    while probe and probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, ".git")):
+            return probe
+        probe = os.path.dirname(probe)
+    return os.path.abspath(cwd)
+
+
+def short(text, limit: int) -> str:
+    text = str(text or "")
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+def rel(path: str, cwd: str) -> str:
+    path = str(path or "")
+    if cwd and path.startswith(cwd.rstrip("/") + "/"):
+        return path[len(cwd.rstrip("/")) + 1:]
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + "/") else path
+
+
+def describe(tool: str, inp: dict, cwd: str) -> dict:
+    """Kurze Anzeige für die Karte: {detail, note, mono}. Nie den ganzen Input."""
+    if not isinstance(inp, dict):
+        inp = {}
+    if tool in ("Bash", "PowerShell"):
+        return {"detail": short(inp.get("command"), 600), "note": short(inp.get("description"), 160), "mono": True}
+    if tool in ("Edit", "MultiEdit", "Write", "Read", "NotebookEdit"):
+        p = inp.get("file_path") or inp.get("notebook_path") or ""
+        return {"detail": short(rel(p, cwd), 300), "note": "", "mono": True}
+    if tool == "WebFetch":
+        return {"detail": short(inp.get("url"), 300), "note": "", "mono": True}
+    if tool == "WebSearch":
+        return {"detail": short(inp.get("query"), 300), "note": "", "mono": False}
+    if tool in ("Glob", "Grep"):
+        p = inp.get("path") or ""
+        return {"detail": short(str(inp.get("pattern") or "") + (("  in " + rel(p, cwd)) if p else ""), 300), "note": "", "mono": True}
+    if tool == "ExitPlanMode":
+        return {"detail": short(inp.get("plan"), 400), "note": "", "mono": False}
+    if tool in ("Task", "Agent"):
+        return {"detail": short(inp.get("description") or inp.get("prompt"), 200), "note": "", "mono": False}
+    try:
+        flat = json.dumps(inp, ensure_ascii=False, separators=(", ", ": "))
+    except (TypeError, ValueError):
+        flat = ""
+    return {"detail": short(flat, 300), "note": "", "mono": True}
+
+
+def tool_label(tool: str) -> str:
+    """mcp__server__tool → server · tool"""
+    if tool.startswith("mcp__"):
+        parts = tool.split("__")
+        if len(parts) >= 3:
+            return parts[1].replace("claude_ai_", "") + " · " + "__".join(parts[2:])
+    return tool
+
+
+def suggestion_note(sugs) -> str:
+    """Was „Always allow“ bedeuten würde, kurz (z. B. Bash(git push:*))."""
+    out = []
+    for s in sugs if isinstance(sugs, list) else []:
+        if not isinstance(s, dict):
+            continue
+        if s.get("type") in ("addRules", "replaceRules"):
+            for r in s.get("rules") or []:
+                if isinstance(r, dict) and r.get("toolName"):
+                    rc = r.get("ruleContent")
+                    out.append(r["toolName"] + ("(" + rc + ")" if rc else ""))
+        elif s.get("type") == "setMode" and s.get("mode"):
+            out.append("mode: " + str(s["mode"]))
+        elif s.get("type") == "addDirectories":
+            for d in s.get("directories") or []:
+                out.append("dir: " + rel(str(d), ""))
+    return short(", ".join(out), 160)
+
+
+def input_hash(inp) -> str:
+    # "answers" weglassen: beantwortet Bastian eine AskUserQuestion im VS-Code-Chat, steht die Antwort im
+    # tool_input von PostToolUse – mit ihr passte der Hash nicht mehr, die Karte blieb stehen
+    if isinstance(inp, dict) and "answers" in inp:
+        inp = {k: v for k, v in inp.items() if k != "answers"}
+    try:
+        raw = json.dumps(inp, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        raw = ""
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def questions_of(inp: dict):
+    qs = []
+    for q in (inp.get("questions") or []) if isinstance(inp, dict) else []:
+        if not isinstance(q, dict) or not q.get("question"):
+            continue
+        opts = []
+        for o in q.get("options") or []:
+            if isinstance(o, dict) and o.get("label"):
+                opts.append({"label": short(o["label"], 120), "description": short(o.get("description"), 200)})
+        e = {
+            "question": str(q["question"]),
+            "header": short(q.get("header"), 40),
+            "multiSelect": q.get("multiSelect") is True,
+            "kind": str(q.get("kind") or "choice"),
+            "options": opts,
+            "optionCount": len(q.get("options") or []),
+        }
+        if q.get("placeholder"):
+            e["placeholder"] = short(q.get("placeholder"), 80)
+        for k in ("min", "max"):
+            if isinstance(q.get(k), (int, float)) and not isinstance(q.get(k), bool):
+                e[k] = q[k]
+        if q.get("unit"):
+            e["unit"] = short(q.get("unit"), 20)
+        qs.append(e)
+    return qs
+
+
+# Grenzen wie Claude Codes Prüfung von Karten-Antworten (AskUserQuestion admitCardAnswer, v2.1.30x):
+# Antwort ≤ 32768 Zeichen, Notiz ≤ 8192, Antworten + Notizen zusammen ≤ 32768,
+# Liste nur bei multiSelect und höchstens Optionen + 1 (die +1 ist „Other“)
+MAX_ANSWER = 32768
+MAX_NOTE = 8192
+MAX_TOTAL = 32768
+
+
+def join_multi(items) -> str:
+    """Mehrfachauswahl wie Claude Code (kkt): ", "-getrennt, Einträge mit ", " oder '"' als JSON-String."""
+    return ", ".join(json.dumps(s, ensure_ascii=False) if (", " in s or '"' in s) else s for s in items)
+
+
+def question_answers(inp: dict, decision: dict):
+    """(answers, annotations) für updatedInput oder None, wenn etwas nicht sauber passt.
+    Format wie die VS-Code-Frage-UI: answers[Frage] = Label | eigener Text („Other“) |
+    Mehrfachauswahl "A, B, eigener Text"; Notizen als annotations[Frage] = {"notes": Text}.
+    Jede Frage muss beantwortet sein (sonst lieber den VS-Code-Dialog stehen lassen)."""
+    qs = questions_of(inp)
+    raw = decision.get("answers") if isinstance(decision.get("answers"), dict) else {}
+    raw_notes = decision.get("notes") if isinstance(decision.get("notes"), dict) else {}
+    # Karte kennt nur gekürzte Labels (short): zurück auf das volle Label
+    full = {}
+    for q in (inp.get("questions") or []):
+        if isinstance(q, dict) and q.get("question"):
+            full[str(q["question"])] = {short(o["label"], 120): str(o["label"]) for o in (q.get("options") or [])
+                                        if isinstance(o, dict) and o.get("label")}
+    answers, notes, total = {}, {}, 0
+    for q in qs:
+        text = q["question"]
+        labels = full.get(text, {})
+        a = raw.get(text)
+        if isinstance(a, list):
+            items = [labels.get(s, s) for s in (str(x).strip() for x in a if isinstance(x, str)) if s]
+            if not items or not q["multiSelect"] or len(items) > q["optionCount"] + 1:
+                return None
+            a = join_multi(items)
+        elif isinstance(a, str):
+            a = labels.get(a.strip(), a.strip())
+        else:
+            return None
+        if not a or len(a) > MAX_ANSWER:
+            return None
+        if q["kind"] == "number":
+            try:
+                v = float(a)
+            except ValueError:
+                return None
+            # "nan"/"inf" parst float() auch – NaN rutschte durch jede min/max-Prüfung
+            if not math.isfinite(v):
+                return None
+            if ("min" in q and v < q["min"]) or ("max" in q and v > q["max"]):
+                return None
+        answers[text] = a
+        total += len(a)
+        n = raw_notes.get(text)
+        if isinstance(n, str) and n.strip():
+            n = n.strip()
+            if len(n) > MAX_NOTE:
+                return None
+            notes[text] = {"notes": n}
+            total += len(n)
+    if not answers or total > MAX_TOTAL:
+        return None
+    return answers, notes
+
+
+# ---------- Hook-Modi ----------
+
+def parse_wait(args) -> float:
+    wait = os.environ.get("CLAUDE_GATE_WAIT") or DEFAULT_WAIT
+    if "--wait" in args:
+        i = args.index("--wait")
+        if i + 1 < len(args):
+            wait = args[i + 1]
+    try:
+        return max(0.0, min(float(wait), MAX_WAIT))
+    except ValueError:
+        return float(DEFAULT_WAIT)
+
+
+def on_signal(signum, frame):
+    for p in _cleanup:
+        unlink(p)
+    touch_stamp()
+    os._exit(0)
+
+
+def hook(mode: str, args) -> None:
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        return
+    if not isinstance(data, dict):
+        return
+    wait = parse_wait(args)
+    if wait <= 0:
+        return
+
+    event = str(data.get("hook_event_name") or "PermissionRequest")
+    tool = str(data.get("tool_name") or "")
+    inp = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    cwd = str(data.get("cwd") or "")
+    sugs = data.get("permission_suggestions") if isinstance(data.get("permission_suggestions"), list) else []
+    if mode == "question" and tool != "AskUserQuestion":
+        return
+    if mode == "permission" and tool == "AskUserQuestion":
+        return   # Fragen laufen über den eigenen Modus
+    if event not in ("PermissionRequest", "PreToolUse"):
+        return
+
+    qs = questions_of(inp) if mode == "question" else []
+    if mode == "question" and not qs:
+        return
+
+    now = time.time()
+    gid = "%d-%d" % (int(now * 1000), os.getpid())
+    entry = {
+        "id": gid,
+        "kind": mode,
+        "session": str(data.get("session_id") or ""),
+        "agent": bool(data.get("agent_id")),
+        "cwd": cwd,
+        "repo": repo_of(cwd),
+        "project": project_of(cwd),
+        "tool": tool,
+        "toolLabel": tool_label(tool),
+        "hash": input_hash(inp),
+        "created": int(now * 1000),
+        "expires": int((now + wait) * 1000),
+        "pid": os.getpid(),
+    }
+    if mode == "permission":
+        entry.update(describe(tool, inp, cwd))
+        entry["canAlways"] = bool(sugs)
+        entry["alwaysNote"] = suggestion_note(sugs)
+    else:
+        entry["questions"] = qs
+
+    ensure_dir()
+    pend, dec = pending_path(gid), decision_path(gid)
+    _cleanup.extend([pend, dec])
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(s, on_signal)
+    try:
+        write_json(pend, entry)
+        touch_stamp()
+        decision = None
+        end = now + wait
+        while time.time() < end:
+            if os.path.exists(dec):
+                decision = read_json(dec)
+                break
+            if not os.path.exists(pend):
+                return   # in VS Code beantwortet (clear) oder weggeräumt
+            time.sleep(POLL)
+    finally:
+        for p in _cleanup:
+            unlink(p)
+        touch_stamp()
+
+    if not isinstance(decision, dict):
+        return
+    out = build_output(mode, event, decision, inp, sugs)
+    if out is not None:
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+        sys.stdout.flush()
+
+
+def build_output(mode, event, decision, inp, sugs):
+    behavior = decision.get("behavior")
+    if mode == "permission":
+        if behavior == "allow":
+            d = {"behavior": "allow"}
+            if decision.get("always") and sugs:
+                d["updatedPermissions"] = sugs
+        elif behavior == "deny":
+            d = {"behavior": "deny", "message": "Denied from the desktop card."}
+        else:
+            return None
+        return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": d}}
+
+    # Frage: alle Fragen beantwortet, sonst still zurück an den VS-Code-Dialog
+    if behavior != "allow":
+        return None
+    got = question_answers(inp, decision)
+    if got is None:
+        return None
+    answers, notes = got
+    # Rest des Inputs unverändert lassen (Claude Code lehnt geänderte angezeigte Felder ab)
+    updated = {k: v for k, v in inp.items() if k not in ("answers", "annotations", "response", "followUp")}
+    updated["answers"] = answers
+    if notes:
+        updated["annotations"] = notes
+    if event == "PreToolUse":
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
+                                       "permissionDecisionReason": "Answered from the desktop card.",
+                                       "updatedInput": updated}}
+    return {"hookSpecificOutput": {"hookEventName": "PermissionRequest",
+                                   "decision": {"behavior": "allow", "updatedInput": updated}}}
+
+
+# ---------- Aufräumen / Shell ----------
+
+def entries():
+    try:
+        names = os.listdir(DIR)
+    except OSError:
+        return []
+    out = []
+    for n in names:
+        if n.endswith(".json") and not n.endswith(".decision.json") and ID_RE.match(n[:-5]):
+            e = read_json(os.path.join(DIR, n))
+            if isinstance(e, dict):
+                out.append(e)
+    return out
+
+
+def alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def clear(args) -> None:
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    sid = str(data.get("session_id") or "")
+    event = str(data.get("hook_event_name") or "")
+    tool = str(data.get("tool_name") or "")
+    h = input_hash(data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {})
+    changed = False
+    for e in entries():
+        gid = str(e.get("id") or "")
+        if not ID_RE.match(gid):
+            continue
+        drop = not alive(e.get("pid"))
+        if not drop and sid and e.get("session") == sid:
+            if event in ("PostToolUse", "PostToolUseFailure", "PermissionDenied"):
+                # nur die Karte genau dieses Tool-Aufrufs (parallel können andere offen sein)
+                drop = e.get("tool") == tool and e.get("hash") == h
+            else:
+                drop = True   # UserPromptSubmit, Stop, StopFailure, SessionEnd: alles der Sitzung
+        if drop:
+            changed |= unlink(pending_path(gid))
+            unlink(decision_path(gid))
+    if changed:
+        touch_stamp()
+
+
+def list_cmd() -> None:
+    now = int(time.time() * 1000)
+    live = []
+    for e in entries():
+        gid = str(e.get("id") or "")
+        if not ID_RE.match(gid):
+            continue
+        if not alive(e.get("pid")) or int(e.get("expires") or 0) < now - 2000:
+            unlink(pending_path(gid))
+            unlink(decision_path(gid))
+            continue
+        e.pop("pid", None)
+        e.pop("hash", None)
+        live.append(e)
+    live.sort(key=lambda e: e.get("created") or 0)
+    sys.stdout.write(json.dumps(live, ensure_ascii=False))
+
+
+def decide(args) -> None:
+    if len(args) < 2 or not ID_RE.match(args[0]):
+        return
+    gid = args[0]
+    if not os.path.exists(pending_path(gid)):
+        return
+    try:
+        d = json.loads(args[1])
+    except ValueError:
+        return
+    if not isinstance(d, dict) or d.get("behavior") not in ("allow", "deny", "pass"):
+        return
+    ensure_dir()
+    write_json(decision_path(gid), {
+        "behavior": d["behavior"],
+        "always": d.get("always") is True,
+        "answers": d.get("answers") if isinstance(d.get("answers"), dict) else {},
+        "notes": d.get("notes") if isinstance(d.get("notes"), dict) else {},
+    })
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    cmd = args[0] if args else ""
+    if cmd in ("permission", "question"):
+        hook(cmd, args[1:])
+    elif cmd == "clear":
+        clear(args[1:])
+    elif cmd == "list":
+        list_cmd()
+    elif cmd == "decide":
+        decide(args[1:])
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        pass
+    sys.exit(0)

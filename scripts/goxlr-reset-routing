@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""GoXLR: komplette Routing-Matrix ausschalten (alle Eingänge × alle Ausgänge).
+
+  goxlr-reset-routing [-n|--dry-run] [--wait SEK] [--if SCHALTER] [--only-inputs A,B]
+
+Liest den Router per API, schaltet nur Routen aus, die an sind, nacheinander per
+`goxlr-client router <Eingang> <Ausgang> false` (kurze Pause, der Daemon wird nicht geflutet) und prüft danach.
+--wait SEK  wartet bis zu SEK Sekunden auf Daemon + Gerät (Login: der Daemon startet evtl. später als die Sitzung)
+--if KEY    tut nichts, wenn KEY in ~/.config/desktop/goxlr.json auf false steht (fehlt = an)
+--only-inputs  nur diese Eingänge (JSON-Namen, z. B. Game,Console) – zum vorsichtigen Testen
+-n          zeigt nur die geplanten Befehle
+Aufrufer: hypr/autostart.conf (scripts/goxlr-login, --if resetRoutingOnLogin), scripts/goxlr-state lock
+(--if resetRoutingOnLock), systemd/desktop-keylight-off.service (ExecStop, --if resetRoutingOnExit,
+läuft vor „profiles device save“). Schalter in ~/.config/desktop/goxlr.json, ohne Datei sind alle an.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+
+API = "http://localhost:14564/api/get-devices"
+IN = {"Microphone": "microphone", "Chat": "chat", "Music": "music", "Game": "game", "Console": "console",
+      "LineIn": "line-in", "System": "system", "Samples": "samples"}
+OUT = {"Headphones": "headphones", "BroadcastMix": "broadcast-mix", "ChatMic": "chat-mic", "Sampler": "sampler",
+       "LineOut": "line-out", "StreamMix2": "stream-mix2"}
+
+
+def get_device():
+    try:
+        with urllib.request.urlopen(API, timeout=3) as r:
+            for serial, dev in (json.load(r).get("mixers") or {}).items():
+                return serial, dev
+    except (OSError, ValueError):
+        pass
+    return None, None
+
+
+def enabled(key):
+    try:
+        with open(os.path.expanduser("~/.config/desktop/goxlr.json")) as f:
+            return bool(json.load(f).get(key, True))
+    except (OSError, ValueError):
+        return True
+
+
+def main():
+    argv = sys.argv[1:]
+    if "--if" in argv and not enabled(argv[argv.index("--if") + 1]):
+        print("per Schalter aus – nichts getan")
+        return 0
+    dry = "-n" in argv or "--dry-run" in argv
+    wait = 0.0
+    if "--wait" in argv:
+        wait = float(argv[argv.index("--wait") + 1])
+    deadline = time.time() + wait
+    serial, dev = get_device()
+    while not dev and time.time() < deadline:
+        time.sleep(2)
+        serial, dev = get_device()
+    if not dev:
+        print("goxlr-reset-routing: Daemon/Gerät nicht erreichbar", file=sys.stderr)
+        return 1
+
+    only = argv[argv.index("--only-inputs") + 1].split(",") if "--only-inputs" in argv else list(IN)
+    router = dev.get("router") or {}
+    todo = [(i, o) for i in IN if i in only for o in OUT if (router.get(i) or {}).get(o)]
+    if not todo:
+        print("Routing ist schon komplett aus")
+        return 0
+    rc = 0
+    for i, o in todo:
+        cmd = ["goxlr-client", "--device", serial, "router", IN[i], OUT[o], "false"]
+        print(("würde: " if dry else "") + " ".join(cmd[3:]))
+        if dry:
+            continue
+        r = subprocess.run(cmd, capture_output=True, timeout=10)
+        if r.returncode != 0:
+            rc = 1
+            print(f"Fehler bei {i} -> {o}: {r.stderr.decode().strip()}", file=sys.stderr)
+        time.sleep(0.08)
+    if not dry:
+        time.sleep(0.3)
+        _, dev = get_device()
+        left = [(i, o) for i in IN if i in only for o in OUT if ((dev or {}).get("router", {}).get(i) or {}).get(o)]
+        if left:
+            print("noch an:", left, file=sys.stderr)
+            rc = 1
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

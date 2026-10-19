@@ -1,0 +1,453 @@
+#!/usr/bin/env -S python3 -I
+"""scripts/project – Desktop-Einstellungen der Projekte (projects/projects.json, Schema: projects/README.md).
+
+Einziger Schreiber der Datei (zusammen mit scripts/vscode-colors über projects/store.py). Projekt-Repos
+werden nur gelesen. Hilfe: scripts/project hilfe
+"""
+import json
+import pathlib
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "projects"))
+sys.path.insert(0, str(ROOT / "theme/gen"))
+import store as S  # noqa: E402
+
+TAG = "scripts/project"
+HELP = f"""{TAG} – Desktop-Einstellungen der Projekte (projects/projects.json)
+  {TAG} list                         Übersicht (Farbe, Art, Tönung, Ports, Pfade)
+  {TAG} show <projekt|pfad>          ein Eintrag als JSON (+ Zustand der Tönung) – auch `show .`
+  {TAG} detect <projekt|pfad>        Vorschlag für dev/links aus package.json, apps/*, .env.example (schreibt nichts)
+  {TAG} set <projekt> <feld> <wert>  ändern, z. B.
+        color '#197AC3' | glut | none          tint an|aus          kind kunde|labs|intern|privat
+        org ja|nein     name „Anzeige“         workspace <datei>|none   paths <pfad>[,<pfad>…]
+        dev.command 'bun run dev'|none         dev.services 'bun run services:up'|none
+        dev.ports web=3000,api=3001|none       dev.ports.<name> 3000|none     dev detect
+        open.code an|aus   open.browser web[,admin|URL…]|none   open.terminal dev|shell|none
+  {TAG} link <projekt|global> add <Name> <URL> [icon]   ·   link <projekt|global> rm <Name>
+  {TAG} add <pfad> [farbe]           Projekt aufnehmen (Repo-Ordner oder *.code-workspace; Farbe sonst die seltenste)
+  {TAG} rm <projekt>                 Eintrag entfernen (Tönung vorher aus; Ordner kommt auf die ignore-Liste)
+  {TAG} ports list [--json]          alle Port-Belegungen (Projekte + gerade lauschende Dienste, Kollisionen)
+  {TAG} ports show <projekt> [--json]   Block, App-/Infra-Ports, Kollisionen, was gerade lauscht
+  {TAG} ports allocate <projekt> [--apps web,api,admin] [--infra postgres,minio,minio-console] [--block N] [--dry-run] [--json]
+                                     nächsten freien Port-Block vergeben (oder den eigenen behalten) und Ports eintragen
+  {TAG} ports set <projekt> <rolle> <port|none> [--infra]   einen Port setzen/entfernen (warnt bei Kollision)
+        Schema: Block n (1–{S.MAX_BLOCK}) = Apps 3000+100·n+Versatz (web 00, api 01, admin 02, relay 03, weitere ab 10),
+        Infra Standardport+100·n (postgres 5432→5532, redis 6379→6479, minio 9000→9100, minio-console 9001→9101).
+        Ändert nur projects.json – .env/.env.example/compose im Repo zieht /project bzw. /new-project nach.
+  {TAG} migrate                      einmalig: theme/projects.json + Wrapper-Zustand + profiles.json-Hotlinks übernehmen
+Farbe/Tönung wirken sofort in VS Code (über scripts/vscode-colors). Projekt-Repos bleiben unverändert."""
+
+TRUE = ("an", "on", "true", "ja", "yes", "1")
+FALSE = ("aus", "off", "false", "nein", "no", "0")
+NONE = ("none", "null", "keine", "kein", "-", "")
+
+
+def vp():
+    import vscode_projects  # noqa: PLC0415 – lädt Palette, nur wenn gebraucht
+    return vscode_projects
+
+
+def boolean(v: str) -> bool:
+    if v.lower() in TRUE:
+        return True
+    if v.lower() in FALSE:
+        return False
+    sys.exit(f"„{v}“: an/aus (ja/nein) erwartet")
+
+
+def need(data, q) -> str:
+    pid = S.find(data, q)
+    if not pid:
+        sys.exit(f"Unbekanntes Projekt: {q} (Liste: {TAG} list)")
+    return pid
+
+
+def ports_str(e) -> str:
+    d = e["dev"]
+    s = " ".join(f"{k}:{v}" for k, v in d["ports"].items()) or "–"
+    return (f"[{d['block']}] " if d["block"] else "") + s
+
+
+def flags(args, names_with_value, bool_names=()):
+    """--name wert / --name=wert / --schalter -> (positionale, {name: wert})"""
+    pos, opt, i = [], {}, 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("--"):
+            k, eq, v = a[2:].partition("=")
+            if k in bool_names:
+                opt[k] = True
+            elif k in names_with_value:
+                if not eq:
+                    i += 1
+                    if i >= len(args):
+                        sys.exit(f"--{k} braucht einen Wert")
+                    v = args[i]
+                opt[k] = v
+            else:
+                sys.exit(f"Unbekannte Option --{k}")
+        else:
+            pos.append(a)
+        i += 1
+    return pos, opt
+
+
+def roles(v):
+    return [r.strip() for r in v.split(",") if r.strip()] if v is not None else None
+
+
+def port_info(data, pid, live):
+    e = data["projects"][pid]
+    used = S.usage(data, skip=pid)
+    out = {"id": pid, "block": e["dev"]["block"], "ports": e["dev"]["ports"], "infra": e["dev"]["infra"],
+           "conflicts": {}, "listening": {}}
+    for kind in ("ports", "infra"):
+        for r, port in e["dev"][kind].items():
+            if port in used:
+                out["conflicts"][r] = used[port]
+            if port in live:
+                out["listening"][r] = f"{port} ({live[port]})"
+    return out
+
+
+def cmd_ports(argv):
+    if not argv:
+        sys.exit(HELP)
+    sub, rest = argv[0], argv[1:]
+    if sub == "list":
+        _, opt = flags(rest, (), ("json",))
+        data, live = S.load(), S.listeners()
+        rows = {}
+        for pid, e in data["projects"].items():
+            for kind in ("ports", "infra"):
+                for r, port in e["dev"][kind].items():
+                    rows.setdefault(port, []).append({"project": pid, "role": r, "kind": "app" if kind == "ports" else "infra",
+                                                      "block": e["dev"]["block"]})
+        if opt.get("json"):
+            print(json.dumps({"ports": {str(p): v for p, v in sorted(rows.items())},
+                              "blocks": {str(e["dev"]["block"]): k for k, e in data["projects"].items() if e["dev"]["block"]},
+                              "listening": {str(p): n for p, n in sorted(live.items())}}, indent=2, ensure_ascii=False))
+            return
+        for port, who in sorted(rows.items()):
+            names = ", ".join(f"{w['project']}:{w['role']}" for w in who)
+            mark = "  ⚠ Kollision" if len(who) > 1 else ""
+            run = f"  lauscht ({live[port]})" if port in live else ""
+            print(f"  {port:>5}  {names}{mark}{run}")
+        other = {p: n for p, n in live.items() if p not in rows and 1024 <= p}
+        if other:
+            print("  sonst belegt (lauscht gerade): " + ", ".join(f"{p} {n}" for p, n in sorted(other.items())))
+        blocks = sorted((e["dev"]["block"], k) for k, e in data["projects"].items() if e["dev"]["block"])
+        print("  Blöcke: " + (", ".join(f"{b}={k}" for b, k in blocks) or "noch keiner vergeben") +
+              f" · nächster freier: {TAG} ports allocate <projekt> --dry-run")
+    elif sub == "show":
+        pos, opt = flags(rest, (), ("json",))
+        if len(pos) != 1:
+            sys.exit(f"Aufruf: {TAG} ports show <projekt> [--json]")
+        data = S.load()
+        info = port_info(data, need(data, pos[0]), S.listeners())
+        if opt.get("json"):
+            print(json.dumps(info, indent=2, ensure_ascii=False))
+            return
+        print(f"  {info['id']}: Block {info['block'] or '– (alte Standardports)'}")
+        for kind, label in (("ports", "App"), ("infra", "Infra")):
+            for r, port in info[kind].items():
+                c = f"  ⚠ auch {', '.join(info['conflicts'][r])}" if r in info["conflicts"] else ""
+                l = "  lauscht" if r in info["listening"] else ""
+                print(f"    {label:<5} {r:<14} {port}{c}{l}")
+    elif sub == "allocate":
+        pos, opt = flags(rest, ("apps", "infra", "block"), ("dry-run", "json"))
+        if len(pos) != 1:
+            sys.exit(f"Aufruf: {TAG} ports allocate <projekt> [--apps …] [--infra …] [--block N] [--dry-run] [--json]")
+        block = int(opt["block"]) if str(opt.get("block", "")).isdigit() else None
+        if "block" in opt and not block:
+            sys.exit("--block: Zahl 1–" + str(S.MAX_BLOCK))
+        def run(data):
+            pid = need(data, pos[0])
+            res = S.allocate(data, pid, roles(opt.get("apps")), roles(opt.get("infra")), block)
+            if opt.get("json"):
+                print(json.dumps({"id": pid, **res, "moved": {r: {"from": a, "to": b} for r, (a, b) in res["moved"].items()},
+                                  "dryRun": bool(opt.get("dry-run"))}, indent=2, ensure_ascii=False))
+            else:
+                print(f"  {pid}: Block {res['block']}" + (" (Probelauf, nichts gespeichert)" if opt.get("dry-run") else ""))
+                for r, port in {**res["ports"], **res["infra"]}.items():
+                    old = res["moved"].get(r, (port,))[0]
+                    print(f"    {r:<14} {port}" + (f"  (vorher {old})" if old not in (None, port) else ""))
+                if res["moved"] and any(a for a, _ in res["moved"].values()):
+                    print("  Repo-Konfiguration (.env.example, compose, dev-Skripte) muss nachziehen – im Repo selbst, nicht von hier.")
+        if opt.get("dry-run"):
+            run(S.load())
+        else:
+            with S.edit() as data:
+                run(data)
+    elif sub == "set":
+        pos, opt = flags(rest, (), ("infra",))
+        if len(pos) != 3:
+            sys.exit(f"Aufruf: {TAG} ports set <projekt> <rolle> <port|none> [--infra]")
+        with S.edit() as data:
+            pid = need(data, pos[0])
+            d = data["projects"][pid]["dev"]
+            role, val = pos[1], pos[2]
+            kind = "infra" if opt.get("infra") or role in d["infra"] or (role not in d["ports"] and role in S.INFRA_DEFAULTS) else "ports"
+            if val.lower() in NONE:
+                d[kind].pop(role, None)
+                print(f"  {pid}: {role} entfernt")
+            elif val.isdigit() and 1 <= int(val) <= 65535:
+                d[kind][role] = int(val)
+                other = S.usage(data, skip=pid).get(int(val))
+                print(f"  {pid}: {role} = {val} ({'Infra' if kind == 'infra' else 'App'})" +
+                      (f"  ⚠ auch {', '.join(other)}" if other else ""))
+            else:
+                sys.exit("Port: Zahl 1–65535 oder none")
+            e = data["projects"][pid]
+            e["open"]["browser"] = [b for b in e["open"]["browser"] if "://" in b or b in d["ports"]]
+    else:
+        sys.exit(HELP)
+
+
+# ── Befehle ───────────────────────────────────────────────────────────────
+def cmd_list(data):
+    v = vp()
+    w = max([len(k) for k in data["projects"]] + [8])
+    for pid, e in data["projects"].items():
+        tint = "getönt" if e["tint"] else "Punkt"
+        org = "Firma" if e["org"] else ""
+        print(f"  {v.swatch(e['color'] or '#808080')} {pid:<{w}}  {str(e['color']):<9} {e['kind']:<7} {org:<5} {tint:<6} "
+              f"{ports_str(e):<34} {' · '.join(S.targets(e))}")
+    if data["global"]["links"]:
+        print("  global: " + " · ".join(f"{l['name']} ({l['url']})" for l in data["global"]["links"]))
+    if data["ignore"]:
+        print("  ignoriert: " + ", ".join(data["ignore"]))
+
+
+def cmd_show(data, q):
+    pid = need(data, q)
+    e = data["projects"][pid]
+    v = vp()
+    idx = v.load_index()
+    info = {"id": pid, "vscode": {t: v.state(S.absp(t)) for t in S.targets(e)}}
+    wr = {t: S.rel(idx[str(S.absp(t))]["file"]) for t in e["paths"] if str(S.absp(t)) in idx}
+    if wr:
+        info["wrapper"] = wr
+    ports = e["dev"]["ports"]
+    urls = [b if "://" in b else f"http://localhost:{ports[b]}" for b in e["open"]["browser"] if "://" in b or b in ports]
+    info["opens"] = (["VS Code"] if e["open"]["code"] else []) + urls + (
+        [f"VS-Code-Terminal ({e['open']['terminal']})"] if e["open"]["terminal"] else [])
+    print(json.dumps({**e, "_info": info}, indent=2, ensure_ascii=False))
+
+
+def cmd_detect(data, q):
+    pid = S.find(data, q)
+    p = S.main_path(data["projects"][pid]) if pid else S.absp(q).resolve()
+    print(json.dumps(S.detect(p), indent=2, ensure_ascii=False))
+
+
+def parse_ports(v: str) -> dict:
+    if v.lower() in NONE:
+        return {}
+    out = {}
+    for part in v.split(","):
+        k, _, n = part.strip().partition("=")
+        if not k or not n.strip().isdigit():
+            sys.exit(f"Ports als name=port[,name=port…], z. B. web=3000,api=3001 – nicht „{part}“")
+        out[k.strip()] = int(n)
+    return out
+
+
+def cmd_set(data, q, field, value):
+    pid = need(data, q)
+    e = data["projects"][pid]
+    none = value.lower() in NONE
+    msgs = []
+    if field == "color":
+        msgs = vp().set_color(e, None if none else value)
+    elif field == "tint":
+        msgs = vp().set_tint(e, boolean(value))
+    elif field == "name":
+        e["name"] = pid if none else value
+    elif field == "kind":
+        e["kind"] = value
+    elif field in ("org", "team"):   # "team" = alter Name
+        e["org"] = boolean(value)
+    elif field == "workspace":
+        e["workspace"] = None if none else S.rel(S.absp(value).resolve())
+    elif field == "paths":
+        e["paths"] = [] if none else [S.rel(S.absp(p.strip()).resolve()) for p in value.split(",") if p.strip()]
+    elif field == "dev" and value == "detect":
+        found = S.detect(S.main_path(e))
+        e["dev"] = {**e["dev"], **found["dev"]}
+        e["open"]["browser"] = [b for b in e["open"]["browser"] if "://" in b or b in e["dev"]["ports"]] or (
+            [next(iter(e["dev"]["ports"]))] if e["dev"]["ports"] else [])
+    elif field in ("dev.command", "dev.services"):
+        e["dev"][field[4:]] = None if none else value
+    elif field == "dev.ports":
+        e["dev"]["ports"] = parse_ports(value)
+    elif field.startswith("dev.ports."):
+        name = field[len("dev.ports."):]
+        if none:
+            e["dev"]["ports"].pop(name, None)
+        elif value.isdigit():
+            e["dev"]["ports"][name] = int(value)
+        else:
+            sys.exit("Port: Zahl oder none")
+    elif field == "open.code":
+        e["open"]["code"] = boolean(value)
+    elif field == "open.browser":
+        e["open"]["browser"] = [] if none else [b.strip() for b in value.split(",") if b.strip()]
+    elif field == "open.terminal":
+        e["open"]["terminal"] = None if none else value
+    else:
+        sys.exit(f"Unbekanntes Feld: {field}\n\n{HELP}")
+    # Port-Namen, die es nicht mehr gibt, aus open.browser streichen
+    if field.startswith("dev.ports"):
+        e["open"]["browser"] = [b for b in e["open"]["browser"] if "://" in b or b in e["dev"]["ports"]]
+    for m in msgs:
+        print(f"  {m}")
+    print(f"  {pid}: {field} = {json.dumps(e['dev'] if field == 'dev' else value, ensure_ascii=False)}")
+
+
+def cmd_link(data, q, action, args):
+    links = data["global"]["links"] if q == "global" else data["projects"][need(data, q)]["links"]
+    if action == "add" and len(args) in (2, 3):
+        new = {"name": args[0], "url": args[1], **({"icon": args[2]} if len(args) == 3 else {})}
+        for i, l in enumerate(links):
+            if l["name"] == args[0]:
+                links[i] = new
+                break
+        else:
+            links.append(new)
+    elif action == "rm" and len(args) == 1:
+        if not any(l["name"] == args[0] for l in links):
+            sys.exit(f"Kein Link „{args[0]}“")
+        links[:] = [l for l in links if l["name"] != args[0]]
+    else:
+        sys.exit(f"Aufruf: {TAG} link <projekt|global> add <Name> <URL> [icon] · link <projekt|global> rm <Name>")
+    print(f"  {q}: " + (" · ".join(l["name"] for l in links) or "keine Links"))
+
+
+def cmd_add(data, path, color=None):
+    p = S.absp(path).resolve()
+    if not p.exists():
+        sys.exit(f"Gibt es nicht: {p}")
+    if not (p.is_dir() or p.suffix == ".code-workspace"):
+        sys.exit("Ordner oder *.code-workspace erwartet")
+    if S.find(data, str(p)) and str(p) in {str(S.absp(t)) for e in data["projects"].values() for t in S.targets(e)}:
+        sys.exit(f"Schon erfasst: {S.find(data, str(p))}")
+    data["ignore"] = [x for x in data["ignore"] if S.absp(x) != p]
+    v = vp()
+    if color and not v.resolve(color):
+        sys.exit(f"Farbe: #RRGGBB oder {', '.join(v.ACCENTS)}")
+    pid, e = S.new_entry(data, p, (color.upper() if color and S.HEX.match(color) else color) or v.rarest(data))
+    data["projects"][pid] = e
+    print(f"  {v.swatch(e['color'])} {pid} aufgenommen · {e['kind']} · Ports: {ports_str(e)}")
+    print(f"  Tönung in VS Code: {TAG} set {pid} tint an")
+
+
+def cmd_rm(data, q):
+    pid = need(data, q)
+    e = data["projects"][pid]
+    if e["tint"]:
+        for m in vp().set_tint(e, False):
+            print(f"  {m}")
+    for t in S.targets(e):
+        if S.absp(t).exists():
+            data["ignore"].append(t)  # sonst erfasst scripts/vscode-colors es beim nächsten Scan neu
+    del data["projects"][pid]
+    print(f"  {pid} entfernt (Ordner bleibt; wieder aufnehmen: {TAG} add <pfad>)")
+
+
+def cmd_migrate(data):
+    v = vp()
+    old = []
+    if S.COMPAT.exists():
+        j = json.loads(S.COMPAT.read_text())
+        old = j.get("projects") or []
+    # gruppieren: gleicher Name = ein Projekt (soulwick: Arbeitsbereich + Repo)
+    groups = {}
+    for row in old:
+        p = S.absp(row["path"])
+        if str(p) in v.known_paths(data):
+            continue
+        key = row.get("name") or p.name.removesuffix(".code-workspace")
+        g = groups.setdefault(key, {"ws": None, "paths": [], "colors": []})
+        if p.suffix == ".code-workspace":
+            g["ws"] = S.rel(p)
+        else:
+            g["paths"].append(S.rel(p))
+        g["colors"].append(row.get("color"))
+    for key, g in groups.items():
+        first = g["paths"][0] if g["paths"] else g["ws"]
+        pid, e = S.new_entry(data, first, None)
+        if g["ws"] and g["paths"]:
+            e["workspace"] = g["ws"]
+        e["paths"] = g["paths"]
+        if not g["paths"]:
+            e["workspace"] = g["ws"]
+        # Farbe: die des Repos (bei Abweichung), sonst die erste
+        e["color"] = g["colors"][-1] if g["paths"] else g["colors"][0]
+        e["tint"] = bool(e["color"]) and any(st in v.ON for st in (v.state(S.absp(t)) for t in S.targets(e)))
+        data["projects"][pid] = e
+        print(f"  {v.swatch(e['color'] or '#808080')} {pid:<28} {e['kind']:<7} {'getönt' if e['tint'] else 'Punkt':<6} "
+              f"{ports_str(e):<34} {' · '.join(S.targets(e))}")
+    # schon erfasste Projekte: fehlende Infra-Ports aus compose nur erfassen (nichts ändern)
+    for pid, e in data["projects"].items():
+        if not e["dev"]["infra"] and S.main_path(e):
+            found = S.compose_ports(S.main_path(e))
+            if found:
+                e["dev"]["infra"] = found
+                print(f"  {pid}: Infra-Ports erfasst " + " ".join(f"{k}:{v}" for k, v in found.items()))
+    # Kollisionen nur melden
+    for port, who in sorted(S.usage(data).items()):
+        if len(who) > 1:
+            print(f"  ⚠ Port {port} mehrfach: {', '.join(who)}")
+    # globale Hotlinks aus profiles.json (liest dort niemand mehr) -> global.links
+    prof = ROOT / "profiles/profiles.json"
+    if prof.exists():
+        pj = json.loads(prof.read_text())
+        if pj.get("hotlinks"):
+            names = {l["name"] for l in data["global"]["links"]}
+            data["global"]["links"] += [l for l in pj["hotlinks"] if l.get("name") not in names]
+            del pj["hotlinks"]
+            pj["_hinweis"] = ("Vorlagen für neue Desktops. apps = Befehle (\"@code\" = VS Code, nativ oder Flatpak); move = vorhandene "
+                              "Fenster (AppId enthält …) auf den neuen Desktop holen. Projekt-Desktops (Code) stellt "
+                              "projects/projects.json ein (scripts/project: open, dev.ports), Links ebenfalls dort.")
+            S._write_atomic(prof, json.dumps(pj, indent=2, ensure_ascii=False) + "\n")
+            print("  profiles.json: hotlinks → projects.json global.links")
+    if not groups:
+        print("  keine neuen Projekte aus theme/projects.json")
+
+
+def main(argv):
+    if not argv or argv[0] in ("hilfe", "help", "-h", "--help"):
+        print(HELP)
+        return
+    cmd, args = argv[0], argv[1:]
+    if cmd == "list":
+        cmd_list(S.load())
+    elif cmd == "show" and len(args) == 1:
+        cmd_show(S.load(), args[0])
+    elif cmd == "detect" and len(args) == 1:
+        cmd_detect(S.load(), args[0])
+    elif cmd == "set" and len(args) == 3:
+        with S.edit() as data:
+            cmd_set(data, *args)
+    elif cmd == "link" and len(args) >= 2:
+        with S.edit() as data:
+            cmd_link(data, args[0], args[1], args[2:])
+    elif cmd == "add" and len(args) in (1, 2):
+        with S.edit() as data:
+            cmd_add(data, *args)
+    elif cmd == "rm" and len(args) == 1:
+        with S.edit() as data:
+            cmd_rm(data, args[0])
+    elif cmd == "ports":
+        cmd_ports(args)
+    elif cmd == "migrate" and not args:
+        with S.edit() as data:
+            cmd_migrate(data)
+    else:
+        sys.exit(HELP)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

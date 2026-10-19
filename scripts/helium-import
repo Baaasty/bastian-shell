@@ -1,0 +1,240 @@
+#!/usr/bin/python3 -I
+"""Chrome-Lesezeichen -> Helium (Chromium-Bookmarks-JSON zusammenführen).
+
+  helium-import                 Chrome-Lesezeichen in Helium einfügen (Helium muss zu sein)
+  helium-import --dry-run       nur zeigen, was passieren würde (geht auch bei laufendem Helium)
+  helium-import --html FILE     stattdessen HTML-Export schreiben (Chrome/Helium: Lesezeichen-Manager -> ⋮ -> Importieren)
+  helium-import --no-bar        Lesezeichenleiste in Helium nicht automatisch einblenden
+  helium-import --source PATH   andere Quelle statt Chrome (Bookmarks-Datei)
+  helium-import --target PATH   andere Ziel-Bookmarks-Datei (Tests)
+
+Quelle (nur gelesen, Chrome-Profil bleibt unberührt): ~/.config/google-chrome/Default/Bookmarks und/oder
+…/AccountBookmarks (Chrome speichert Lesezeichen eines angemeldeten Kontos dort, nicht in Bookmarks).
+Ziel: ~/.config/net.imput.helium/Default/Bookmarks. Vorher Backup als Bookmarks.bak-<Datum>.
+Merge ohne Duplikate (gleicher Ordnerpfad + gleiche URL); vorhandene Helium-Lesezeichen bleiben, Chrome-Ordner
+werden zusammengeführt. 'checksum' und 'sync_metadata' werden weggelassen (Chromium rechnet beim Start neu),
+IDs neu vergeben, GUIDs/Datum erhalten (bei Kollision neue GUID).
+"""
+import copy
+import datetime
+import html
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import uuid
+
+HOME = pathlib.Path.home()
+CHROME = HOME / ".config/google-chrome/Default"
+HELIUM = HOME / ".config/net.imput.helium/Default"
+ROOTS = ("bookmark_bar", "other", "synced")
+# feste GUIDs der Wurzelordner in Chromium
+ROOT_GUIDS = {"bookmark_bar": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+              "other": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+              "synced": "4cf2e351-0e85-532b-bb37-df045d8f8d0f"}
+ROOT_NAMES = {"bookmark_bar": "Bookmarks bar", "other": "Other bookmarks", "synced": "Mobile bookmarks"}
+
+
+def load(path: pathlib.Path):
+    try:
+        d = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) and isinstance(d.get("roots"), dict) else None
+
+
+def empty() -> dict:
+    now = str(int((datetime.datetime.now(datetime.timezone.utc) - datetime.datetime(1601, 1, 1, tzinfo=datetime.timezone.utc))
+                  .total_seconds() * 1_000_000))
+    return {"roots": {k: {"children": [], "date_added": now, "date_last_used": "0", "date_modified": now, "guid": ROOT_GUIDS[k],
+                          "id": "0", "name": ROOT_NAMES[k], "type": "folder"} for k in ROOTS}, "version": 1}
+
+
+def count(node) -> int:
+    if node.get("type") == "url":
+        return 1
+    return sum(count(c) for c in node.get("children", []))
+
+
+def merge_into(dst: dict, src: dict, stats: dict) -> None:
+    """Kinder von src in Ordner dst einfügen: URLs ohne Duplikat, Ordner gleichen Namens zusammenführen."""
+    kids = dst.setdefault("children", [])
+    for c in src.get("children", []):
+        if c.get("type") == "url":
+            if any(k.get("type") == "url" and k.get("url") == c.get("url") for k in kids):
+                stats["dup"] += 1
+            else:
+                kids.append(copy.deepcopy(c))
+                stats["new"] += 1
+        else:
+            twin = next((k for k in kids if k.get("type") == "folder" and k.get("name") == c.get("name")), None)
+            if twin is None:
+                twin = {k: v for k, v in c.items() if k != "children"}
+                twin["children"] = []
+                kids.append(twin)
+                stats["folders"] += 1
+            merge_into(twin, c, stats)
+
+
+def renumber(d: dict) -> None:
+    """IDs eindeutig neu (Wurzel 0 = unsichtbar, dann 1..n), GUIDs eindeutig."""
+    seen = set()
+    n = [0]
+
+    def walk(node, root_key=None):
+        n[0] += 1
+        node["id"] = str(n[0])
+        g = node.get("guid")
+        if root_key:
+            node["guid"] = ROOT_GUIDS[root_key]
+        elif not g or g in seen or g in ROOT_GUIDS.values():
+            node["guid"] = str(uuid.uuid4())
+        seen.add(node["guid"])
+        for c in node.get("children", []):
+            walk(c)
+
+    for k in ROOTS:
+        walk(d["roots"][k], k)
+    d["version"] = 1
+    d.pop("checksum", None)
+    d.pop("sync_metadata", None)
+
+
+def to_html(d: dict) -> str:
+    out = ["<!DOCTYPE NETSCAPE-Bookmark-file-1>", '<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">',
+           "<TITLE>Bookmarks</TITLE>", "<H1>Bookmarks</H1>", "<DL><p>"]
+
+    def ts(v):
+        try:
+            return str(max(0, int(v) // 1_000_000 - 11644473600))
+        except (TypeError, ValueError):
+            return "0"
+
+    def walk(node, depth):
+        pad = "    " * depth
+        for c in node.get("children", []):
+            if c.get("type") == "url":
+                out.append(f'{pad}<DT><A HREF="{html.escape(c.get("url", ""), quote=True)}" ADD_DATE="{ts(c.get("date_added"))}">'
+                           f'{html.escape(c.get("name", ""))}</A>')
+            else:
+                out.append(f'{pad}<DT><H3 ADD_DATE="{ts(c.get("date_added"))}">{html.escape(c.get("name", ""))}</H3>')
+                out.append(f"{pad}<DL><p>")
+                walk(c, depth + 1)
+                out.append(f"{pad}</DL><p>")
+
+    for k in ROOTS:
+        r = d["roots"][k]
+        if not r.get("children"):
+            continue
+        attr = ' PERSONAL_TOOLBAR_FOLDER="true"' if k == "bookmark_bar" else ""
+        out.append(f"    <DT><H3{attr}>{html.escape(r.get('name', k))}</H3>")
+        out.append("    <DL><p>")
+        walk(r, 2)
+        out.append("    </DL><p>")
+    out.append("</DL><p>")
+    return "\n".join(out) + "\n"
+
+
+def helium_running() -> bool:
+    return subprocess.run(["pgrep", "-x", "helium"], capture_output=True).returncode == 0
+
+
+def arg(name: str):
+    if name in sys.argv:
+        i = sys.argv.index(name)
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        sys.exit(f"{name} braucht einen Wert")
+    return None
+
+
+def main() -> int:
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print(__doc__)
+        return 0
+    dry = "--dry-run" in sys.argv
+    html_out = arg("--html")
+    source = arg("--source")
+    target = pathlib.Path(arg("--target") or HELIUM / "Bookmarks")
+
+    # Quelle(n) lesen
+    paths = [pathlib.Path(source)] if source else [CHROME / "Bookmarks", CHROME / "AccountBookmarks"]
+    srcs = [(p, load(p)) for p in paths if p.exists()]
+    srcs = [(p, d) for p, d in srcs if d]
+    if not srcs:
+        print("Keine lesbaren Chrome-Lesezeichen gefunden:", *map(str, paths), sep="\n  ", file=sys.stderr)
+        return 1
+
+    base = load(target) if target.exists() else None
+    merged = copy.deepcopy(base) if base else empty()
+    for k in ROOTS:
+        merged["roots"].setdefault(k, empty()["roots"][k])
+    before = sum(count(merged["roots"][k]) for k in ROOTS)
+
+    stats = {"new": 0, "dup": 0, "folders": 0}
+    for p, d in srcs:
+        for k in ROOTS:
+            if isinstance(d["roots"].get(k), dict):
+                merge_into(merged["roots"][k], d["roots"][k], stats)
+        print(f"Quelle: {p.name} ({sum(count(d['roots'][k]) for k in ROOTS if isinstance(d['roots'].get(k), dict))} Lesezeichen)")
+    renumber(merged)
+    after = sum(count(merged["roots"][k]) for k in ROOTS)
+    json.loads(json.dumps(merged))   # Selbsttest: serialisierbar
+    print(f"Helium vorher {before}, neu {stats['new']}, doppelt übersprungen {stats['dup']}, neue Ordner {stats['folders']} -> nachher {after}")
+    bar = [c["name"] for c in merged["roots"]["bookmark_bar"]["children"]]
+    print("Leiste:", ", ".join(bar))
+
+    if html_out:
+        pathlib.Path(html_out).write_text(to_html(merged))
+        print(f"HTML geschrieben: {html_out}  (Helium: helium://bookmarks -> ⋮ -> Import bookmarks)")
+        return 0
+    if dry:
+        print("Trockenlauf: nichts geschrieben.")
+        if helium_running():
+            print("Hinweis: Helium läuft – für echt erst schließen.")
+        return 0
+    if helium_running():
+        print("Helium läuft. Helium schließen, dann scripts/helium-import (oder --html FILE für den Import im Browser).", file=sys.stderr)
+        return 3
+    if not target.parent.is_dir():
+        print(f"Helium-Profil fehlt: {target.parent} (Helium einmal starten)", file=sys.stderr)
+        return 1
+
+    if target.exists():
+        bak = target.with_name(f"{target.name}.bak-{datetime.date.today().isoformat()}")
+        n = 1
+        while bak.exists():
+            n += 1
+            bak = target.with_name(f"{target.name}.bak-{datetime.date.today().isoformat()}-{n}")
+        shutil.copy2(target, bak)
+        print(f"Backup: {bak}")
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(json.dumps(merged, ensure_ascii=False, indent=3))
+    os.replace(tmp, target)
+    # Chromium schreibt eigene .bak beim nächsten Start; alte Sicherung der Datei daneben stört nicht
+    stale = target.with_name(target.name + ".bak")
+    if stale.exists() and base is None:
+        stale.unlink()
+    print(f"Geschrieben: {target}")
+
+    if "--no-bar" not in sys.argv:
+        prefs = target.parent / "Preferences"
+        try:
+            p = json.loads(prefs.read_text())
+            if not p.get("bookmark_bar", {}).get("show_on_all_tabs"):
+                shutil.copy2(prefs, prefs.with_name(f"Preferences.bak-{datetime.date.today().isoformat()}"))
+                p.setdefault("bookmark_bar", {})["show_on_all_tabs"] = True
+                tmp = prefs.with_name("Preferences.tmp")
+                tmp.write_text(json.dumps(p, separators=(",", ":"), ensure_ascii=False))
+                os.replace(tmp, prefs)
+                print("Lesezeichenleiste in Helium eingeblendet (Preferences bookmark_bar.show_on_all_tabs).")
+        except (OSError, ValueError):
+            print("Preferences nicht lesbar – Leiste ggf. mit Strg+Umschalt+B einblenden.")
+    print("Fertig. Helium starten – Lesezeichen sind in der Leiste.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""netinfo – Netz-Daten für das Netz-Popout der Shell (nur Standardbibliothek, alles als JSON auf stdout).
+
+  netinfo link                      Verbindung: Art (ethernet/wifi), Name, Schnittstelle, IP, Gateway, Link-Geschwindigkeit, Signal
+  netinfo ping                      Latenz zu den Zielen aus ~/.config/desktop/net.json (Standard: Internet 1.1.1.1, Router, GitHub, Discord)
+  netinfo config                    zeigt die gültige Konfiguration
+
+Konfiguration (optional, fehlt = Standard): ~/.config/desktop/net.json
+  { "targets": [ { "name": "Internet", "host": "1.1.1.1" }, { "name": "Router", "host": "gateway" } ], "count": 2 }
+  "gateway" = der Router (Standardroute). "count" = Pakete pro Messung (1-5). Ein Host darf nur aus Buchstaben, Ziffern, . : - _ bestehen.
+
+Doku: docs/NET.md
+"""
+import concurrent.futures
+import json
+import os
+import re
+import subprocess
+import sys
+
+CONFIG = os.path.expanduser("~/.config/desktop/net.json")
+DEFAULT = {
+    "targets": [
+        {"name": "Internet", "host": "1.1.1.1"},
+        {"name": "Router", "host": "gateway"},
+        {"name": "GitHub", "host": "github.com"},
+        {"name": "Discord", "host": "discord.com"},
+    ],
+    "count": 2,
+}
+HOST_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,252}$")
+
+
+def run(cmd, timeout=5):
+    """Befehl ausführen, (Exit-Code, stdout, stderr); fehlendes Programm/Zeitüberschreitung = Code 127/124."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+        return p.returncode, p.stdout, p.stderr
+    except FileNotFoundError:
+        return 127, "", "not found"
+    except subprocess.TimeoutExpired:
+        return 124, "", "timeout"
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def load_config():
+    cfg = dict(DEFAULT)
+    try:
+        with open(CONFIG) as f:
+            d = json.load(f)
+        ts = []
+        for t in d.get("targets", []):
+            host = str(t.get("host", "")).strip()
+            if host == "gateway" or HOST_OK.match(host):
+                ts.append({"name": str(t.get("name") or host)[:24], "host": host})
+        if ts:
+            cfg["targets"] = ts[:6]
+        cfg["count"] = max(1, min(5, int(d.get("count", cfg["count"]))))
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return cfg
+
+
+# ---------- Verbindung ----------
+def default_route():
+    """Standardroute mit der kleinsten Metrik, die nicht über ein VPN-/Tunnel-Gerät läuft (sonst die erste)."""
+    rc, out, _ = run(["ip", "-j", "route", "show", "default"])
+    try:
+        routes = json.loads(out) if rc == 0 else []
+    except ValueError:
+        routes = []
+    routes.sort(key=lambda r: r.get("metric", 0))
+    for r in routes:
+        if not re.match(r"^(tailscale|tun|wg|warp|CloudflareWARP)", r.get("dev", "")):
+            return r
+    return routes[0] if routes else None
+
+
+def iface_kind(dev):
+    base = f"/sys/class/net/{dev}"
+    if os.path.isdir(base + "/wireless") or os.path.isdir(base + "/phy80211"):
+        return "wifi"
+    if re.match(r"^(tailscale|tun|wg|warp)", dev):
+        return "vpn"
+    return "ethernet"
+
+
+def link():
+    r = default_route()
+    if not r:
+        # keine Standardroute: Kabel ohne Netz oder ganz offline
+        return {"up": False, "kind": "none", "name": "Offline"}
+    dev = r.get("dev", "")
+    kind = iface_kind(dev)
+    info = {"up": True, "kind": kind, "iface": dev, "gateway": r.get("gateway", ""), "name": "Ethernet", "ip": "", "speed": 0, "signal": None}
+    rc, out, _ = run(["ip", "-j", "-4", "addr", "show", "dev", dev])
+    try:
+        for a in json.loads(out)[0].get("addr_info", []):
+            if a.get("family") == "inet":
+                info["ip"] = a.get("local", "")
+                break
+    except (ValueError, IndexError, KeyError):
+        pass
+    if kind == "wifi":
+        rc, out, _ = run(["iw", "dev", dev, "link"])
+        m = re.search(r"SSID:\s*(.+)", out)
+        info["name"] = m.group(1).strip() if m else "Wi-Fi"
+        m = re.search(r"tx bitrate:\s*([\d.]+)\s*MBit/s", out)
+        info["speed"] = round(float(m.group(1))) if m else 0
+        m = re.search(r"signal:\s*(-?\d+)\s*dBm", out)
+        info["signal"] = int(m.group(1)) if m else None
+    else:
+        s = read(f"/sys/class/net/{dev}/speed")
+        info["speed"] = int(s) if s.lstrip("-").isdigit() and int(s) > 0 else 0
+        rc, out, _ = run(["nmcli", "-t", "-g", "GENERAL.CONNECTION", "dev", "show", dev])
+        # NetworkManager-Name nur, wenn er etwas sagt (nicht „Wired connection 1“)
+        name = out.strip()
+        info["name"] = "Ethernet" if (rc != 0 or not name or name.lower().startswith("wired")) else name
+        if kind == "vpn":
+            info["name"] = "VPN"
+    return info
+
+
+# ---------- Ping ----------
+def ping_one(t, gateway, count):
+    host = gateway if t["host"] == "gateway" else t["host"]
+    res = {"name": t["name"], "host": host or "–", "ms": None, "loss": 100}
+    if not host:
+        return res
+    rc, out, _ = run(["ping", "-c", str(count), "-W", "1", "-i", "0.2", "-q", host], timeout=count * 1.2 + 2)
+    m = re.search(r"([\d.]+)% packet loss", out)
+    if m:
+        res["loss"] = round(float(m.group(1)))
+    m = re.search(r"= [\d.]+/([\d.]+)/", out)
+    if m:
+        res["ms"] = round(float(m.group(1)), 1)
+    return res
+
+
+def ping():
+    cfg = load_config()
+    r = default_route()
+    gw = r.get("gateway", "") if r else ""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        results = list(ex.map(lambda t: ping_one(t, gw, cfg["count"]), cfg["targets"]))
+    return {"targets": results}
+
+
+def main(argv):
+    if len(argv) < 2 or argv[1] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    cmd = argv[1]
+    if cmd == "link":
+        out = link()
+    elif cmd == "ping":
+        out = ping()
+    elif cmd == "config":
+        out = load_config()
+    else:
+        print(__doc__, file=sys.stderr)
+        return 2
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

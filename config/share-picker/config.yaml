@@ -1,0 +1,40 @@
+# Bildschirm-teilen-Auswahl (hyprland-preview-share-picker, AP 16) – Doku: docs/SHARING.md
+# Wird von scripts/share-picker install nach ~/.config/hyprland-preview-share-picker/config.yaml verlinkt.
+# Das Stylesheet style.css wird aus der Palette erzeugt (theme/gen/share_picker.py) und liegt daneben als Link.
+# Pfade relativ zu dieser Datei. Schlüssel & Standardwerte: ~/.local/src/hyprland-preview-share-picker/README.md
+
+window:
+  width: 980
+  height: 620
+
+# relativ zum Ordner der Config (dort liegt der Link auf theme/out/share-picker.css)
+stylesheets:
+  - style.css
+
+# Haken „Allow a restore token“ verstecken: nie merken, jedes Teilen fragt neu (sicherer, ein Klick weniger zu erklären).
+# Auf false setzen, wenn OBS/Browser sich die Quelle merken sollen (Haken erscheint unten).
+hide_token_restore: true
+
+# Startseite: windows | outputs | region (beim Teilen ist meist der ganze Monitor gemeint)
+default_page: outputs
+
+image:
+  resize_size: 360   # Vorschau intern auf diese Höhe verkleinern (spart Speicher, 360 reicht scharf)
+  widget_size: 180   # Höhe des Vorschau-Widgets
+
+windows:
+  min_per_row: 3
+  max_per_row: 4
+  clicks: 2          # Doppelklick teilt (verhindert Fehlklicks mitten im Call); Enter geht auch
+  spacing: 12
+
+outputs:
+  clicks: 2
+  spacing: 0         # keine Lücken: Karten haben exakt die Monitor-Proportion (Rand würde verzerren)
+  show_label: false  # Titel im Kartenkörper würde das Bild stauchen (Proportion!)
+  respect_output_scaling: true
+
+region:
+  # Muss "<Monitor>@<x>,<y>,<w>,<h>" ausgeben (x/y relativ zum Monitor). slurp = Hyprland-Standard-Auswahlwerkzeug.
+  # -d zeigt die Größe an. Der Picker versteckt sich währenddessen und startet nur diesen einen Befehl.
+  command: "slurp -d -f '%o@%X,%Y,%W,%H'"

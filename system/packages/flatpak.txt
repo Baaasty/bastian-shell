@@ -1,0 +1,51 @@
+# Flatpaks (Stand 2026-10-18 abends, geprüft mit `flatpak list`, Hyprland-Rechner)
+# Format: <system|user> <remote> <app-id>   # Name
+# remote "bundle" = aus einer .flatpak-Datei installiert, kein Repo → bootstrap überspringt, nur Hinweis.
+# Runtimes (Platform, GL.nvidia-…, codecs, Gtk3theme.Breeze) zieht flatpak automatisch nach.
+
+# == Remotes
+#   system: flathub https://dl.flathub.org/repo/flathub.flatpakrepo  (+ fedora oci, kommt mit Fedora)
+#   user:   flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+# == System
+# ersetzt durch RPM (dnf.txt, 2026-10-18; Daten umziehen + Flatpaks entfernen: scripts/flatpak-to-native):
+#   com.discordapp.Discord → discord · com.spotify.Client → spotify-client (lpf) · org.mozilla.thunderbird_esr → thunderbird
+#   STAND 18.10. abends: die drei Flatpaks sind auf Bastians PC NOCH installiert (Datenumzug offen, spotify-client noch nicht gebaut).
+#   Auf einem frisch aufgesetzten PC werden sie nicht mehr installiert: Discord/Thunderbird als RPM, Spotify per lpf (bootstrap Schritt 2),
+#   Chat später Equibop (GitHub-RPM, bootstrap Schritt 2). Konten/Logins neu anmelden.
+system flathub com.core447.StreamController    # Stream Deck
+system flathub hu.irl.cameractrls              # Kamera-Regler (Facecam)
+
+# == User
+user flathub io.podman_desktop.PodmanDesktop   # Podman Desktop
+# ersetzt durch RPM (dnf.txt): org.kde.haruna → mpv (Standard-Player) · com.valvesoftware.Steam → steam
+
+# == User, aus .flatpak-Bundles (Storyteller "…craft"-Apps, Quelle: Download, Remotes "<name>-origin" ohne URL)
+user bundle ai.storyteller.artcraft-launcher   # ArtCraft Launcher
+user bundle ai.storyteller.cadcraft            # CADCraft
+user bundle ai.storyteller.deckcraft           # DeckCraft
+user bundle ai.storyteller.designcraft         # DesignCraft
+user bundle ai.storyteller.effectcraft         # EffectCraft
+user bundle ai.storyteller.figcraft            # FigCraft
+user bundle ai.storyteller.filmcraft           # FilmCraft
+user bundle ai.storyteller.gridcraft           # GridCraft
+user bundle ai.storyteller.lightcraft          # LightCraft
+user bundle ai.storyteller.pdfcraft            # PdfCraft
+user bundle ai.storyteller.photocraft          # PhotoCraft
+user bundle ai.storyteller.soundcraft          # SoundCraft
+user bundle ai.storyteller.vectorcraft         # VectorCraft
+user bundle ai.storyteller.wordcraft           # WordCraft
+
+# == Overrides (`flatpak override --show` / ~/.local/share/flatpak/overrides/)
+# system: keine
+# user:
+#   global                      filesystems=xdg-config/gtk-3.0:ro;xdg-config/gtk-4.0:ro;xdg-data/icons:ro
+#                               → setzen `theme/gen/gtk.py` (GTK-Look, kommt mit theme/gen/all.py) und `scripts/rice theme on` selbst
+#   com.valvesoftware.Steam     filesystems=~/Data/Games                     → veraltet, Steam läuft jetzt als RPM
+#   com.visualstudio.code       filesystems=home                             → veraltet, VS Code läuft jetzt als RPM
+#   com.google.Chrome, com.google.ChromeDev, org.chromium.Chromium,
+#   io.github.ungoogled_software.ungoogled_chromium, io.gitlab.librewolf-community,
+#   net.waterfox.waterfox, org.mozilla.firefox
+#                               Session-Bus org.kde.plasma.browser.integration=talk → legt Plasma (Browser-Integration) selbst an
+# Zum Wiederherstellen nötig: nichts mehr (die Steam-Zeile entfällt, Steam ist jetzt ein RPM und sieht ~/Data/Games direkt).
+# Früher: override user com.valvesoftware.Steam --filesystem=~/Data/Games

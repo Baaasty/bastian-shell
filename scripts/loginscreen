@@ -1,0 +1,458 @@
+#!/usr/bin/env bash
+# Login-Bildschirm (Plasma Login Manager) im Desktop-Look – und zurück.
+#
+#   scripts/loginscreen apply [--dry-run]   sichern, dann Wallpaper/Farben/Cursor/Schrift/Monitore setzen
+#                                           (--dry-run: nur zeigen, was geschrieben würde, kein sudo)
+#   scripts/loginscreen restore             Ursprungszustand aus dem Backup zurück (exakt)
+#   scripts/loginscreen preview             echten Login-Bildschirm zeigen, Sitzung läuft weiter
+#   scripts/loginscreen status
+#   scripts/loginscreen shot                Theme ohne root als Bilder (echter Greeter, offscreen, Testmodus)
+#   scripts/loginscreen test [sekunden]     Theme ohne root live auf allen Monitoren (Testmodus, endet von selbst)
+#   scripts/loginscreen theme off|on        nur das Layout-Theme aus/an (Farben/Wallpaper bleiben; sudo)
+#   scripts/loginscreen on | off            Kurzform von „theme on|off“ (install = apply; restore = alles zurück)
+#
+# Layout-Theme (Lockscreen-Look, plasma/loginscreen/): Das Greeter-Layout (Main.qml/Login.qml) ist fest
+# im Binary /usr/libexec/plasma-login-greeter, ein Theme-/LnF-Schlüssel existiert nicht. Es importiert
+# aber org.kde.breeze.components (Uhr, Formular, Nutzerliste, Knöpfe) – davon legen wir eine eigene Fassung
+# nach $PLHOME/.local/share/desktop-login/qml und hängen sie per QML_IMPORT_PATH ein (systemd-Drop-in
+# für plasma-login.service in $PLHOME/.config). Der Drop-in prüft vorher einen Fingerabdruck
+# (Greeter-Binary + Breeze-Komponenten + unsere Dateien): passt er nicht (z. B. nach Plasma-Update),
+# startet der normale Greeter. Vor jedem apply läuft ein Selbsttest mit dem echten Greeter (offscreen).
+# Was der Login Manager liest (Quellcode plasma-login-manager 6.7.5, geprüft):
+#   /etc/plasmalogin.conf  höchste Priorität, hier schreibt auch die KCM hin ([Greeter] + Wallpaper).
+#                          /etc/plasmalogin.conf.d/*.conf liegt im Greeter UNTER /usr/lib/plasmalogin/defaults.conf
+#                          (Fedora setzt dort Image=Fedora) -> ein Drop-in würde das Bild nicht ändern.
+#   /var/lib/plasmalogin/  Home des Users plasmalogin. „Plasma-Einstellungen übernehmen“ der KCM kopiert
+#                          kdeglobals, plasmarc, plasma-localerc, kcminputrc, kwinoutputconfig.json, kxkbrc,
+#                          fontconfig/fonts.conf nach .config/ und löscht .cache/ (als User plasmalogin).
+#                          Bilder legt die KCM unter wallpapers/ ab.
+# Wir machen dasselbe per sudo, nur gezielt: Farben/Schrift/Cursor/Monitore statt der kompletten Dateien,
+# dazu Cursor-Theme und Farbschema (liegen sonst nur in ~/.local, das plasmalogin nicht lesen darf).
+# Tastatur DE kommt schon aus localectl (kwin_wayland --locale1), NumLock setzen wir in kcminputrc.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+PLUSER="plasmalogin"
+PLHOME="$(getent passwd "$PLUSER" | cut -d: -f6)"
+CONF="/etc/plasmalogin.conf"
+BACKUP="$HOME/.local/state/desktop/loginscreen-backup"
+TREES=(.config .cache .local wallpapers)   # alles, was wir in $PLHOME anfassen (wird komplett gesichert)
+MARK_BEGIN="# >>> desktop: scripts/loginscreen (entfernen mit: scripts/loginscreen restore)"
+MARK_END="# <<< desktop"
+UI_FONT="Inter,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+SMALL_FONT="Inter,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+CFG="$HOME/.config"
+GREETER="/usr/libexec/plasma-login-greeter"
+SYS_BREEZE="/usr/lib64/qt6/qml/org/kde/breeze/components"
+THEME_SRC="$REPO/plasma/loginscreen"
+LOCK_DIR="$REPO/plasma/shells/de.bastian.desktop/contents/lockscreen"
+THEME_REL=".local/share/desktop-login"                                  # in $PLHOME
+DROPIN_REL=".config/systemd/user/plasma-login.service.d/desktop-login.conf"
+FONTS_REL=".local/share/fonts/desktop"
+THEME_FP="$HOME/.local/state/desktop/loginscreen-theme.sha256"           # Kopie des Fingerabdrucks (für status)
+SHOT_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/desktop/loginscreen-shot"
+
+die() { echo "Fehler: $*" >&2; exit 1; }
+
+[ -n "$PLHOME" ] || die "User $PLUSER fehlt – ist plasma-login-manager installiert?"
+
+# Lockscreen-Bild (scripts/wallpaper setzt es), sonst das Standard-Set aus dem Repo
+wallpaper_src() {
+    local img
+    img="$(kreadconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image \
+        --group General --key Image 2>/dev/null || true)"
+    img="${img#file://}"
+    [ -f "$img" ] || img="$REPO/design/claude-design/wallpaper/_v1-glut/desktop-mitte-2560x1440.jpg"
+    [ -f "$img" ] || die "kein Wallpaper gefunden (erst scripts/wallpaper set)"
+    echo "$img"
+}
+
+wallpaper_name() { local src="$1"; echo "desktop-login.${src##*.}"; }
+
+# Neuer Inhalt von /etc/plasmalogin.conf: aktueller Stand ohne unseren Block + Block neu angehängt
+new_conf() {
+    local wp="$1"
+    awk -v b="$MARK_BEGIN" -v e="$MARK_END" '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$CONF"
+    cat <<EOF
+$MARK_BEGIN
+[Greeter]
+WallpaperPluginId=org.kde.image
+
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file://$PLHOME/wallpapers/$wp
+$MARK_END
+EOF
+}
+
+# ---- Layout-Theme ---------------------------------------------------------------------------------
+# Baut <dir>/qml/org/kde/breeze/components (System-Komponenten + unsere Fassungen aus plasma/loginscreen/,
+# DesktopTheme.qml vom Lockscreen, LoginConfig.qml) und <dir>/fingerprint.sha256.
+# Optional zweites Argument: Ordner für Bildschirmfotos (nur `shot`, baut ShotHook ein).
+build_theme() {
+    local dir="$1" shot_out="${2:-}"
+    local mod="$dir/qml/org/kde/breeze/components"
+    [ -x "$GREETER" ] || die "$GREETER fehlt – ist plasma-login-manager installiert?"
+    [ -f "$SYS_BREEZE/qmldir" ] || die "$SYS_BREEZE fehlt (plasma-workspace)"
+    rm -rf "$dir"
+    mkdir -p "$mod"
+
+    # 1) alle QML-Dateien des Systemmoduls (ohne Plugin – dessen Shader brauchen nur Teile, die wir ersetzen)
+    cp "$SYS_BREEZE"/*.qml "$mod/"
+    # 2) unsere Fassungen drüber
+    cp "$THEME_SRC"/components/*.qml "$mod/"
+    # 3) Farben: dieselbe Datei wie der Lockscreen (erzeugt aus theme/palette.json)
+    cp "$LOCK_DIR/DesktopTheme.qml" "$mod/DesktopTheme.qml"
+    # 4) Einstellungen wie beim Lockscreen: Hauptmonitor, Code-Länge (desktopAutoSubmitLength, Standard 6)
+    local main_screen code_len
+    main_screen="$(grep -oP 'desktopMainScreen: "\K[^"]+' "$LOCK_DIR/LockScreenUi.qml" || true)"
+    code_len="$(kreadconfig6 --file kscreenlockerrc --group Greeter --group LnF --group General \
+        --key desktopAutoSubmitLength --default 6 2>/dev/null || echo 6)"
+    [[ "$code_len" =~ ^[0-9]+$ ]] || code_len=6
+    cat > "$mod/LoginConfig.qml" <<EOF
+// ERZEUGT von scripts/loginscreen – nicht von Hand ändern.
+pragma Singleton
+import QtQuick
+
+QtObject {
+    // Uhr nur hier (wie desktopMainScreen in LockScreenUi.qml)
+    readonly property string mainScreen: "$main_screen"
+    // Code-Kästchen + automatisch prüfen nur für diesen Nutzer (wie desktopAutoSubmitLength des Lockscreens, 0 = aus)
+    readonly property string codeUser: "$USER"
+    readonly property int codeLength: $code_len
+}
+EOF
+    # 5) qmldir: Typen wie im System, aber ohne plugin/prefer (sonst lädt Qt doch die System-Dateien)
+    {
+        grep -v -E '^(linktarget|plugin|classname|typeinfo|prefer|optional|depends)\b' "$SYS_BREEZE/qmldir"
+        echo "singleton DesktopTheme 1.0 DesktopTheme.qml"
+        echo "singleton LoginConfig 1.0 LoginConfig.qml"
+    } > "$mod/qmldir"
+    local f
+    for f in "$THEME_SRC"/components/*.qml; do
+        grep -qE "^$(basename "$f" .qml) " "$mod/qmldir" || die "$(basename "$f") ist kein Typ von org.kde.breeze.components"
+    done
+
+    if [ -n "$shot_out" ]; then
+        local wp
+        wp="$(wallpaper_src)"
+        sed -e "s|@OUT@|$shot_out|g" -e "s|@WALLPAPER@|file://$wp|g" "$THEME_SRC/preview/ShotHook.qml" > "$mod/ShotHook.qml"
+        echo "ShotHook 1.0 ShotHook.qml" >> "$mod/qmldir"
+        sed -i 's|^\(\s*\)// @desktop-shot-hook.*|\1ShotHook {}|' "$mod/Clock.qml"
+    fi
+
+    # 6) Fingerabdruck: was der Drop-in vor dem Start prüft (absolute Pfade = System, relative = Theme)
+    (
+        cd "$dir"
+        sha256sum "$GREETER" "$SYS_BREEZE"/*.qml "$SYS_BREEZE/qmldir"
+        find qml -type f | sort | xargs sha256sum
+    ) > "$dir/fingerprint.sha256"
+}
+
+# Schriften des Themes, die nicht systemweit installiert sind (plasmalogin kann ~/.local nicht lesen)
+copy_fonts() {
+    local out="$1" fam file
+    mkdir -p "$out"
+    for fam in "JetBrainsMono Nerd Font:style=Regular" "JetBrainsMono Nerd Font:style=Medium" \
+               "JetBrainsMono Nerd Font:style=SemiBold" "Material Symbols Rounded"; do
+        file="$(fc-match -f '%{file}' "$fam")"
+        case "$file" in
+            "$HOME"/*) cp "$file" "$out/" ;;
+            /usr/*) ;;   # systemweit, sieht der Greeter selbst
+            *) echo "Hinweis: Schrift „$fam“ nicht gefunden – Greeter nimmt Ersatz" >&2 ;;
+        esac
+    done
+}
+
+# Echten Greeter im Testmodus offscreen starten (kein Bildschirm, kein root, Mock-Login).
+# $1 = QML_IMPORT_PATH oder leer (= Original), $2 = Log-Datei, $3 = Sekunden
+run_greeter_offscreen() {
+    local qml="$1" log="$2" secs="$3" cfg
+    cfg="$(mktemp --suffix=.json)"
+    echo '{"screens":[{"name":"DP-2","x":0,"y":0,"width":2560,"height":1440,"logicalDpi":96,"logicalBaseDpi":96,"dpr":1}]}' > "$cfg"
+    (
+        cd "$(mktemp -d)"
+        if [ -n "$qml" ]; then export QML_IMPORT_PATH="$qml"; else unset QML_IMPORT_PATH; fi
+        QT_FORCE_STDERR_LOGGING=1 QT_QUICK_BACKEND=software \
+            timeout "$secs" "$GREETER" --test -platform "offscreen:configfile=$cfg" > "$log" 2>&1 || true
+    )
+    rm -f "$cfg"
+}
+
+# Selbsttest: neue Meldungen gegenüber dem Original-Greeter = Fehler im Theme -> abbrechen
+selftest() {
+    local dir="$1" tmp
+    tmp="$(mktemp -d)"
+    run_greeter_offscreen "" "$tmp/base.log" 4
+    run_greeter_offscreen "$dir/qml" "$tmp/theme.log" 4
+    sort -u "$tmp/base.log" > "$tmp/base.sorted"
+    grep -v -x -F -f "$tmp/base.sorted" "$tmp/theme.log" > "$tmp/new.log" || true
+    if [ -s "$tmp/new.log" ]; then
+        echo "Selbsttest: Theme erzeugt Meldungen, die der Original-Greeter nicht hat:" >&2
+        sed 's/^/  /' "$tmp/new.log" >&2
+        rm -rf "$tmp"
+        return 1
+    fi
+    rm -rf "$tmp"
+    echo "Selbsttest ok (echter Greeter, Testmodus, offscreen)"
+}
+
+# Alles, was nach $PLHOME kommt, in einem Staging-Ordner bauen (ohne root)
+build_stage() {
+    local stage="$1" wp_src="$2"
+    mkdir -p "$stage/.config" "$stage/.local/share/icons" "$stage/.local/share/color-schemes" "$stage/wallpapers"
+
+    # kdeglobals: nur Farben/Look, nichts Persönliches (Browser, Dateidialog …)
+    awk '/^\[/{keep = ($0 ~ /^\[(Colors:|ColorEffects:|General\]|KDE\]|WM\]|Icons\])/)} keep' \
+        "$CFG/kdeglobals" > "$stage/.config/kdeglobals"
+    local kg=(kwriteconfig6 --file "$stage/.config/kdeglobals")
+    "${kg[@]}" --group General --key BrowserApplication --delete
+    "${kg[@]}" --group General --key ColorScheme "Desktop"
+    "${kg[@]}" --group General --key font "$UI_FONT"
+    "${kg[@]}" --group General --key menuFont "$UI_FONT"
+    "${kg[@]}" --group General --key toolBarFont "$UI_FONT"
+    "${kg[@]}" --group General --key smallestReadableFont "$SMALL_FONT"
+    # Catppuccin-Paket liegt nur in ~/.local -> für den Greeter Breeze Dark als Unterbau (nur Defaults)
+    "${kg[@]}" --group KDE --key LookAndFeelPackage "org.kde.breezedark.desktop"
+    # Symbol-Theme „Desktop-Icons“ liegt nur in ~/.local (Greeter-Log: „Icon theme not found“) -> Breeze Dark
+    "${kg[@]}" --group Icons --key Theme "breeze-dark"
+
+    # kcminputrc: Cursor + NumLock an (0 = an, 1 = aus, 2 = unverändert)
+    [ -f "$CFG/kcminputrc" ] && cp "$CFG/kcminputrc" "$stage/.config/kcminputrc"
+    kwriteconfig6 --file "$stage/.config/kcminputrc" --group Mouse --key cursorTheme "Desktop"
+    kwriteconfig6 --file "$stage/.config/kcminputrc" --group Keyboard --key NumLock 0
+
+    # wie die KCM: Monitor-Anordnung (DP-2 Mitte = Priorität 1), Plasma-Theme, Sprache/Formate
+    local f
+    for f in kwinoutputconfig.json plasmarc plasma-localerc; do
+        [ -f "$CFG/$f" ] && cp "$CFG/$f" "$stage/.config/$f"
+    done
+
+    # Cursor-Theme und Farbschema „Desktop“
+    [ -d "$HOME/.local/share/icons/Desktop/cursors" ] || die "Cursor-Theme fehlt (python3 -I theme/gen/all.py)"
+    cp -a "$HOME/.local/share/icons/Desktop" "$stage/.local/share/icons/"
+    local colors="$HOME/.local/share/color-schemes/Desktop.colors"
+    [ -f "$colors" ] || colors="$REPO/theme/out/kde/Desktop.colors"
+    [ -f "$colors" ] || die "Farbschema Desktop.colors fehlt (python3 -I theme/gen/kde_colors.py)"
+    cp "$colors" "$stage/.local/share/color-schemes/Desktop.colors"
+
+    cp "$wp_src" "$stage/wallpapers/$(wallpaper_name "$wp_src")"
+
+    # Layout-Theme (Lockscreen-Look) + Drop-in, das es einhängt, + Schriften, die nur in ~/.local liegen
+    build_theme "$stage/$THEME_REL"
+    mkdir -p "$(dirname "$stage/$DROPIN_REL")"
+    cp "$THEME_SRC/systemd/desktop-login.conf" "$stage/$DROPIN_REL"
+    copy_fonts "$stage/$FONTS_REL"
+
+    # plasmalogin muss alles lesen können
+    find "$stage" -type d -exec chmod 755 {} +
+    find "$stage" -type f -exec chmod 644 {} +
+}
+
+backup() {
+    # „created“ wird zuletzt geschrieben = Backup vollständig. Ein abgebrochenes Backup (nur .conf, Tar fehlt
+    # oder halb) wird neu erstellt statt als fertig zu gelten – sonst löscht restore später ohne Sicherung.
+    if [ -f "$BACKUP/created" ]; then
+        echo "Backup schon vorhanden (wird nicht überschrieben): $BACKUP"
+        return
+    fi
+    mkdir -p "$BACKUP"
+    chmod 700 "$BACKUP"
+    cp -p "$CONF" "$BACKUP/plasmalogin.conf"
+    local t existing=()
+    for t in "${TREES[@]}"; do
+        if sudo test -e "$PLHOME/$t"; then existing+=("$t"); fi
+    done
+    # Eigentümer, Rechte, SELinux-Kontext und ACLs mitsichern, damit restore exakt ist
+    if [ ${#existing[@]} -gt 0 ]; then
+        sudo tar -C "$PLHOME" --numeric-owner --selinux --xattrs --acls -cpf - "${existing[@]}" > "$BACKUP/plasmalogin-home.tar"
+    else
+        tar -cf "$BACKUP/plasmalogin-home.tar" -T /dev/null
+    fi
+    chmod 600 "$BACKUP/plasmalogin-home.tar"
+    printf '%s\n' "${existing[@]}" > "$BACKUP/existing"
+    date -Iseconds > "$BACKUP/created"
+    echo "Backup: $BACKUP (vorhanden waren: ${existing[*]:-nichts})"
+}
+
+cmd_apply() {
+    local dry=0
+    [ "${1:-}" = "--dry-run" ] && dry=1
+    local wp_src
+    wp_src="$(wallpaper_src)"
+    STAGE="$(mktemp -d)"
+    NEWCONF="$(mktemp)"
+    trap 'rm -rf "$STAGE" "$NEWCONF"' EXIT
+    local stage="$STAGE" newconf="$NEWCONF"
+    build_stage "$stage" "$wp_src"
+    new_conf "$(wallpaper_name "$wp_src")" > "$newconf"
+    # Layout-Theme mit dem echten Greeter prüfen, bevor irgendetwas installiert wird
+    selftest "$stage/$THEME_REL" || die "Theme nicht installiert (Fehler oben). Nichts geändert."
+
+    if [ "$dry" = 1 ]; then
+        echo "== würde nach $PLHOME kopiert (als $PLUSER):"
+        (cd "$stage" && find . -path ./.local/share/icons/Desktop/cursors -prune -o -type f -print | sed 's|^\./|  |')
+        echo "  .local/share/icons/Desktop/cursors/ ($(find "$stage/.local/share/icons/Desktop/cursors" -mindepth 1 | wc -l) Einträge)"
+        echo "== würde gelöscht: $PLHOME/.cache"
+        echo "== Wallpaper-Quelle: $wp_src"
+        echo "== Änderung an $CONF:"
+        diff -u "$CONF" "$newconf" || true
+        echo "== Layout-Theme: $PLHOME/$THEME_REL (Fingerabdruck: $(wc -l < "$stage/$THEME_REL/fingerprint.sha256") Dateien)"
+        echo "== Drop-in: $PLHOME/$DROPIN_REL"
+        echo "== kdeglobals (Greeter):"
+        grep -E '^\[|ColorScheme|LookAndFeel|font|Font' "$stage/.config/kdeglobals" | grep -v '^\[Colors' | sed 's/^/  /'
+        return
+    fi
+
+    echo "Braucht sudo (Systemdateien des Login-Bildschirms)."
+    sudo -v
+    backup
+
+    # 1) Home von plasmalogin: Cache weg (Plasma-Theme-Cache, wie die KCM), alte Kopien ersetzen, neu entpacken.
+    #    Alles läuft als User plasmalogin, genau wie der KCM-Helper (keine root-Dateien in seinem Home).
+    sudo -u "$PLUSER" rm -rf -- "$PLHOME/.cache" "$PLHOME/.local/share/icons/Desktop" "$PLHOME/wallpapers/$(wallpaper_name "$wp_src")" \
+        "$PLHOME/$THEME_REL" "$PLHOME/$FONTS_REL" "$PLHOME/$DROPIN_REL"
+    (cd "$stage" && tar -cf - .config .local wallpapers) \
+        | (cd / && sudo -u "$PLUSER" tar -C "$PLHOME" --no-overwrite-dir -xf -)
+    echo "kopiert nach $PLHOME: kdeglobals, kcminputrc, kwinoutputconfig.json, plasmarc, plasma-localerc, Cursor, Farbschema, Wallpaper,"
+    echo "  Layout-Theme ($THEME_REL), Drop-in ($DROPIN_REL), Schriften ($FONTS_REL)"
+    mkdir -p "$(dirname "$THEME_FP")"
+    cp "$stage/$THEME_REL/fingerprint.sha256" "$THEME_FP"
+
+    # 2) /etc/plasmalogin.conf: nur unser markierter Block (tee behält Rechte/Eigentümer/SELinux-Kontext)
+    sudo tee "$CONF" < "$newconf" > /dev/null
+    echo "$CONF: Wallpaper-Block gesetzt"
+
+    echo "Fertig. Wirkt beim nächsten Login-Bildschirm (Abmelden, Neustart oder: scripts/loginscreen preview)."
+    echo "Zurück: scripts/loginscreen restore"
+}
+
+cmd_restore() {
+    [ -f "$BACKUP/plasmalogin.conf" ] || die "kein Backup in $BACKUP – nichts zurückzusetzen."
+    # erst prüfen, ob das Backup vollständig und lesbar ist – unten wird vor dem Entpacken gelöscht
+    [ -f "$BACKUP/created" ] && tar -tf "$BACKUP/plasmalogin-home.tar" > /dev/null \
+        || die "Backup in $BACKUP unvollständig (Tar fehlt/kaputt) – nichts geändert."
+    echo "Braucht sudo (Systemdateien des Login-Bildschirms)."
+    sudo -v
+
+    # 1) plasmalogin.conf byteweise zurück, Zeitstempel wie vorher
+    sudo tee "$CONF" < "$BACKUP/plasmalogin.conf" > /dev/null
+    sudo touch -r "$BACKUP/plasmalogin.conf" "$CONF"
+    echo "$CONF: Original zurück"
+
+    # 2) die angefassten Ordner in $PLHOME komplett ersetzen durch den gesicherten Stand
+    local t
+    for t in "${TREES[@]}"; do
+        sudo rm -rf -- "${PLHOME:?}/$t"
+    done
+    sudo tar -C "$PLHOME" --same-owner --numeric-owner --selinux --xattrs --acls -xpf - < "$BACKUP/plasmalogin-home.tar"
+    echo "$PLHOME: ${TREES[*]} wie vor apply"
+
+    local done_dir
+    done_dir="$BACKUP.restored-$(date +%Y%m%d-%H%M%S)"
+    mv "$BACKUP" "$done_dir"
+    echo "Backup abgelegt: $done_dir"
+    rm -f "$THEME_FP"
+}
+
+cmd_shot() {
+    # Echter Greeter (Main.qml/Login.qml aus dem Binary) im Testmodus, offscreen auf einem
+    # gedachten 2560x1440-Monitor „DP-2“; ShotHook macht Bilder und beendet ihn. Kein root, kein Bildschirm.
+    local tmp
+    tmp="$(mktemp -d)"
+    rm -rf "$SHOT_DIR"
+    mkdir -p "$SHOT_DIR"
+    build_theme "$tmp/theme" "$SHOT_DIR"
+    run_greeter_offscreen "$tmp/theme/qml" "$SHOT_DIR/greeter.log" 25
+    rm -rf "$tmp"
+    ls "$SHOT_DIR"/*.png > /dev/null 2>&1 || { cat "$SHOT_DIR/greeter.log" >&2; die "keine Bilder entstanden"; }
+    echo "Bilder: $SHOT_DIR"
+    ls -1 "$SHOT_DIR"/*.png | sed 's/^/  /'
+}
+
+cmd_test() {
+    # Echter Greeter im Testmodus auf allen Monitoren (Layer-Shell über der Sitzung, Tastatur gehört ihm).
+    # Kein kwin, kein root, keine echte Anmeldung (Mock). Endet nach N Sekunden von selbst.
+    local secs="${1:-45}" tmp
+    [[ "$secs" =~ ^[0-9]+$ ]] || die "Sekunden als Zahl angeben"
+    tmp="$(mktemp -d)"
+    build_theme "$tmp/theme"
+    echo "Testmodus für $secs s auf allen Monitoren. Raus vorher: „Other user“ → beliebiger Name + Passwort"
+    echo "„mypassword“ + Enter. Escape schaltet die Monitore aus (Maus bewegen weckt sie)."
+    sleep 2
+    QML_IMPORT_PATH="$tmp/theme/qml" timeout "$secs" "$GREETER" --test || true
+    rm -rf "$tmp"
+}
+
+cmd_theme() {
+    # Nur das Layout-Theme schalten; Farben/Wallpaper/Cursor bleiben. Der Drop-in liest die Datei „off“.
+    case "${1:-}" in
+        off) sudo -u "$PLUSER" touch "$PLHOME/$THEME_REL/off" && echo "Layout-Theme aus (normales KDE-Layout beim nächsten Login-Bildschirm)" ;;
+        on)  sudo -u "$PLUSER" rm -f "$PLHOME/$THEME_REL/off" && echo "Layout-Theme an" ;;
+        *)   die "scripts/loginscreen theme off|on" ;;
+    esac
+}
+
+cmd_preview() {
+    # „Benutzer wechseln“: neuer Login-Bildschirm auf eigenem VT, diese Sitzung läuft weiter.
+    # Mit deinem Passwort anmelden -> zurück in die laufende Sitzung (ReuseSession=true).
+    echo "Login-Bildschirm kommt gleich. Zurück: normal mit deinem Passwort anmelden."
+    busctl --system call org.freedesktop.DisplayManager /org/freedesktop/DisplayManager/Seat0 \
+        org.freedesktop.DisplayManager.Seat SwitchToGreeter
+}
+
+cmd_status() {
+    echo "Login Manager: $(systemctl is-active plasmalogin.service 2>/dev/null || true) (plasmalogin.service)"
+    if grep -qxF "$MARK_BEGIN" "$CONF"; then
+        echo "$CONF: Desktop-Block drin ($(grep -m1 '^Image=' <(awk -v b="$MARK_BEGIN" '$0==b{on=1} on' "$CONF")))"
+    else
+        echo "$CONF: Original (kein Desktop-Block)"
+    fi
+    if [ -f "$BACKUP/plasmalogin.conf" ]; then
+        echo "Backup: $BACKUP (vom $(cat "$BACKUP/created" 2>/dev/null))"
+    else
+        echo "Backup: keins"
+    fi
+    if [ -f "$THEME_FP" ]; then
+        # nur die Systemdateien prüfbar ohne root (unsere liegen in $PLHOME)
+        if grep -E '^[0-9a-f]+  /' "$THEME_FP" | sha256sum --quiet --strict -c - > /dev/null 2>&1; then
+            echo "Layout-Theme: installiert, passt zum System (aktiv, außer „theme off“)"
+        else
+            echo "Layout-Theme: installiert, aber Plasma wurde aktualisiert -> normaler Greeter, bis: scripts/loginscreen apply"
+        fi
+    else
+        echo "Layout-Theme: nicht installiert (scripts/loginscreen apply)"
+    fi
+    # Was der Greeter beim letzten Start WIRKLICH getan hat (der Drop-in schreibt „theme on/off“ ins Journal)
+    local last
+    last="$(journalctl --no-pager -o cat --since '-14 days' 2>/dev/null | grep -a '^desktop-login:' | tail -n1 || true)"
+    case "$last" in
+        *"theme on"*)  echo "Letzter Login-Bildschirm: Layout-Theme AKTIV" ;;
+        *"theme off"*) echo "Letzter Login-Bildschirm: Standard-Greeter (Theme aus: Datei „off“ oder Fingerabdruck stimmt nicht)"
+                       echo "  -> Datei „off“ weg: scripts/loginscreen on   |   Fingerabdruck neu: scripts/loginscreen install" ;;
+        *)             echo "Letzter Login-Bildschirm: kein Eintrag im Journal (Drop-in nie gelaufen?)" ;;
+    esac
+    echo "Quellen:"
+    echo "  Wallpaper:  $(wallpaper_src 2>&1)"
+    [ -d "$HOME/.local/share/icons/Desktop/cursors" ] && echo "  Cursor:     Desktop ok" || echo "  Cursor:     Desktop FEHLT"
+    [ -f "$HOME/.local/share/color-schemes/Desktop.colors" ] && echo "  Farben:     Desktop.colors ok" || echo "  Farben:     Desktop.colors FEHLT"
+    fc-list -q "Inter" && echo "  Schrift:    Inter systemweit ok" || echo "  Schrift:    Inter FEHLT systemweit (dnf install rsms-inter-fonts)"
+    [ -f "$CFG/kwinoutputconfig.json" ] && echo "  Monitore:   kwinoutputconfig.json ok" || echo "  Monitore:   kwinoutputconfig.json fehlt"
+    echo "  Tastatur:   $(localectl status | awk -F': ' '/X11 Layout|X11 Variant/{printf "%s ", $2}')(aus localectl)"
+    echo "Inhalt von $PLHOME ist nur mit root lesbar: sudo ls -la $PLHOME/.config"
+}
+
+case "${1:-}" in
+    apply|install) cmd_apply "${2:-}" ;;
+    on)      cmd_theme on ;;
+    off)     cmd_theme off ;;
+    restore) cmd_restore ;;
+    preview) cmd_preview ;;
+    status)  cmd_status ;;
+    shot)    cmd_shot ;;
+    test)    cmd_test "${2:-}" ;;
+    theme)   cmd_theme "${2:-}" ;;
+    *)
+        sed -n '2,12p' "$0"
+        exit 1
+        ;;
+esac

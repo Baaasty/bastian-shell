@@ -1,0 +1,14 @@
+# Desktop-Shell (Quickshell) als User-Dienst: startet mit der Plasma-Sitzung, Neustart bei Absturz.
+# Installiert/entfernt über scripts/rice on|off (Link nach ~/.config/systemd/user).
+[Unit]
+Description=Desktop Shell (Quickshell)
+PartOf=graphical-session.target
+After=graphical-session.target plasma-kwin_wayland.service plasma-plasmashell.service
+
+[Service]
+ExecStart=/usr/bin/qs -p %h/Workspace/desktop/shell
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

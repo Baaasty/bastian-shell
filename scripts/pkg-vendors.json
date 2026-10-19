@@ -1,0 +1,82 @@
+{
+  "_comment": "Hersteller-Repos für den Paketmanager (scripts/pkg). Nur URLs/Schlüssel aus der offiziellen Herstellerdoku. 'match' = Repo-IDs, an denen pkg erkennt, dass es schon eingerichtet ist. 'steps' laufen in EINEM pkexec-Aufruf (sh -c); Vorschau zeigt vorher jeden Schritt. section: community | vendor.",
+  "vendors": [
+    {
+      "id": "terra", "section": "community", "name": "Terra (Fyra Labs)",
+      "desc": "Community repo with extra apps and fresh builds. Not reviewed by Fedora.",
+      "homepage": "https://terra.fyralabs.com", "match": ["terra"], "packages": ["terra-release"],
+      "steps": [ { "run": ["dnf", "install", "-y", "--nogpgcheck", "--repofrompath", "terra,https://repos.fyralabs.com/terra$releasever", "terra-release"] } ],
+      "note": "Official bootstrap from the Terra docs: installs terra-release once without signature check (it ships the key and repo files)."
+    },
+    {
+      "id": "google-chrome", "section": "vendor", "name": "Google Chrome",
+      "desc": "Official Google Chrome RPM repo (stable).",
+      "homepage": "https://www.google.com/chrome/", "match": ["google-chrome"], "packages": ["google-chrome-stable"],
+      "steps": [
+        { "import_key": "https://dl.google.com/linux/linux_signing_key.pub" },
+        { "write_repo": { "file": "google-chrome.repo", "content": "[google-chrome]\nname=google-chrome\nbaseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=https://dl.google.com/linux/linux_signing_key.pub\n" } }
+      ]
+    },
+    {
+      "id": "vscode", "section": "vendor", "name": "Microsoft · Visual Studio Code",
+      "desc": "Native RPM from Microsoft (Claude hooks need the native build, not the Flatpak).",
+      "homepage": "https://code.visualstudio.com", "match": ["code", "vscode"], "packages": ["code"],
+      "steps": [
+        { "import_key": "https://packages.microsoft.com/keys/microsoft.asc" },
+        { "write_repo": { "file": "vscode.repo", "content": "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc\n" } }
+      ]
+    },
+    {
+      "id": "edge", "section": "vendor", "name": "Microsoft · Edge",
+      "desc": "Microsoft Edge stable from the Microsoft package repo.",
+      "homepage": "https://www.microsoft.com/edge", "match": ["microsoft-edge", "edge"], "packages": ["microsoft-edge-stable"],
+      "steps": [
+        { "import_key": "https://packages.microsoft.com/keys/microsoft.asc" },
+        { "write_repo": { "file": "microsoft-edge.repo", "content": "[microsoft-edge]\nname=Microsoft Edge\nbaseurl=https://packages.microsoft.com/yumrepos/edge\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc\n" } }
+      ]
+    },
+    {
+      "id": "brave", "section": "vendor", "name": "Brave",
+      "desc": "Brave browser, official release repo.",
+      "homepage": "https://brave.com/linux/", "match": ["brave-browser"], "packages": ["brave-browser"],
+      "steps": [
+        { "import_key": "https://brave-browser-rpm-release.s3.brave.com/brave-core.asc" },
+        { "addrepo": "https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo" }
+      ]
+    },
+    {
+      "id": "docker", "section": "vendor", "name": "Docker CE",
+      "desc": "Docker Engine from Docker Inc. (you use Podman today; both can coexist but think twice).",
+      "homepage": "https://docs.docker.com/engine/install/fedora/", "match": ["docker-ce-stable", "docker-ce"], "packages": ["docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin"],
+      "steps": [ { "addrepo": "https://download.docker.com/linux/fedora/docker-ce.repo" } ]
+    },
+    {
+      "id": "1password", "section": "vendor", "name": "1Password",
+      "desc": "1Password desktop app, stable channel.",
+      "homepage": "https://support.1password.com/install-linux/", "match": ["1password"], "packages": ["1password"],
+      "steps": [
+        { "import_key": "https://downloads.1password.com/linux/keys/1password.asc" },
+        { "write_repo": { "file": "1password.repo", "content": "[1password]\nname=1Password Stable Channel\nbaseurl=https://downloads.1password.com/linux/rpm/stable/$basearch\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=https://downloads.1password.com/linux/keys/1password.asc\n" } }
+      ]
+    },
+    {
+      "id": "tailscale", "section": "vendor", "name": "Tailscale",
+      "desc": "Tailscale VPN, stable repo for Fedora.",
+      "homepage": "https://tailscale.com/download/linux/fedora", "match": ["tailscale-stable", "tailscale"], "packages": ["tailscale"],
+      "steps": [ { "addrepo": "https://pkgs.tailscale.com/stable/fedora/tailscale.repo" } ]
+    },
+    {
+      "id": "virtualbox", "section": "vendor", "name": "Oracle · VirtualBox",
+      "desc": "VirtualBox from Oracle. Check that your Fedora release is already supported upstream.",
+      "homepage": "https://www.virtualbox.org/wiki/Linux_Downloads", "match": ["virtualbox"], "packages": [],
+      "steps": [ { "addrepo": "https://download.virtualbox.org/virtualbox/rpm/fedora/virtualbox.repo" } ]
+    },
+    {
+      "id": "cloudflare-warp", "section": "vendor", "name": "Cloudflare WARP",
+      "desc": "Cloudflare WARP client.",
+      "homepage": "https://pkg.cloudflareclient.com", "match": ["cloudflare-warp"], "packages": ["cloudflare-warp"],
+      "steps": [ { "addrepo": "https://pkg.cloudflareclient.com/cloudflare-warp-ascii.repo" } ]
+    }
+  ],
+  "_not_included": "Mozilla/Firefox Nightly (no official RPM repo URL I can verify), Spotify (Flatpak only, no repo)."
+}

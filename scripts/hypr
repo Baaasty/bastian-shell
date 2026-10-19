@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+# Hyprland als zweite Sitzung neben Plasma (Branch hyprland). Plasma bleibt unberührt und Standard-Fallback.
+# Anleitung, Pakete, Zurück zu Plasma: docs/HYPRLAND.md
+#
+#   hypr install     Konfiguration verlinken/anlegen (ohne sudo): ~/.config/hypr, uwsm-Umgebung, Portale,
+#                    Shell-Dienst desktop-shell-hyprland. Vorhandene fremde Dateien werden gesichert.
+#   hypr uninstall   alles davon wieder entfernen, Sicherungen zurück
+#   hypr status      was installiert ist, welche Pakete fehlen
+#   hypr check       Konfiguration prüfen (mit Hyprland: --verify-config, startet nichts), Skripte prüfen
+#   hypr panic       Not-Aus in der Hyprland-Sitzung: Shell aus, Konsole auf (Strg+Alt+Shift+Q)
+#   hypr power       Power-Menü der Shell; ohne Shell: Abmelden nach Rückfrage (Strg+Alt+Entf, Power-Taste)
+#   hypr restart     Shell-Dienst neu starten
+#   hypr drkonqi off|on|status   Absturz-Fenster: off = Karte der Shell statt DrKonqi (nur Hyprland, Standard nach install),
+#                    on = DrKonqi wieder überall (docs/CRASHES.md)
+set -uo pipefail
+
+SELF=$(readlink -f "$0")
+REPO=$(dirname "$(dirname "$SELF")")
+SHELL_DIR="$REPO/shell"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+STATE="$HOME/.local/state/desktop"
+BACKUP="$STATE/hypr-backup"
+UNIT="desktop-shell-hyprland"
+PLASMA_UNIT="desktop-shell"
+DROPIN="$CONF/systemd/user/$PLASMA_UNIT.service.d/not-on-hyprland.conf"
+ENVFILE="$CONF/desktop/hyprland.env"
+# DrKonqi (KDE-Absturzfenster) nur in der Hyprland-Sitzung und nur bei laufender Shell aus – dort zeigt die Shell
+# eine eigene Karte (shell/modules/crash). Unter Plasma ohne Wirkung.
+DRKONQI_DROPIN="$CONF/systemd/user/drkonqi-coredump-launcher@.service.d/not-on-hyprland.conf"
+MARK="# ERZEUGT von scripts/hypr install"
+
+# Pakete, ohne die die Sitzung nicht läuft (Liste + Befehle: docs/HYPRLAND.md, system/packages)
+NEED=(Hyprland hyprctl hypridle hyprlock uwsm grim wf-recorder wpctl xdg-terminal-exec)
+
+say() { printf '%s\n' "$*"; }
+
+# Datei/Link anlegen; Fremdes vorher nach $BACKUP sichern (nur einmal)
+backup() {
+    local f=$1
+    [ -e "$f" ] || [ -L "$f" ] || return 0
+    if [ -L "$f" ] && [[ "$(readlink "$f")" == "$REPO"/* ]]; then
+        rm -f "$f"
+        return 0
+    fi
+    if [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; then
+        rm -f "$f"
+        return 0
+    fi
+    local dst="$BACKUP${f#"$HOME"}"
+    mkdir -p "$(dirname "$dst")"
+    [ -e "$dst" ] || mv "$f" "$dst"
+    rm -f "$f"
+    say "  gesichert: $f → $dst"
+}
+
+write() {
+    local f=$1
+    mkdir -p "$(dirname "$f")"
+    backup "$f"
+    cat > "$f"
+}
+
+link() {
+    local src=$1 f=$2
+    mkdir -p "$(dirname "$f")"
+    backup "$f"
+    ln -s "$src" "$f"
+}
+
+# env.conf (env = NAME,Wert) → Shell-Format für uwsm (export NAME='Wert')
+uwsm_env() {
+    sed -n 's/^[[:space:]]*env[[:space:]]*=[[:space:]]*\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*,[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/export \1='"'"'\2'"'"'/p' "$REPO/hypr/env.conf"
+}
+
+cmd_install() {
+    say "Repo: $REPO"
+    if [ -e "$CONF/hypr/hyprland.lua" ]; then
+        say "WARNUNG: $CONF/hypr/hyprland.lua existiert – Hyprland lädt die statt hyprland.conf. Wird gesichert."
+        backup "$CONF/hypr/hyprland.lua"
+    fi
+    # Look aus der Palette (nur neu erzeugen, nichts aktivieren)
+    python3 -I "$REPO/theme/gen/hypr.py" >/dev/null || say "WARNUNG: theme/gen/hypr.py fehlgeschlagen"
+    # Hyprland-eigene Dialoge („App reagiert nicht“ usw., hyprtoolkit) im Desktop-Look: ~/.config/hypr/hyprtoolkit.conf
+    python3 -I "$REPO/theme/gen/hyprtoolkit.py" >/dev/null || say "WARNUNG: theme/gen/hyprtoolkit.py fehlgeschlagen"
+
+    write "$ENVFILE" <<EOF
+$MARK – Repo-Pfad für desktop-shell-hyprland.service
+DESKTOP=$REPO
+EOF
+    write "$CONF/hypr/hyprland.conf" <<EOF
+$MARK – nicht von Hand ändern, alles steht im Repo.
+\$DESKTOP = $REPO
+source = \$DESKTOP/hypr/hyprland.conf
+EOF
+    write "$CONF/hypr/hypridle.conf" <<EOF
+$MARK – nicht von Hand ändern, alles steht im Repo.
+\$DESKTOP = $REPO
+source = \$DESKTOP/hypr/hypridle.conf
+EOF
+    {
+        say "$MARK – aus hypr/env.conf (nur Hyprland-Sitzungen unter uwsm)"
+        uwsm_env
+    } | write "$CONF/uwsm/env-hyprland"
+    link "$REPO/hypr/portals.conf" "$CONF/xdg-desktop-portal/hyprland-portals.conf"
+
+    # Shell-Dienst für Hyprland; der Plasma-Dienst bekommt eine Bedingung (unter Plasma ändert sich nichts)
+    link "$REPO/systemd/$UNIT.service" "$CONF/systemd/user/$UNIT.service"
+    write "$DROPIN" <<'EOF'
+# ERZEUGT von scripts/hypr install – die Plasma-Shell (KWin-Variante) nicht in der Hyprland-Sitzung starten.
+# Rückgängig: scripts/hypr uninstall
+[Service]
+ExecCondition=/bin/sh -c 'case ":$${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) exit 1 ;; esac; exit 0'
+EOF
+    drkonqi_off
+    systemctl --user daemon-reload
+    systemctl --user enable --quiet "$UNIT"
+    say "Fertig. Abmelden, im Login „Hyprland (uwsm-managed)“ wählen. Zurück: abmelden, „Plasma (Wayland)“ wählen."
+    missing_packages
+}
+
+cmd_uninstall() {
+    systemctl --user disable --quiet "$UNIT" >/dev/null 2>&1 || true
+    local f
+    for f in "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$ENVFILE" "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" \
+        "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" "$CONF/xdg-desktop-portal/hyprland-portals.conf"; do
+        if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
+            rm -f "$f"
+            say "  entfernt: $f"
+        fi
+    done
+    rmdir "$(dirname "$DROPIN")" "$(dirname "$DRKONQI_DROPIN")" 2>/dev/null || true
+    # Sicherungen zurück
+    if [ -d "$BACKUP" ]; then
+        while IFS= read -r -d '' b; do
+            f="$HOME${b#"$BACKUP"}"
+            if [ ! -e "$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                mv "$b" "$f"
+                say "  zurück: $f"
+            fi
+        done < <(find "$BACKUP" -type f -print0)
+    fi
+    systemctl --user daemon-reload
+    say "Hyprland-Konfiguration entfernt. Plasma ist unverändert."
+}
+
+missing_packages() {
+    local miss=() c
+    for c in "${NEED[@]}"; do command -v "$c" >/dev/null 2>&1 || miss+=("$c"); done
+    [ -e /usr/share/wayland-sessions/hyprland-uwsm.desktop ] || miss+=("Sitzung hyprland-uwsm.desktop")
+    if [ ${#miss[@]} -gt 0 ]; then
+        say "Fehlt noch: ${miss[*]}  → Befehle in docs/HYPRLAND.md (sudo)"
+        return 1
+    fi
+    say "Pakete: alles da"
+}
+
+cmd_status() {
+    local f
+    for f in "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" \
+        "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$ENVFILE"; do
+        if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
+            say "ok      $f"
+        elif [ -e "$f" ]; then
+            say "fremd   $f"
+        else
+            say "fehlt   $f"
+        fi
+    done
+    say "Dienst  $UNIT: $(systemctl --user is-enabled "$UNIT" 2>/dev/null || echo aus) / $(systemctl --user is-active "$UNIT" 2>/dev/null)"
+    say "Sitzung: ${XDG_CURRENT_DESKTOP:-?}"
+    missing_packages || true
+}
+
+cmd_check() {
+    local rc=0 f
+    # 1) alle source-Dateien da?
+    for f in $(sed -n 's/^source[[:space:]]*=[[:space:]]*\$DESKTOP\///p' "$REPO/hypr/hyprland.conf"); do
+        [ -f "$REPO/$f" ] || { say "FEHLT: $f"; rc=1; }
+    done
+    # 2) Skripte/Python
+    for f in "$REPO/scripts/hypr" "$REPO/scripts/lock" "$REPO/scripts/screenrec"; do
+        bash -n "$f" || rc=1
+    done
+    python3 -I -m py_compile "$REPO/hypr/window.py" "$REPO/theme/gen/hypr.py" || rc=1
+    # 3) Hyprland selbst (startet keinen Compositor)
+    if command -v Hyprland >/dev/null 2>&1; then
+        local tmp
+        tmp=$(mktemp -d)
+        printf '$DESKTOP = %s\nsource = $DESKTOP/hypr/hyprland.conf\n' "$REPO" > "$tmp/hyprland.conf"
+        Hyprland --verify-config -c "$tmp/hyprland.conf" || rc=1
+        rm -rf "$tmp"
+    else
+        say "Hyprland nicht installiert – nur Teilprüfung (Dateien, Skripte)."
+    fi
+    [ "$rc" = 0 ] && say "check: ok"
+    return $rc
+}
+
+# systemd-coredump meldet jeden Absturz an drkonqi-coredump-launcher.socket (User-Unit aus plasma-drkonqi).
+# Drop-in: die Launcher-Instanz startet nicht, wenn Hyprland läuft UND die Shell aktiv ist (sonst wie immer DrKonqi).
+# Der Coredump selbst bleibt (coredumpctl), nur das Fenster entfällt.
+drkonqi_off() {
+    write "$DRKONQI_DROPIN" <<EOF
+$MARK – DrKonqi-Fenster nicht in der Hyprland-Sitzung, solange die Shell läuft (eigene Absturz-Karte).
+# Rückgängig: scripts/hypr drkonqi on   (oder diese Datei löschen + systemctl --user daemon-reload)
+[Service]
+ExecCondition=/bin/sh -c 'case ":\$\${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) systemctl --user -q is-active $UNIT.service && exit 1 ;; esac; exit 0'
+EOF
+}
+
+cmd_drkonqi() {
+    case "${1:-status}" in
+        off)
+            drkonqi_off
+            systemctl --user daemon-reload
+            say "DrKonqi unter Hyprland aus (Shell-Karte). Zurück: scripts/hypr drkonqi on"
+            ;;
+        on)
+            if [ -f "$DRKONQI_DROPIN" ] && head -n1 "$DRKONQI_DROPIN" | grep -qF "$MARK"; then
+                rm -f "$DRKONQI_DROPIN"
+                rmdir "$(dirname "$DRKONQI_DROPIN")" 2>/dev/null || true
+                systemctl --user daemon-reload
+            fi
+            say "DrKonqi wieder überall an."
+            ;;
+        status)
+            if [ -f "$DRKONQI_DROPIN" ]; then
+                say "DrKonqi: unter Hyprland aus (Karte der Shell) – $DRKONQI_DROPIN"
+            else
+                say "DrKonqi: überall an"
+            fi
+            ;;
+        *) say "hypr drkonqi off|on|status"; return 2 ;;
+    esac
+}
+
+cmd_panic() {
+    systemctl --user stop "$UNIT" >/dev/null 2>&1 || true
+    qs kill --any-display -p "$SHELL_DIR" >/dev/null 2>&1 || true
+    uwsm app -- org.kde.konsole.desktop >/dev/null 2>&1 &
+    # Ohne Shell gibt es keinen Benachrichtigungs-Dienst (notify-send bliebe unsichtbar) → eigenes Fenster,
+    # losgelöst, damit es den Aufrufer (Kürzel) nicht blockiert
+    setsid -f kdialog --title "Shell stopped" --msgbox \
+        $'The desktop shell is stopped.\n\nRestart: scripts/hypr restart\nBack to Plasma: log out (Ctrl+Alt+Del), choose Plasma' \
+        >/dev/null 2>&1 || true
+}
+
+cmd_power() {
+    if timeout 3 qs ipc --any-display -p "$SHELL_DIR" call power toggle >/dev/null 2>&1; then
+        exit 0
+    fi
+    kdialog --title "Log out" --yesno "The shell is not running. Log out of Hyprland now?" 2>/dev/null && exec uwsm stop
+}
+
+case "${1:-}" in
+    install) cmd_install ;;
+    uninstall) cmd_uninstall ;;
+    status) cmd_status ;;
+    check) cmd_check ;;
+    panic) cmd_panic ;;
+    power) cmd_power ;;
+    drkonqi) cmd_drkonqi "${2:-status}" ;;
+    restart)
+        systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
+        systemctl --user restart "$UNIT"
+        ;;
+    *) sed -n '2,14p' "$SELF" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

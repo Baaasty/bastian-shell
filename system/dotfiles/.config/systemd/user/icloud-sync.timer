@@ -1,0 +1,7 @@
+[Unit]
+Description=iCloud Drive Sync alle 15 Minuten
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "_": "ERZEUGT aus theme/palette.json (hearth) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/fastfetch.py",
+  "logo": {
+    "type": "file",
+    "source": "~/Workspace/desktop-hyprland/config/fastfetch/cat.txt",
+    "color": {
+      "1": "#D2C2AE"
+    },
+    "padding": {
+      "top": 5,
+      "left": 2,
+      "right": 3
+    }
+  },
+  "display": {
+    "separator": "  ",
+    "color": {
+      "keys": "#D2C2AE",
+      "title": "#F2A58A",
+      "output": "#F6ECDD",
+      "separator": "#B5A591"
+    },
+    "brightColor": false,
+    "size": {
+      "binaryPrefix": "jedec",
+      "ndigits": 1
+    },
+    "percent": {
+      "type": 0
+    }
+  },
+  "modules": [
+    "break",
+    {
+      "type": "title",
+      "format": "{#1;#F2A58A}{user-name}{#0}{##B5A591} @ {##F6ECDD}{host-name}"
+    },
+    {
+      "type": "command",
+      "key": " ",
+      "keyWidth": 0,
+      "separator": "",
+      "text": "h=$(date +%-H); if [ \"$h\" -lt 5 ]; then echo \"still up?\"; elif [ \"$h\" -lt 11 ]; then echo \"good morning\"; elif [ \"$h\" -lt 17 ]; then echo \"good afternoon\"; elif [ \"$h\" -lt 22 ]; then echo \"good evening\"; else echo \"cozy night\"; fi",
+      "outputColor": "#B5A591"
+    },
+    "break",
+    {
+      "type": "custom",
+      "format": "{##B5A591}system {##5C4031}────────────────────────"
+    },
+    {
+      "type": "os",
+      "key": "  {##F2A58A}  {##D2C2AE}os    ",
+      "format": "{name} {version-id}"
+    },
+    {
+      "type": "wm",
+      "key": "  {##F2A58A}  {##D2C2AE}wm    ",
+      "format": "{pretty-name} {version}"
+    },
+    {
+      "type": "shell",
+      "key": "  {##F2A58A}  {##D2C2AE}shell ",
+      "format": "{pretty-name} {version}"
+    },
+    {
+      "type": "packages",
+      "key": "  {##F2A58A}  {##D2C2AE}pkgs  ",
+      "format": "{rpm} rpm {##B5A591}·{##F6ECDD} {flatpak-all} flatpak"
+    },
+    {
+      "type": "uptime",
+      "key": "  {##F2A58A}  {##D2C2AE}up    ",
+      "format": "{?days}{days}d {?}{hours}h {minutes}m"
+    },
+    "break",
+    {
+      "type": "custom",
+      "format": "{##B5A591}hardware {##5C4031}──────────────────────"
+    },
+    {
+      "type": "cpu",
+      "key": "  {##F2A58A}  {##D2C2AE}cpu   ",
+      "format": "{name} {##B5A591}· {cores-logical} threads"
+    },
+    {
+      "type": "gpu",
+      "key": "  {##F2A58A}  {##D2C2AE}gpu   ",
+      "format": "{name}"
+    },
+    {
+      "type": "memory",
+      "key": "  {##F2A58A}  {##D2C2AE}ram   ",
+      "format": "{used} {##B5A591}/ {total}"
+    },
+    {
+      "type": "disk",
+      "key": "  {##F2A58A}  {##D2C2AE}disk  ",
+      "folders": "/",
+      "format": "{size-used} {##B5A591}/ {size-total}"
+    },
+    "break",
+    {
+      "type": "colors",
+      "symbol": "circle",
+      "paddingLeft": 2
+    }
+  ]
+}

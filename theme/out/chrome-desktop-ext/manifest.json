@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Desktop",
+  "version": "0.3.0",
+  "description": "New tab page, bridge to Bastian's desktop shell (tabs, agenda, weather) and iCloud password autofill.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqUCMjfGrMOCZRojsI/aMp2xktokIq89SgSN/b6OQoWe0Oza/CZHSBvdxV07EzcLvoUAqrQKB+plSPJ+ILf8JJaZ89AgPgnQLmBVKmVKm514qRU+DDU8MrNMuOwlOerlpAEjNitHHJkGVhHtTELVReRB73CbFCLKmgdjknfznOI8KY8ZgRtocfV58zyNhEFHPCdU5cvR6OyBBIAO9CBskwydYOGX8vD79xRu4T3x0UjlcjwkdotlD5O3EbYHiMLcvz8so49LciSlssOdSrRoRNwTecApCryVV0LqA59fRFbA1c6WQNEwsxaCkJQ4XPMRVR73N52IjEg3dMz2/rkmoswIDAQAB",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "tabs",
+    "nativeMessaging",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Passwords",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "http://*.localhost/*"
+      ],
+      "js": [
+        "autofill-css.js",
+        "autofill.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=GoXLR Utility Daemon
+After=pipewire.service
+
+[Service]
+ExecStart=/usr/bin/goxlr-daemon
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

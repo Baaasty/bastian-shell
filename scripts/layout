@@ -1,0 +1,574 @@
+#!/usr/bin/env -S python3 -I
+"""Fenster-Layout pro Projekt merken und wieder aufbauen (Hyprland). Anleitung: docs/LAYOUTS.md
+
+  layout save [name]      Fenster des aktuellen Desktops merken -> config/layouts/<name>.toml
+  layout restore [name]   fehlende Fenster starten (über uwsm) und auf den aktuellen Desktop legen
+  layout list [--json]    gespeicherte Layouts (--json: für das Shell-Menü, mit Desktop + Namensvorschlag)
+  layout show <name>      Datei anzeigen
+  layout rm <name>        Layout entfernen (die Datei wandert nach ~/.local/state/desktop/layouts-trash/)
+  layout menu             Rückfall-Dialog (kdialog), nur wenn die Shell nicht läuft – sonst Super+Alt+K = Shell-Menü
+                          (shell/modules/layouts, IPC layouts toggle)
+Optionen: --desk N (statt des aktuellen Desktops) · --dry-run (restore: nur zeigen) · --force (save: überschreiben)
+          · --json (list: maschinenlesbar)
+
+„Desktop“ = Workspace d auf DP-2 + 100+d links + 200+d rechts (Schema der Shell, hypr/monitors.conf).
+Ohne Namen gilt der Name des aktuellen Desktops (~/.local/state/desktop/desktops.json). Ist der Name eine Projekt-ID
+aus projects/projects.json, startet VS Code mit dem Projektordner und Helium mit der Dev-URL des Projekts.
+Nur Programme aus der Positivliste von config/hyprflow/config.toml (Kitty, Konsole, VS Code, Helium) – nie Chat/Spotify/Steam.
+"""
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import tomllib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+LAYOUTS = ROOT / "config" / "layouts"
+HF_CONF = ROOT / "config" / "hyprflow" / "config.toml"
+MONITORS_CONF = ROOT / "hypr" / "monitors.conf"
+# projects.json ist lokal (gitignored); ohne sie gilt die Beispiel-Datei
+PROJECTS = ROOT / "projects" / "projects.json"
+if not PROJECTS.exists():
+    PROJECTS = ROOT / "projects" / "projects.example.json"
+HOME = Path.home()
+STATE = HOME / ".local" / "state" / "desktop"
+TRASH = STATE / "layouts-trash"
+NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+FLATPAK_CODE = "com.visualstudio.code"
+DETECT_TIMEOUT = 25.0  # so lange wartet restore auf das neue Fenster (VS Code/Helium sind langsam)
+PAUSE = 0.6            # Pause nach jedem Start, damit Kacheln sich setzen
+
+
+def say(*a):
+    print(*a, flush=True)
+
+
+def die(msg, code=1):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+# ---------- Hyprland ----------
+def hc(*args):
+    return subprocess.run(["hyprctl", *args], capture_output=True, text=True).stdout
+
+
+def jq(what):
+    try:
+        return json.loads(hc("-j", what))
+    except ValueError:
+        return []
+
+
+def monitor_bases():
+    """Monitorname -> Workspace-Offset (0 / 100 / 200) aus hypr/monitors.conf (workspace = 101, monitor:HDMI-A-2)."""
+    bases = {}
+    try:
+        for line in MONITORS_CONF.read_text().splitlines():
+            m = re.match(r"\s*workspace\s*=\s*(\d+)\s*,\s*monitor:([^\s,]+)", line)
+            if m:
+                bases.setdefault(m.group(2), (int(m.group(1)) // 100) * 100)
+    except OSError:
+        pass
+    return bases or {"DP-2": 0, "HDMI-A-2": 100, "DP-1": 200}
+
+
+def current_desk():
+    for m in jq("monitors"):
+        if m.get("focused"):
+            wid = m["activeWorkspace"]["id"]
+            return wid % 100 if wid > 0 else None
+    return None
+
+
+def desk_name(d):
+    try:
+        for e in json.loads((STATE / "desktops.json").read_text()):
+            if e.get("id") == d and e.get("name"):
+                return e["name"]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def slug(name):
+    um = {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"}
+    s = "".join(um.get(c, c) for c in (name or "").strip())
+    s = re.sub(r"\s+", "-", s)
+    s = re.sub(r"[^A-Za-z0-9._-]", "", s).lstrip(".-")
+    return s[:64]
+
+
+# ---------- Positivliste (config/hyprflow/config.toml) ----------
+def positive():
+    try:
+        with open(HF_CONF, "rb") as f:
+            c = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        die(f"Allowlist not readable ({HF_CONF}): {e}")
+    extra = c.get("desktop", {}).get("apps", {})
+    out = {}
+    for cls, a in c.get("apps", {}).items():
+        out[cls] = {
+            "binary": a.get("binary", cls),
+            "capture_cwd": bool(a.get("capture_cwd")),
+            "once": bool(extra.get(cls, {}).get("once")),
+            "cwd_flag": extra.get(cls, {}).get("cwd_flag", "--directory"),
+        }
+    return out
+
+
+# ---------- Projekte ----------
+def project(name):
+    try:
+        d = json.loads(PROJECTS.read_text())
+        return d.get("projects", {}).get(name)
+    except (OSError, ValueError):
+        return None
+
+
+def expand(p):
+    return str(p).replace("~", str(HOME), 1) if str(p).startswith("~") else str(p)
+
+
+def code_target(p):
+    """Was VS Code öffnen soll: Wrapper-Arbeitsbereich (wenn vorhanden), sonst Arbeitsbereich-Datei/Ordner."""
+    if p.get("workspace"):
+        return expand(p["workspace"])
+    paths = [expand(x) for x in p.get("paths", [])]
+    if not paths:
+        return None
+    try:
+        idx = json.loads((HOME / ".config/desktop/workspaces/index.json").read_text())
+        if paths[0] in idx and idx[paths[0]].get("file"):
+            return idx[paths[0]]["file"]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return paths[0]
+
+
+def browser_urls(p):
+    ports = (p.get("dev") or {}).get("ports") or {}
+    want = (p.get("open") or {}).get("browser")
+    if want is None:
+        want = list(ports)[:1]
+    urls = []
+    for b in want:
+        if re.match(r"^[a-z]+://", str(b)):
+            urls.append(str(b))
+        elif ports.get(b):
+            urls.append(f"http://localhost:{ports[b]}")
+    return urls
+
+
+# ---------- Prozess-Arbeitsordner (wie hyprflow: /proc/<pid>/task/*/children + cwd, nur lesen) ----------
+def children(pid):
+    out = []
+    try:
+        for t in Path(f"/proc/{pid}/task").iterdir():
+            out += [int(x) for x in (t / "children").read_text().split()]
+    except (OSError, ValueError):
+        pass
+    return out
+
+
+SHELLS = {"bash", "zsh", "fish", "sh", "dash", "nu", "xonsh"}
+
+
+def shell_cwd(pid):
+    """Arbeitsordner der Shell im Terminal (nicht der Hilfsprozesse wie kitten)."""
+    for c in children(pid):
+        try:
+            if Path(f"/proc/{c}/comm").read_text().strip() not in SHELLS:
+                continue
+            p = os.readlink(f"/proc/{c}/cwd")
+        except OSError:
+            continue
+        if os.path.isabs(p) and os.path.isdir(p) and "\n" not in p:
+            return p
+    return None
+
+
+# ---------- TOML ----------
+def q(s):
+    return json.dumps(s, ensure_ascii=False)
+
+
+def write_toml(path, name, desk, windows, note):
+    lines = [
+        f"# Layout \"{name}\" – gespeichert {time.strftime('%Y-%m-%d %H:%M')} von scripts/layout save (Desktop {desk}).",
+        "# Von Hand änderbar. Anleitung: docs/LAYOUTS.md",
+        "# Reihenfolge = Startreihenfolge = Kachelreihenfolge (dwindle: das zweite Fenster teilt rechts vom ersten, das dritte",
+        "# teilt das zweite). Gestartet wird nur, was auf dem Workspace des Monitors noch nicht läuft (gleiche Klasse).",
+        "# monitor: Name wie in hypr/monitors.conf. cmd: Programm + Argumente (ohne Shell). box: x y Breite Höhe als",
+        "# Bruchteil des Monitors (Richtwert zum Lesen, wird beim Wiederherstellen nicht angewendet; weglassen ist erlaubt).",
+        "",
+        "version = 1",
+        f"name = {q(name)}",
+        f"saved = {q(time.strftime('%Y-%m-%dT%H:%M:%S'))}",
+    ]
+    if note:
+        lines.append(f"note = {q(note)}")
+    for w in windows:
+        lines += ["", "[[window]]", f"class = {q(w['class'])}", f"monitor = {q(w['monitor'])}", f"cmd = {q(w['cmd'])}"]
+        if w.get("box"):
+            lines.append("box = [" + ", ".join(f"{v:.3f}" for v in w["box"]) + "]")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".toml.tmp")
+    tmp.write_text("\n".join(lines) + "\n")
+    os.replace(tmp, path)
+
+
+def read_layout(name):
+    if not NAME_RE.match(name):
+        die(f"Invalid name {name!r} (allowed: A-Z a-z 0-9 . _ -)")
+    p = LAYOUTS / f"{name}.toml"
+    if not p.is_file():
+        die(f"No layout “{name}” – scripts/layout list shows the existing ones.")
+    try:
+        with open(p, "rb") as f:
+            d = tomllib.load(f)
+    except tomllib.TOMLDecodeError as e:
+        die(f"{p} not readable: {e}")
+    return d
+
+
+# ---------- save ----------
+def cmd_save(name, desk, force):
+    pos = positive()
+    if desk is None:
+        desk = current_desk()
+    if not desk:
+        die("Could not detect the current workspace (is Hyprland running?).")
+    if not name:
+        name = slug(desk_name(desk) or "")
+        if not name:
+            die("The current workspace has no name – please give a layout name: scripts/layout save <name>")
+    if not NAME_RE.match(name):
+        die(f"Invalid name {name!r} (allowed: A-Z a-z 0-9 . _ -)")
+    target = LAYOUTS / f"{name}.toml"
+    if target.exists() and not force:
+        die(f"Layout “{name}” already exists (overwrite with --force, or edit the file by hand).")
+    bases = monitor_bases()
+    mons = {m["id"]: m for m in jq("monitors")}
+    wanted = {d_ + desk: n for n, d_ in bases.items()}  # ws-id -> Monitorname
+    proj = project(name)
+    found = []
+    for c in jq("clients"):
+        wid = c.get("workspace", {}).get("id", -1)
+        cls = c.get("class", "")
+        if wid not in wanted or cls not in pos or c.get("floating") or not c.get("mapped", True) or c.get("hidden"):
+            continue
+        found.append((wanted[wid], c))
+    if not found:
+        die(f"Workspace {desk} has no window from the allowlist ({', '.join(pos)}) – nothing to save.")
+    # Reihenfolge: Hauptmonitor zuerst, dann links, dann rechts; je Monitor links->rechts, oben->unten
+    order = sorted(bases, key=lambda n: bases[n])
+    found.sort(key=lambda t: (order.index(t[0]) if t[0] in order else 99, t[1]["at"][0] // 40, t[1]["at"][1]))
+    windows, seen_once, notes = [], set(), []
+    for mon, c in found:
+        cls = c["class"]
+        a = pos[cls]
+        if a["once"] and (cls, mon) in seen_once:
+            continue
+        seen_once.add((cls, mon))
+        cmd = [a["binary"]]
+        if cls == "com.microsoft.VSCode":
+            if not shutil.which("code") and shutil.which("flatpak"):
+                cmd = ["flatpak", "run", FLATPAK_CODE]
+            t = code_target(proj) if proj else None
+            cmd += ["--new-window", t] if t else []
+        elif cls == "helium":
+            urls = browser_urls(proj) if proj else []
+            cmd += ["--new-window", *urls] if urls else []
+        elif a["capture_cwd"]:
+            cwd = shell_cwd(c["pid"])
+            if cwd:
+                cmd += [a["cwd_flag"], cwd]
+        m = next((x for x in mons.values() if x["name"] == mon), None)
+        box = None
+        if m:
+            sc = m.get("scale") or 1
+            mw, mh = m["width"] / sc, m["height"] / sc
+            r = m.get("reserved", [0, 0, 0, 0])
+            aw, ah = mw - r[0] - r[2], mh - r[1] - r[3]
+            box = [(c["at"][0] - m["x"] - r[0]) / aw, (c["at"][1] - m["y"] - r[1]) / ah, c["size"][0] / aw, c["size"][1] / ah]
+            box = [max(0.0, min(1.0, v)) for v in box]
+        windows.append({"class": cls, "monitor": mon, "cmd": cmd, "box": box})
+    if proj:
+        notes.append("Projekt-Layout (VS Code/Helium kommen aus projects/projects.json)")
+    write_toml(target, name, desk, windows, "; ".join(notes))
+    say(f"Layout „{name}“ gespeichert ({len(windows)} Fenster, Desktop {desk}) → {target.relative_to(ROOT)}")
+    for w in windows:
+        say(f"  {w['monitor']:9} {w['class']:22} {' '.join(w['cmd'])}")
+    return 0
+
+
+# ---------- restore ----------
+def clients_by_ws():
+    d = {}
+    for c in jq("clients"):
+        if c.get("mapped", True) and not c.get("hidden"):
+            d.setdefault(c["workspace"]["id"], []).append(c)
+    return d
+
+
+def valid_cmd(cls, cmd, a):
+    """Nur Programme der Positivliste, keine Shell: cmd[0] = binary (oder flatpak run <VS Code>)."""
+    if not isinstance(cmd, list) or not cmd or not all(isinstance(x, str) and "\0" not in x for x in cmd):
+        return False
+    if cmd[0] == a["binary"]:
+        return True
+    return cls == "com.microsoft.VSCode" and cmd[:3] == ["flatpak", "run", FLATPAK_CODE]
+
+
+def wait_new(cls, before, timeout):
+    end = time.time() + timeout
+    while time.time() < end:
+        time.sleep(0.15)
+        for c in jq("clients"):
+            if c.get("class", "").lower() == cls.lower() and c["address"] not in before and c.get("mapped", True):
+                return c
+    return None
+
+
+def cmd_restore(name, desk, dry):
+    pos = positive()
+    if desk is None:
+        desk = current_desk()
+    if not desk:
+        die("Could not detect the current workspace (is Hyprland running?).")
+    if not name:
+        name = slug(desk_name(desk) or "")
+        if not name or not (LAYOUTS / f"{name}.toml").is_file():
+            die("No layout name given and the workspace name matches no layout. scripts/layout list · scripts/layout menu")
+    lay = read_layout(name)
+    bases = monitor_bases()
+    ws_all = clients_by_ws()
+    plan, notes = [], []
+    consumed = {}
+    for w in lay.get("window", []):
+        cls, mon, cmd = w.get("class"), w.get("monitor", ""), w.get("cmd")
+        if cls not in pos:
+            notes.append(f"{cls}: nicht in der Positivliste – übersprungen")
+            continue
+        a = pos[cls]
+        if cmd is None:
+            cmd = [a["binary"]]
+        if not valid_cmd(cls, cmd, a):
+            notes.append(f"{cls}: cmd {cmd!r} unzulässig (muss mit „{a['binary']}“ beginnen) – übersprungen")
+            continue
+        if cmd[0] != "flatpak" and not shutil.which(cmd[0]):
+            notes.append(f"{cls}: Programm „{cmd[0]}“ nicht installiert – übersprungen")
+            continue
+        ws = bases.get(mon, 0) + desk
+        have = sum(1 for c in ws_all.get(ws, []) if c.get("class", "").lower() == cls.lower())
+        used = consumed.get((cls, ws), 0)
+        if used < have:
+            consumed[(cls, ws)] = used + 1
+            plan.append((w, ws, cmd, "läuft schon"))
+        else:
+            plan.append((w, ws, cmd, "starten"))
+    say(f"Layout „{name}“ → Desktop {desk}" + ("  (Probelauf, startet nichts)" if dry else ""))
+    for w, ws, cmd, what in plan:
+        say(f"  ws {ws:<4} {w['class']:22} {what:11} {' '.join(cmd)}")
+    for n in notes:
+        say(f"  ! {n}")
+    todo = [p for p in plan if p[3] == "starten"]
+    if dry or not todo:
+        if not todo and not dry:
+            say("Alles schon da – nichts zu starten.")
+        return 0
+    started = []
+    orig = (json.loads(hc("-j", "activewindow") or "{}") or {}).get("address")
+    visible = {m["activeWorkspace"]["id"] for m in jq("monitors")}
+    for w, ws, cmd, _ in todo:
+        before = {c["address"] for c in jq("clients")}
+        # Über Hyprlands exec mit Regel: das Fenster öffnet gleich auf dem Ziel-Workspace (ohne Fokusklau) und wird dort
+        # regulär gekachelt (nicht „verschoben“); gestartet wird trotzdem über uwsm (eigene systemd-Einheit).
+        hc("dispatch", "exec", f"[workspace {ws} silent] " + " ".join(shlex.quote(x) for x in ["uwsm", "app", "--", *cmd]))
+        c = wait_new(w["class"], before, DETECT_TIMEOUT)
+        if not c:
+            say(f"  ! {w['class']}: kein neues Fenster nach {int(DETECT_TIMEOUT)} s (läuft vielleicht in einem bestehenden Fenster)")
+            continue
+        if c["workspace"]["id"] != ws:
+            hc("dispatch", f"movetoworkspacesilent {ws},address:{c['address']}")
+        started.append((w, c))
+        # Sichtbarer Workspace: das neue Fenster fokussieren, damit das nächste es teilt (Kacheln: eins neben/unter dem anderen).
+        # Unsichtbarer Workspace: kein Fokus (focuswindow würde dorthin umschalten); dann teilt jedes neue Fenster das erste.
+        if ws in visible:
+            hc("dispatch", f"focuswindow address:{c['address']}")
+        time.sleep(PAUSE)
+    if orig and any(ws in visible for _, ws, _, _ in todo):
+        hc("dispatch", f"focuswindow address:{orig}")  # Fokus zurück dorthin, wo du warst
+    say(f"Fertig: {len(started)} von {len(todo)} Fenstern gestartet.")
+    return 0
+
+
+# ---------- list / show / rm ----------
+def cmd_list_json(desk):
+    """{"desk": N|null, "suggest": "<Name des Desktops>", "layouts": [{name, windows, classes, monitors, saved, project, broken}]}"""
+    LAYOUTS.mkdir(parents=True, exist_ok=True)
+    if desk is None:
+        desk = current_desk()
+    out = []
+    for f in sorted(LAYOUTS.glob("*.toml"), key=lambda f: f.stem.lower()):
+        e = {"name": f.stem, "windows": 0, "classes": [], "monitors": [], "saved": "", "project": project(f.stem) is not None, "broken": False}
+        try:
+            with open(f, "rb") as fh:
+                d = tomllib.load(fh)
+            ws = [w for w in d.get("window", []) if isinstance(w, dict)]
+            e["windows"] = len(ws)
+            e["classes"] = sorted({str(w.get("class", "?")) for w in ws})
+            e["monitors"] = sorted({str(w.get("monitor", "")) for w in ws if w.get("monitor")})
+            e["saved"] = str(d.get("saved", ""))
+        except (OSError, tomllib.TOMLDecodeError):
+            e["broken"] = True
+        out.append(e)
+    print(json.dumps({"desk": desk, "suggest": slug(desk_name(desk) or "") if desk else "", "layouts": out}, ensure_ascii=False))
+    return 0
+
+
+def cmd_list():
+    LAYOUTS.mkdir(parents=True, exist_ok=True)
+    files = sorted(LAYOUTS.glob("*.toml"))
+    if not files:
+        say("Keine Layouts. Speichern: scripts/layout save <name>")
+        return 0
+    for f in files:
+        try:
+            with open(f, "rb") as fh:
+                d = tomllib.load(fh)
+            ws = d.get("window", [])
+            say(f"{f.stem:28} {len(ws)} Fenster  ({', '.join(sorted({w.get('class', '?') for w in ws}))})")
+        except tomllib.TOMLDecodeError:
+            say(f"{f.stem:28} (Datei nicht lesbar)")
+    return 0
+
+
+def cmd_show(name):
+    read_layout(name)
+    print((LAYOUTS / f"{name}.toml").read_text(), end="")
+    return 0
+
+
+def cmd_rm(name):
+    read_layout(name)
+    TRASH.mkdir(parents=True, exist_ok=True)
+    dst = TRASH / f"{name}-{time.strftime('%Y%m%d-%H%M%S')}.toml"
+    shutil.move(str(LAYOUTS / f"{name}.toml"), dst)
+    say(f"Layout „{name}“ entfernt (Kopie: {dst})")
+    return 0
+
+
+# ---------- menu (kdialog, nur Rückfall ohne Shell; das Menü selbst ist shell/modules/layouts/Layouts.qml) ----------
+def notify(title, body=""):
+    subprocess.run(["notify-send", "-a", "Desktop", "-t", "5000", title, body], capture_output=True)
+
+
+def kdialog(*args):
+    """kdialog als schwebendes, mittiges Fenster (Hyprland-exec-Regel) starten und auf die Antwort warten.
+    -> (Exit-Code, Ausgabe). Ohne Regel würde der Dialog in die Kacheln des Desktops rutschen."""
+    rt = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    out, rc = rt / "desktop-layout-menu.out", rt / "desktop-layout-menu.rc"
+    for f in (out, rc):
+        f.unlink(missing_ok=True)
+    inner = "kdialog " + " ".join(shlex.quote(a) for a in args) + f" > {shlex.quote(str(out))}; echo $? > {shlex.quote(str(rc))}"
+    hc("dispatch", "exec", "[float on; center on; size 620 420] sh -c " + shlex.quote(inner))
+    for _ in range(1200):  # bis zu 2 Minuten
+        time.sleep(0.1)
+        if rc.exists() and rc.read_text().strip():
+            code = int(rc.read_text().strip() or 1)
+            text = out.read_text() if out.exists() else ""
+            for f in (out, rc):
+                f.unlink(missing_ok=True)
+            return code, text
+    return 1, ""
+
+
+def cmd_menu():
+    if not shutil.which("kdialog"):
+        die("kdialog is missing (dnf: kdialog)")
+    LAYOUTS.mkdir(parents=True, exist_ok=True)
+    items = []
+    for f in sorted(LAYOUTS.glob("*.toml")):
+        try:
+            with open(f, "rb") as fh:
+                n = len(tomllib.load(fh).get("window", []))
+        except tomllib.TOMLDecodeError:
+            continue
+        items += [f"r:{f.stem}", f"{f.stem}  ({n} windows)"]
+    items += ["s:", "Save this workspace as a layout …"]
+    desk = current_desk()
+    code, text = kdialog("--title", "Layouts", "--menu", "Restore a layout on this workspace:", *items)
+    if code != 0:
+        return 0
+    pick = text.strip()
+    me = str(ROOT / "scripts" / "layout")
+    if pick.startswith("r:"):
+        name = pick[2:]
+        out = subprocess.run([me, "restore", name], capture_output=True, text=True)
+        notify(f"Layout “{name}”", "restored" if out.returncode == 0 else (out.stderr.strip() or "failed"))
+    elif pick == "s:":
+        default = slug(desk_name(desk) or "") if desk else ""
+        code, text = kdialog("--title", "Save layout", "--inputbox", "Layout name (a project name connects it to that project):", default)
+        name = text.strip() if code == 0 else ""
+        if name:
+            force = (LAYOUTS / f"{name}.toml").exists()
+            if force and kdialog("--title", "Save layout", "--yesno", f"Overwrite layout “{name}”?")[0] != 0:
+                return 0
+            out = subprocess.run([me, "save", name, *(["--force"] if force else [])], capture_output=True, text=True)
+            notify(f"Layout “{name}”", "saved" if out.returncode == 0 else (out.stderr.strip() or "failed"))
+    return 0
+
+
+def main(argv):
+    args = [a for a in argv[1:]]
+    desk, dry, force, as_json = None, False, False, False
+    pos_args = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--desk" and i + 1 < len(args) and args[i + 1].isdigit():
+            desk = int(args[i + 1])
+            i += 1
+        elif a in ("--dry-run", "-n"):
+            dry = True
+        elif a == "--force":
+            force = True
+        elif a == "--json":
+            as_json = True
+        elif a.startswith("-") and a not in ("-h", "--help"):
+            die(f"unknown option {a}", 2)
+        else:
+            pos_args.append(a)
+        i += 1
+    cmd = pos_args[0] if pos_args else "list"
+    name = pos_args[1] if len(pos_args) > 1 else None
+    if cmd in ("-h", "--help", "help"):
+        say(__doc__)
+        return 0
+    if cmd == "save":
+        return cmd_save(name, desk, force)
+    if cmd == "restore":
+        return cmd_restore(name, desk, dry)
+    if cmd == "list":
+        return cmd_list_json(desk) if as_json else cmd_list()
+    if cmd in ("show", "rm") and not name:
+        die(f"layout {cmd} <name>", 2)
+    if cmd == "show":
+        return cmd_show(name)
+    if cmd == "rm":
+        return cmd_rm(name)
+    if cmd == "menu":
+        return cmd_menu()
+    say(__doc__)
+    return 2
+
+
+sys.exit(main(sys.argv))

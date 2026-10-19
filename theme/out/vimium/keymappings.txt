@@ -1,0 +1,35 @@
+# Vimium C – Desktop-Empfehlung (theme/gen/vimium.py). Alles Vimium-Standard, nur ausdrücklich aufgeschrieben.
+# Links
+map f LinkHints.activate
+map F LinkHints.activateOpenInNewTab
+map yf LinkHints.activateCopyLinkUrl
+# Scrollen
+map j scrollDown
+map k scrollUp
+map d scrollPageDown
+map u scrollPageUp
+map gg scrollToTop
+map G scrollToBottom
+# Verlauf und Tabs
+map H goBack
+map L goForward
+map J previousTab
+map K nextTab
+map x removeTab
+map X restoreTab
+map t createTab
+# Öffnen (Vomnibar)
+map o Vomnibar.activate
+map O Vomnibar.activateInNewTab
+map b Vomnibar.activateBookmarks
+map T Vomnibar.activateTabs
+# Suchen auf der Seite
+map / enterFindMode
+map n performFind
+map N performBackwardsFind
+# Sonstiges
+map yy copyCurrentUrl
+map gi focusInput
+map i enterInsertMode
+map r reload
+map ? showHelp

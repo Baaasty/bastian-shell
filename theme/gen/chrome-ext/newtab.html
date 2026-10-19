@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Desktop – neue Tab-Seite. Vorlage: theme/gen/chrome-ext/, erzeugt von theme/gen/chrome.py -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>New Tab</title>
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+  <main>
+    <div class="clock" id="clock"><span id="hm">--:--</span><span class="sec" id="sec">00</span></div>
+    <div class="date" id="date"></div>
+
+    <form class="search" id="search" autocomplete="off" role="search">
+      <span class="sym">search</span>
+      <input id="q" type="text" placeholder="Search Google or type a URL" spellcheck="false" aria-label="Search">
+      <kbd>↵</kbd>
+    </form>
+
+    <!-- unter der Suche: Wissenshäppchen, Tipp oder Spruch (Klick = nächstes) -->
+    <section class="slot">
+      <article class="bite" id="bite" hidden title="Click for another one">
+        <div class="bite-kind"><span class="sym" id="biteIcon">lightbulb</span><span id="biteKind"></span></div>
+        <div class="bite-title" id="biteTitle"></div>
+        <div class="bite-text" id="biteText"></div>
+        <a class="bite-more" id="biteMore" hidden>Read on Wikipedia →</a>
+      </article>
+      <p class="quote" id="quote" hidden title="Click for another one"></p>
+    </section>
+
+    <div class="info" id="info">
+      <span class="chip" id="event" hidden><span class="sym" id="eventIcon">event</span><span id="eventText"></span></span>
+      <span class="chip" id="weather" hidden><span class="sym" id="weatherIcon">cloud</span><span id="weatherText"></span></span>
+    </div>
+  </main>
+  <script src="config.js"></script>
+  <script src="newtab.js"></script>
+</body>
+</html>

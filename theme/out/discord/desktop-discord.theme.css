@@ -1,0 +1,295 @@
+/**
+ * @name Desktop (Discord)
+ * @description Bastians PC-Look: Flächen und Text wie die Shell (warmes Braun, Creme), Discord-Blurple als Erkennungszeichen, Ember nur für Erwähnungen
+ * @author desktop
+ * @version 1
+ */
+/* ERZEUGT aus theme/palette.json (Variante hearth) – nicht von Hand ändern. Neu: python3 -I theme/gen/discord.py */
+/* Farb-Variablen, Ecken, Schrift. Layout, Icons, Emojis, Rollenfarben, Avatare, Status (grün/gelb/rot) bleiben Discord. */
+
+.theme-dark.theme-dark,
+.theme-darker.theme-darker,
+.theme-midnight.theme-midnight {
+    /* Grund-Töne: Schleier (Discord baut Hover/Ränder/Kacheln daraus) = warmes Grau statt Blaugrau */
+    --opacity-1-hsl: 33.3 19.6% 63.9%;
+    --opacity-4-hsl: 33.3 19.6% 63.9%;
+    --opacity-8-hsl: 33.3 19.6% 63.9%;
+    --opacity-12-hsl: 33.3 19.6% 63.9%;
+    --opacity-16-hsl: 33.3 19.6% 63.9%;
+    --opacity-20-hsl: 33.3 19.6% 63.9%;
+    --opacity-24-hsl: 33.3 19.6% 63.9%;
+    --opacity-28-hsl: 33.3 19.6% 63.9%;
+    --opacity-32-hsl: 33.3 19.6% 63.9%;
+    --opacity-36-hsl: 33.3 19.6% 63.9%;
+    --opacity-40-hsl: 33.3 19.6% 63.9%;
+    --opacity-44-hsl: 33.3 19.6% 63.9%;
+    --opacity-48-hsl: 33.3 19.6% 63.9%;
+    --opacity-52-hsl: 33.3 19.6% 63.9%;
+    --opacity-56-hsl: 33.3 19.6% 63.9%;
+    --opacity-60-hsl: 33.3 19.6% 63.9%;
+    --opacity-64-hsl: 33.3 19.6% 63.9%;
+    --opacity-68-hsl: 33.3 19.6% 63.9%;
+    --opacity-72-hsl: 33.3 19.6% 63.9%;
+    --opacity-76-hsl: 33.3 19.6% 63.9%;
+    --opacity-80-hsl: 33.3 19.6% 63.9%;
+    --opacity-84-hsl: 33.3 19.6% 63.9%;
+    --opacity-88-hsl: 33.3 19.6% 63.9%;
+    --opacity-92-hsl: 33.3 19.6% 63.9%;
+    --opacity-96-hsl: 33.3 19.6% 63.9%;
+
+    /* Grund-Töne: Marke (alles, was Discord in Blurple tönt) */
+    --opacity-blurple-1-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-4-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-8-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-12-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-16-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-20-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-24-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-28-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-32-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-36-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-40-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-44-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-48-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-52-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-56-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-60-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-64-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-68-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-72-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-76-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-80-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-84-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-88-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-92-hsl: 235.3 59.8% 58.0%;
+    --opacity-blurple-96-hsl: 235.3 59.8% 58.0%;
+    --blurple-50-hsl: 235.3 59.8% 58.0%;
+    --blurple-59-hsl: 234.9 60.0% 53.9%;
+    --blurple-60-hsl: 234.9 60.0% 53.9%;
+    --blurple-65-hsl: 234.9 60.0% 50.0%;
+    --blurple-26-hsl: 234.9 80.4% 80.0%;
+    --blurple-29-hsl: 234.9 80.4% 80.0%;
+    --brand-500-hsl: 235.3 59.8% 58.0%;
+    --brand-530-hsl: 234.9 60.0% 53.9%;
+    --brand-560-hsl: 234.9 60.0% 50.0%;
+    --brand-600-hsl: 234.9 60.0% 50.0%;
+    --brand-360-hsl: 234.9 80.4% 80.0%;
+    --brand-400-hsl: 234.9 80.4% 80.0%;
+
+    /* Flächen (base-lowest = Server-Leiste, lower = Kanalliste, low = Seitenfelder, surface = Chat/Karten/Popouts) */
+    --background-base-lowest: #211A15;
+    --background-base-lower: #2A211B;
+    --background-base-low: #2F2620;
+    --background-surface-high: #382D26;
+    --background-surface-higher: #45372E;
+    --background-surface-highest: #544235;
+    --app-frame-background: #211A15;
+    --app-frame-border: rgba(255, 236, 214, 0.10);
+    --panel-bg: #2A211B;
+    --chat-background-default: #382D26;
+    --chat-background: #382D26;
+    --chat-border: rgba(255, 236, 214, 0.10);
+    --channel-background-default: #2A211B;
+    --home-background: #382D26;
+    --guild-profile-banner-background-default: #211A15;
+    --channeltextarea-background: #45372E;
+    --card-background-default: #45372E;
+    --card-border-default: rgba(255, 236, 214, 0.10);
+    --card-secondary-bg: rgba(246, 236, 221, 0.07);
+    --card-primary-pressed-bg: #2F2620;
+    --card-secondary-pressed-bg: #2F2620;
+    --embed-background: #45372E;
+    --embed-background-alternate: #45372E;
+    --modal-background: #382D26;
+    --modal-footer-background: #2C241E;
+    --bg-surface-raised: #45372E;
+    --background-secondary-alt: #2A211B;
+    --background-accent: #544235;
+    --user-profile-overlay-background: #45372E;
+    --user-profile-toolbar-background: #45372E;
+    --user-profile-activity-toolbar-background: #45372E;
+    --user-profile-note-background-focus: #211A15;
+    --user-profile-border: rgba(255, 236, 214, 0.10);
+    --mobile-expression-picker-background-default: #382D26;
+    --background-scrim: rgba(12, 7, 4, 0.72);
+    --background-scrim-lightbox: rgba(12, 7, 4, 0.9);
+    --context-menu-backdrop-background: rgba(12, 7, 4, 0.72);
+    --overlay-backdrop-lightbox: rgba(12, 7, 4, 0.9);
+    --spoiler-hidden-background: #6B4A38;
+    --spoiler-hidden-background-hover: #805E46;
+    --spoiler-revealed-background: #2F2620;
+    --background-code: rgba(84, 94, 212, 0.08);
+
+    /* Schleier (Hover, Kacheln); Auswahl = Blurple-Tönung (ausgewählter Kanal, DM, Einstellungs-Seite) */
+    --background-mod-muted: rgba(246, 236, 221, 0.05);
+    --background-mod-subtle: rgba(246, 236, 221, 0.08);
+    --background-mod-normal: rgba(246, 236, 221, 0.12);
+    --background-mod-strong: rgba(246, 236, 221, 0.17);
+    --interactive-background-default: rgba(246, 236, 221, 0.05);
+    --interactive-background-hover: rgba(246, 236, 221, 0.09);
+    --interactive-background-active: rgba(246, 236, 221, 0.13);
+    --interactive-background-selected: rgba(84, 94, 212, 0.28);
+    --message-background-hover: rgba(246, 236, 221, 0.045);
+    --user-profile-background-hover: rgba(246, 236, 221, 0.08);
+    --control-secondary-background-default: rgba(246, 236, 221, 0.09);
+    --control-secondary-background-hover: rgba(246, 236, 221, 0.13);
+    --control-secondary-background-active: rgba(246, 236, 221, 0.17);
+    --control-icon-only-background-hover: rgba(246, 236, 221, 0.1);
+    --control-icon-only-background-active: rgba(246, 236, 221, 0.15);
+    --redesign-button-tertiary-pressed-background: rgba(246, 236, 221, 0.15);
+    --reaction-background-default: rgba(246, 236, 221, 0.07);
+    --reaction-background-hover: rgba(246, 236, 221, 0.11);
+    --reaction-background-active: rgba(246, 236, 221, 0.15);
+    --reaction-border-default: rgba(255, 236, 214, 0.10);
+    --keyword-highlight-background: rgba(246, 236, 221, 0.16);
+
+    /* Text und Icons */
+    --text-strong: #F6ECDD;
+    --text-default: #F6ECDD;
+    --text-subtle: #D2C2AE;
+    --text-muted: #B5A591;
+    --text-invert: #211A15;
+    --chat-text-muted: #B5A591;
+    --channels-default: #C5B5A1;
+    --channel-icon: #B5A591;
+    --icon-strong: #F6ECDD;
+    --icon-default: #F6ECDD;
+    --icon-subtle: #D2C2AE;
+    --icon-muted: #B5A591;
+    --icon-invert: #211A15;
+    --interactive-text-default: #D2C2AE;
+    --interactive-text-hover: #F6ECDD;
+    --interactive-text-active: #F6ECDD;
+    --interactive-icon-default: #D2C2AE;
+    --interactive-icon-hover: #F6ECDD;
+    --interactive-icon-active: #F6ECDD;
+    --interactive-muted: #6B4A38;
+    --textbox-markdown-syntax: #B5A591;
+    --control-icon-only-icon-default: #D2C2AE;
+    --control-secondary-text-default: #F6ECDD;
+    --redesign-button-tertiary-text: #F6ECDD;
+    --redesign-button-tertiary-pressed-text: #F6ECDD;
+    --reaction-text-default: #D2C2AE;
+    --reaction-text-hover: #F6ECDD;
+    --reaction-text-active: #F6ECDD;
+
+    /* Ränder und Eingabefelder */
+    --border-muted: rgba(246, 236, 221, 0.05);
+    --border-subtle: rgba(255, 236, 214, 0.10);
+    --border-normal: rgba(255, 236, 214, 0.20);
+    --border-strong: rgba(246, 236, 221, 0.34);
+    --input-background-default: rgba(12, 7, 4, 0.3);
+    --input-border-default: rgba(255, 236, 214, 0.20);
+    --input-border-hover: rgba(246, 236, 221, 0.3);
+    --input-text-default: #F6ECDD;
+    --input-placeholder-text-default: #B5A591;
+    --input-icon-default: #D2C2AE;
+    --channel-text-area-placeholder: #B5A591;
+
+    /* Marke: Discord-Blurple (Home-Knopf, Buttons, Schalter, Links, Erwähnungen, Fokus) */
+    --brand-500: #545ED4;
+    --brand-360: #A3AAF5;
+    --brand-400: #A3AAF5;
+    --brand-530: #434FD0;
+    --brand-560: #3340CC;
+    --brand-600: #3340CC;
+    --brand-experiment: #545ED4;
+    --background-brand: #545ED4;
+    --control-primary-background-default: #545ED4;
+    --control-primary-background-hover: #434FD0;
+    --control-primary-background-active: #3340CC;
+    --control-primary-text-default: #F6ECDD;
+    --control-primary-text-hover: #F6ECDD;
+    --control-primary-text-active: #F6ECDD;
+    --control-primary-icon-default: #F6ECDD;
+    --control-primary-icon-hover: #F6ECDD;
+    --control-primary-icon-active: #F6ECDD;
+    --control-brand-foreground: #A3AAF5;
+    --control-brand-foreground-new: #A3AAF5;
+    --text-brand: #A3AAF5;
+    --icon-brand: #A3AAF5;
+    --text-link: #9DACF1;
+    --icon-link: #9DACF1;
+    --tabs-indicator-default: #A3AAF5;
+    --interactive-accent-background-default: rgba(246, 236, 221, 0.09);
+    --interactive-accent-background-hover: #545ED4;
+    --interactive-accent-background-active: #3340CC;
+    --interactive-accent-background-selected: #545ED4;
+    --input-border-active: #A3AAF5;
+    --border-focus: #A3AAF5;
+    --switch-background-selected-default: #545ED4;
+    --switch-background-selected-hover: #434FD0;
+    --switch-background-active: #3340CC;
+    --switch-thumb-icon-active: #545ED4;
+    --checkbox-background-selected-default: #545ED4;
+    --checkbox-background-selected-hover: #434FD0;
+    --checkbox-background-active: #3340CC;
+    --radio-background-selected-default: #545ED4;
+    --radio-background-selected-hover: #434FD0;
+    --radio-background-active: #3340CC;
+    --radio-foreground-active: #545ED4;
+    --progressbar-indicator-background: #545ED4;
+    --progressbar-track-background: rgba(246, 236, 221, 0.14);
+    --slider-track-background: #6B4A38;
+    --badge-primary-background: #545ED4;
+    --togglebutton-border-selected: #545ED4;
+    --togglebutton-background-selected: rgba(84, 94, 212, 0.18);
+    --togglebutton-background-selected-hover: rgba(84, 94, 212, 0.26);
+    --reaction-background-reacted-default: rgba(84, 94, 212, 0.26);
+    --reaction-background-reacted-hover: rgba(84, 94, 212, 0.32);
+    --reaction-border-reacted-default: #545ED4;
+    --reaction-text-reacted-default: #D0D3FB;
+    --mention-background: rgba(84, 94, 212, 0.3);
+    --mention-foreground: #D0D3FB;
+    --message-highlight-background-default: rgba(84, 94, 212, 0.14);
+    --message-highlight-background-hover: rgba(84, 94, 212, 0.19);
+
+    /* Ember sparsam: Nachrichten mit Erwähnung, Zähler ungelesener Erwähnungen */
+    --message-mentioned-background-default: rgba(219, 107, 76, 0.12);
+    --message-mentioned-background-hover: rgba(219, 107, 76, 0.16);
+    --badge-notification-background: #B05036;
+    --background-feedback-notification: #B05036;
+    --icon-feedback-notification: #F2A58A;
+
+    /* Scrollbars */
+    --scrollbar-thin-thumb: #86634A;
+    --scrollbar-thin-track: transparent;
+    --scrollbar-auto-thumb: #86634A;
+    --scrollbar-auto-track: transparent;
+    --scrollbar-auto-scrollbar-color-thumb: #86634A;
+    --scrollbar-auto-scrollbar-color-track: #2F2620;
+
+    /* Weiche Ecken (Palette radius) */
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+
+    /* Alte Namen (Plugins/Themes anderer greifen darauf zu) */
+    --background-primary: #382D26;
+    --background-secondary: #2A211B;
+    --background-tertiary: #211A15;
+    --background-floating: #45372E;
+    --background-modifier-hover: rgba(246, 236, 221, 0.07);
+    --background-modifier-selected: rgba(84, 94, 212, 0.28);
+    --background-modifier-accent: rgba(255, 236, 214, 0.10);
+    --text-normal: #F6ECDD;
+    --header-primary: #F6ECDD;
+    --header-secondary: #D2C2AE;
+    --interactive-normal: #D2C2AE;
+    --interactive-hover: #F6ECDD;
+    --interactive-active: #F6ECDD;
+}
+
+/* Server-Leiste: aktiver Server-Strich in Blurple, Ungelesen-Punkt in Ember (Discord nimmt für beide --text-strong) */
+:is(.theme-dark, .theme-darker, .theme-midnight) [data-list-id="guildsnav"] [class^="wrapper_"] > [class^="item_"][class*=" selected_"] { background-color: #A3AAF5; }
+:is(.theme-dark, .theme-darker, .theme-midnight) [data-list-id="guildsnav"] [class^="wrapper_"] > [class^="item_"][class*=" visible_"]:not([class*=" selected_"]):not([class*=" hovered_"]) { background-color: #DB6B4C; }
+/* Nachricht mit Erwähnung: Randstrich in Ember statt Gelb */
+:is(.theme-dark, .theme-darker, .theme-midnight) [class^="mentioned_"]::before, :is(.theme-dark, .theme-darker, .theme-midnight) [class*=" mentioned_"]::before { background: #DB6B4C; }
+
+/* Schrift: Inter (Shell), Code in JetBrains Mono Nerd Font; Discords gg sans bleibt Rückfall */
+html:root {
+    --font-primary: "Inter", "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-display: "Inter", "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-code: "JetBrainsMono Nerd Font", "JetBrains Mono", Consolas, "Andale Mono WT", "Andale Mono", monospace;
+}

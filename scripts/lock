@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# Sperren unter Hyprland. Sperrbildschirm = Quickshell (shell/modules/lock), Notfall = hyprlock.
+# Ablauf, Absturz-Verhalten und Notfall aus dem TTY: docs/LOCKSCREEN.md
+#
+#   lock now              sperren (Super+L, Power-Menü, hypridle lock_cmd): Shell, sonst hyprlock
+#   lock dim [force]      Leerlauf: abdunkeln (im Fokus-Block nur mit force)
+#   lock undim            wieder hell
+#   lock idle [force]     Leerlauf: sperren (im Fokus-Block nur mit force; ohne Shell immer per hyprlock)
+#   lock dpms-if-locked   Monitore aus, aber nur wenn gesperrt (hypridle)
+#   lock status           locked | unlocked
+#   lock rescue           sofort hyprlock (Notfall; aus dem TTY per hyprctl dispatch exec, s. Doku)
+#   lock guard            Wächter starten (macht die Shell beim Sperren selbst)
+#
+# Zustand: $XDG_RUNTIME_DIR/desktop-lock („locked“/„unlocked“, schreibt die Shell bzw. der Wächter).
+# Unter KWin/Plasma: „now“ = loginctl lock-session (kscreenlocker), alles andere tut nichts.
+set -uo pipefail
+
+SELF=$(readlink -f "$0")
+REPO=$(dirname "$(dirname "$SELF")")
+SHELL_DIR="$REPO/shell"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+STATE="$RUN/desktop-lock"
+HYPRLOCK_CONF="$RUN/desktop-hyprlock.conf"
+
+state() { cat "$STATE" 2>/dev/null | tr -d '[:space:]'; }
+
+# Hyprland? (HYPRLAND_INSTANCE_SIGNATURE fehlt z. B. in systemd-Diensten → aus dem Laufzeitordner holen)
+on_hyprland() {
+    pgrep -x Hyprland >/dev/null || return 1
+    [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && return 0
+    local d
+    d=$(ls -td "$RUN"/hypr/*/ 2>/dev/null | head -n1)
+    [ -n "$d" ] && [ -S "$d/.socket.sock" ] || return 1
+    HYPRLAND_INSTANCE_SIGNATURE=$(basename "$d")
+    export HYPRLAND_INSTANCE_SIGNATURE
+}
+
+# IPC an die laufende Shell (gleicher Pfad wie beim Start), höchstens 3 s
+ipc() { timeout 3 qs ipc --any-display -p "$SHELL_DIR" call "$@" 2>/dev/null; }
+
+# hält die Shell die Sperre? Billig per pgrep, nur alle paar Runden (oder bei Zweifel) per IPC
+shell_alive() { pgrep -u "$(id -u)" -f -- "-p $SHELL_DIR\$" >/dev/null; }
+shell_locked() { [ "$(ipc lock isLocked)" = true ]; }
+
+# GoXLR: Fader-Stand merken + Routing aus (scripts/goxlr-state; zurück beim Entsperren macht die Pfad-Unit
+# desktop-goxlr-unlock). Ohne GoXLR/Daemon tut es nichts, bremst die Sperre nie (höchstens 6 s).
+goxlr_lock() {
+    [ -x "$REPO/scripts/goxlr-state" ] || return 0
+    timeout 6 "$REPO/scripts/goxlr-state" lock </dev/null >/dev/null 2>&1 || true
+}
+
+start_guard() {
+    on_hyprland || return 0
+    # fester Name: es läuft höchstens ein Wächter; eigener Scope übersteht Shell-Neustarts
+    setsid -f systemd-run --user --scope --quiet --collect --slice=app.slice \
+        --unit=desktop-lock-guard -- "$SELF" guard-run >/dev/null 2>&1 </dev/null
+}
+
+# Notfall sofort: Zustand „locked“, Wächter startet hyprlock ohne Wartezeit
+emergency() {
+    printf 'locked\n' > "$STATE"
+    touch "$STATE.now"
+    start_guard
+    goxlr_lock
+}
+
+# hyprlock-Konfiguration aus theme/palette.json (Farben nie hart) + Lockscreen-Wallpaper aus kscreenlockerrc
+write_hyprlock_conf() {
+    python3 -I - "$REPO/theme/palette.json" "$HOME/.config/kscreenlockerrc" "$HYPRLOCK_CONF" <<'PY'
+import json, os, re, sys
+pal, lockrc, out = sys.argv[1:4]
+d = json.load(open(pal))
+t = d["themes"][d.get("defaultTheme", "ember")]
+
+def rgba(v, alpha=None):
+    m = re.match(r"rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)", v)
+    if m:
+        r, g, b, a = int(m[1]), int(m[2]), int(m[3]), float(m[4])
+    else:
+        h = v.lstrip("#")
+        r, g, b, a = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 1.0
+    if alpha is not None:
+        a = alpha
+    return "rgba(%02x%02x%02x%02x)" % (r, g, b, round(a * 255))
+
+wall = ""
+try:
+    group = ""
+    for line in open(lockrc):
+        if line.startswith("["):
+            group = line.strip()
+        elif group == "[Greeter][Wallpaper][org.kde.image][General]" and line.startswith("Image="):
+            wall = line[6:].strip().removeprefix("file://")
+except OSError:
+    pass
+if not os.path.isfile(wall):
+    wall = ""
+
+conf = f"""# ERZEUGT von scripts/lock (Notfall-Sperre) – nicht von Hand ändern.
+background {{
+    monitor =
+    path = {wall}
+    color = {rgba(t["bg"])}
+    blur_passes = 3
+    blur_size = 8
+    brightness = 0.7
+    contrast = 0.8
+    vibrancy = 0.2
+}}
+label {{
+    monitor = DP-2
+    text = $TIME
+    color = {rgba(t["text"])}
+    font_size = 160
+    font_family = JetBrainsMono Nerd Font
+    position = 0, 170
+    halign = center
+    valign = center
+}}
+label {{
+    monitor = DP-2
+    text = Emergency lock (shell not running)
+    color = {rgba(t["textFaint"])}
+    font_size = 14
+    font_family = Inter
+    position = 0, 40
+    halign = center
+    valign = center
+}}
+input-field {{
+    monitor =
+    size = 290, 52
+    outline_thickness = 2
+    dots_size = 0.25
+    dots_spacing = 0.4
+    outer_color = {rgba(t["accent"])}
+    inner_color = {rgba(t["glassStrong"])}
+    font_color = {rgba(t["text"])}
+    check_color = {rgba(t["woodLight"])}
+    fail_color = {rgba(t["error"])}
+    fail_text = Unlocking failed
+    placeholder_text = Password
+    fade_on_empty = false
+    rounding = -1
+    position = 0, -40
+    halign = center
+    valign = center
+}}
+"""
+with open(out, "w") as f:
+    f.write(conf)
+PY
+}
+
+# eine hyprlock-Runde; 0 nur bei echtem Entsperren (hyprlock lief länger als 2 s und endete mit 0)
+run_hyprlock() {
+    command -v hyprlock >/dev/null || { sleep 10; return 1; }
+    # Sperre einer abgestürzten Shell übernehmen dürfen (sonst bleibt Hyprlands Notfall-Bildschirm)
+    hyprctl keyword misc:allow_session_lock_restore 1 >/dev/null 2>&1 || true
+    write_hyprlock_conf 2>/dev/null || HYPRLOCK_CONF=""
+    local start rc
+    start=$(date +%s)
+    if [ -n "$HYPRLOCK_CONF" ]; then hyprlock -c "$HYPRLOCK_CONF"; else hyprlock; fi
+    rc=$?
+    [ "$rc" = 0 ] && [ $(( $(date +%s) - start )) -ge 2 ]
+}
+
+# Wächter: läuft, solange gesperrt ist. Hält die Shell die Sperre ~12 s lang nicht (abgestürzt, kommt nicht
+# wieder, Sperre abgelehnt) → hyprlock. Die Sicherheit hängt nicht daran: Hyprland bleibt bei einem
+# toten Sperr-Programm ohnehin gesperrt, der Wächter macht den PC nur wieder bedienbar.
+cmd_guard_run() {
+    local miss=0 tick=0
+    while :; do
+        [ "$(state)" = locked ] || exit 0
+        on_hyprland || exit 0
+        if [ -e "$STATE.now" ]; then
+            rm -f "$STATE.now"
+            miss=4
+        elif shell_alive && [ $(( tick % 10 )) != 0 ] && [ "$miss" = 0 ]; then
+            # Prozess lebt, letzte Prüfung war gut → IPC nur alle 30 s
+            :
+        elif shell_locked; then
+            miss=0
+        else
+            miss=$(( miss + 1 ))
+        fi
+        if [ "$miss" -ge 4 ]; then
+            if pgrep -x hyprlock >/dev/null; then
+                # fremdes hyprlock sperrt schon: abwarten
+                sleep 1
+                continue
+            fi
+            if run_hyprlock && ! shell_locked; then
+                printf 'unlocked\n' > "$STATE"
+                exit 0
+            fi
+            miss=0
+        fi
+        tick=$(( tick + 1 ))
+        sleep 3
+    done
+}
+
+cmd_now() {
+    if ! on_hyprland; then
+        # KWin/Plasma: kscreenlocker (nie unter Hyprland: hypridle ruft für lock-session wieder uns auf)
+        pgrep -x hypridle >/dev/null || exec loginctl lock-session
+        exit 0
+    fi
+    case "$(ipc lock lock)" in
+        ok | locked) goxlr_lock; exit 0 ;;
+    esac
+    emergency
+}
+
+cmd_idle() {
+    on_hyprland || exit 0
+    local force=false
+    [ "${1:-}" = force ] && force=true
+    case "$(ipc idle lock "$force")" in
+        ok | locked) goxlr_lock; exit 0 ;;
+        skip) exit 0 ;;
+    esac
+    # Shell antwortet nicht: lieber sperren als offen lassen
+    emergency
+}
+
+cmd_dim() {
+    on_hyprland || exit 0
+    local force=false
+    [ "${1:-}" = force ] && force=true
+    ipc idle dim "$force" >/dev/null || true
+}
+
+case "${1:-}" in
+    now) cmd_now ;;
+    idle) cmd_idle "${2:-}" ;;
+    dim) cmd_dim "${2:-}" ;;
+    undim) on_hyprland && { ipc idle undim >/dev/null || true; } ;;
+    dpms-if-locked) [ "$(state)" = locked ] && on_hyprland && hyprctl dispatch dpms off >/dev/null ;;
+    status) s=$(state); echo "${s:-unlocked}" ;;
+    rescue) on_hyprland && emergency ;;
+    guard) start_guard ;;
+    guard-run) cmd_guard_run ;;
+    *) sed -n '2,15p' "$SELF" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+exit 0

@@ -1,0 +1,114 @@
+#!/usr/bin/env -S python3 -I
+"""scripts/gitinfo – Git- und CI-Status von Projektordnern als JSON (nur lesen, für die Workspace-Leiste).
+
+  gitinfo <ordner> [<ordner> …]            Git: Branch, Änderungen, ahead/behind
+  gitinfo --ci-only <ordner> [<ordner> …]  nur CI: Status des letzten Laufs (gh, falls installiert und angemeldet)
+
+Ausgabe: { "<ordner>": { "branch", "changes", "ahead", "behind", "upstream", "repoUrl" } }
+bzw. mit --ci-only { "<ordner>": { "ci": { "state", "status", "conclusion", "workflow", "url" } | null } }
+  state: ok | fail | running | none (abgebrochen/übersprungen/keine Läufe); ci null = nicht verfügbar (still).
+- Git: `git status --porcelain=v2 --branch` (mit --no-optional-locks: schreibt nie in .git, hält keinen Index-Lock).
+  changes = geänderte + neue (untracked) Dateien, ohne ignorierte.
+- CI: `gh run list --limit 1` im Ordner, Timeout 5 s, nur für github.com-Remotes; Fehler werden still zu null.
+  Es werden nie Tokens gelesen, gespeichert oder ausgegeben (gh nutzt seine eigene Anmeldung).
+- Ordner dürfen mit ~ beginnen. Fehler pro Ordner werden still übersprungen.
+Doku: docs/QUICKLINKS.md
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+
+GIT_TIMEOUT = 4
+GH_TIMEOUT = 5
+
+
+def run(args, cwd, timeout, env=None):
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+
+
+def repo_url(d: str) -> str | None:
+    """https-Adresse des origin-Remotes (nur github.com), sonst None."""
+    try:
+        r = run(["git", "--no-optional-locks", "remote", "get-url", "origin"], d, GIT_TIMEOUT).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.match(r"^(?:git@github\.com:|ssh://git@github\.com/|https?://(?:[^@/]+@)?github\.com/)([^/]+/[^/]+?)(?:\.git)?/?$", r)
+    return f"https://github.com/{m.group(1)}" if m else None
+
+
+def git_info(d: str) -> dict | None:
+    try:
+        out = run(["git", "--no-optional-locks", "status", "--porcelain=v2", "--branch"], d, GIT_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    info = {"branch": "", "changes": 0, "ahead": 0, "behind": 0, "upstream": None, "repoUrl": None}
+    for line in out.stdout.split("\n"):
+        if line.startswith("# branch.head "):
+            b = line[14:].strip()
+            info["branch"] = "detached" if b == "(detached)" else b
+        elif line.startswith("# branch.upstream "):
+            info["upstream"] = line[18:].strip()
+        elif line.startswith("# branch.ab "):
+            m = re.match(r"# branch\.ab \+(\d+) -(\d+)", line)
+            if m:
+                info["ahead"], info["behind"] = int(m.group(1)), int(m.group(2))
+        elif line[:2] in ("1 ", "2 ", "u ", "? "):
+            info["changes"] += 1
+    info["repoUrl"] = repo_url(d)
+    return info
+
+
+def ci_info(d: str) -> dict | None:
+    if not shutil.which("gh") or not repo_url(d):
+        return None
+    env = dict(os.environ, GH_PROMPT_DISABLED="1", GH_NO_UPDATE_NOTIFIER="1", NO_COLOR="1", GH_SPINNER_DISABLED="1")
+    try:
+        r = run(["gh", "run", "list", "--limit", "1", "--json", "status,conclusion,workflowName,url"], d, GH_TIMEOUT, env)
+        if r.returncode != 0:
+            return None
+        runs = json.loads(r.stdout or "[]")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if not runs:
+        return {"state": "none", "status": "", "conclusion": "", "workflow": "", "url": None}
+    x = runs[0]
+    status, concl = x.get("status") or "", x.get("conclusion") or ""
+    if status in ("queued", "in_progress", "waiting", "requested", "pending"):
+        state = "running"
+    elif concl == "success":
+        state = "ok"
+    elif concl in ("failure", "timed_out", "startup_failure", "action_required"):
+        state = "fail"
+    else:
+        state = "none"
+    return {"state": state, "status": status, "conclusion": concl, "workflow": x.get("workflowName") or "", "url": x.get("url")}
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    ci_only = "--ci-only" in args
+    dirs = [os.path.expanduser(a) for a in args if not a.startswith("--")]
+    dirs = [d for d in dirs if os.path.isdir(d)]
+    result = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        if ci_only:
+            for d, c in zip(dirs, pool.map(ci_info, dirs)):
+                result[d] = {"ci": c}
+        else:
+            for d, g in zip(dirs, pool.map(git_info, dirs)):
+                if g:
+                    result[d] = g
+    print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        print("{}")

@@ -1,0 +1,950 @@
+#!/usr/bin/env python3
+"""discord-bridge – Voice-Status aus dem lokalen Discord-Client (offizielle RPC über IPC).
+
+Gibt Zustände als JSON-Zeilen auf stdout aus (für Quickshell Process + SplitParser):
+  {"state": "unconfigured"}                       keine client_id/client_secret in secrets.json -> Ende
+  {"state": "offline"}                            Discord läuft nicht / Socket fehlt (versucht weiter)
+  {"state": "connecting"}                         verbunden, Anmeldung läuft
+  {"state": "authorizing"}                        Discord zeigt den Koppel-Dialog, wartet auf Klick
+  {"state": "unsupported", "message": "…"}       nur arRPC (Equibop/Vesktop) lauscht: kennt keine Call-Befehle, prüft alle 30 s neu
+  {"state": "denied" | "error", "message": "…"}   wartet, bis secrets.json sich ändert oder "retry" kommt
+  {"state": "ok", "inVoice": …, "members": […], …} voller Schnappschuss bei jeder Änderung
+
+Befehle auf stdin (eine Zeile):
+  open <channel_id>        Chat im Client öffnen (SELECT_TEXT_CHANNEL)
+  mute 0|1 · deaf 0|1      eigenes Mic / Kopfhörer (SET_VOICE_SETTINGS)
+  leave                    Kanal verlassen (SELECT_VOICE_CHANNEL null)
+  uvol <user_id> <0-200>   Lautstärke einer Person (SET_USER_VOICE_SETTINGS)
+  umute <user_id> 0|1      Person für dich stumm (SET_USER_VOICE_SETTINGS)
+  guilds                   Server-Liste (GET_GUILDS)                    -> {"event":"guilds"}
+  channels <guild_id>      Sprachkanäle + wer drin ist (GET_CHANNELS/GET_CHANNEL) -> {"event":"channels"}
+  peek <channel_id> …      wer ist in diesen Kanälen (max. 8)           -> {"event":"peek"}
+  join <channel_id> [1]    Kanal beitreten, 1 = auch aus anderem Call wechseln (SELECT_VOICE_CHANNEL)
+  retry · reauth           erneut verbinden / neu koppeln (z. B. für neue Scopes)
+
+Nur offizielle RPC-Befehle (Scopes rpc, rpc.voice.read, rpc.voice.write). Keine Nachrichteninhalte:
+messages.read wird nicht angefragt, das Feld "messages" in Kanal-Antworten wird verworfen.
+Tokens stehen nur in secrets.json (Rechte 600) und werden nie ausgegeben oder geloggt.
+Anleitung: docs/setup/discord.md
+"""
+
+import json
+import os
+import select
+import socket
+import struct
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+SECRETS = os.environ.get("DESKTOP_SECRETS") or os.path.join(REPO, "secrets.json")
+STATE_DIR = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop")
+CALL_FILE = os.path.join(STATE_DIR, "discord-call.json")
+
+API = "https://discord.com/api"
+SCOPES = ["rpc", "rpc.voice.read", "rpc.voice.write"]
+UA = "desktop-discord-bridge (local desktop widget, 1.0)"
+VOICE_EVENTS = ["VOICE_STATE_CREATE", "VOICE_STATE_UPDATE", "VOICE_STATE_DELETE", "SPEAKING_START", "SPEAKING_STOP"]
+
+OP_HANDSHAKE, OP_FRAME, OP_CLOSE, OP_PING, OP_PONG = 0, 1, 2, 3, 4
+
+
+LOG_FILE = os.path.join(STATE_DIR, "discord-bridge.log")
+
+
+def log(msg):
+    # nur Zustände/Fehlercodes, nie Tokens oder Secrets. Auch in eine kleine Datei (Quickshell verwirft stderr).
+    line = "%s discord-bridge: %s" % (time.strftime("%H:%M:%S"), msg)
+    print(line, file=sys.stderr, flush=True)
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 64 * 1024:
+            os.replace(LOG_FILE, LOG_FILE + ".1")
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
+
+
+_last = None
+
+
+def emit(obj):
+    global _last
+    line = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    if line == _last:
+        return
+    _last = line
+    try:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+    except BrokenPipeError:
+        sys.exit(0)
+
+
+# ---------------------------------------------------------------- secrets
+
+def load_secrets():
+    try:
+        with open(SECRETS, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def discord_cfg():
+    d = load_secrets().get("discord")
+    return d if isinstance(d, dict) else {}
+
+
+def secrets_mtime():
+    try:
+        return os.stat(SECRETS).st_mtime_ns
+    except OSError:
+        return 0
+
+
+def save_tokens(tok):
+    """Tokens in secrets.json schreiben (atomar, Rechte 600, übrige Einträge bleiben)."""
+    data = load_secrets()
+    d = data.get("discord") if isinstance(data.get("discord"), dict) else {}
+    d["access_token"] = tok["access_token"]
+    if tok.get("refresh_token"):
+        d["refresh_token"] = tok["refresh_token"]
+    d["expires_at"] = int(time.time()) + int(tok.get("expires_in") or 604800)
+    data["discord"] = d
+    tmp = SECRETS + ".tmp-%d" % os.getpid()
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp, SECRETS)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    os.chmod(SECRETS, 0o600)
+
+
+# ---------------------------------------------------------------- OAuth2
+
+class OAuthError(Exception):
+    pass
+
+
+def token_request(fields):
+    body = urllib.parse.urlencode(fields).encode()
+    req = urllib.request.Request(API + "/oauth2/token", data=body, method="POST", headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "User-Agent": UA,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.load(e)
+        except ValueError:
+            err = {}
+        # error/error_description enthalten keine Secrets
+        raise OAuthError("%s %s: %s" % (e.code, err.get("error", "?"), err.get("error_description", "")))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise OAuthError("Netz: %s" % type(e).__name__)
+
+
+def exchange_code(cfg, code):
+    fields = {
+        "client_id": cfg["client_id"],
+        "client_secret": cfg["client_secret"],
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": cfg.get("redirect_uri") or "http://localhost",
+    }
+    try:
+        return token_request(fields)
+    except OAuthError as e:
+        if "redirect" not in str(e).lower():
+            raise
+        # Code wurde ohne redirect_uri ausgestellt -> ohne nochmal
+        fields.pop("redirect_uri")
+        return token_request(fields)
+
+
+def refresh(cfg):
+    return token_request({
+        "client_id": cfg["client_id"],
+        "client_secret": cfg["client_secret"],
+        "grant_type": "refresh_token",
+        "refresh_token": cfg["refresh_token"],
+    })
+
+
+# ---------------------------------------------------------------- IPC
+
+class Closed(Exception):
+    pass
+
+
+class RpcError(Exception):
+    def __init__(self, code, message):
+        super().__init__("%s %s" % (code, message))
+        self.code = code
+        self.message = message
+
+
+def socket_candidates():
+    run = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()
+    # natives RPM (discord, RPM Fusion, $XDG_RUNTIME_DIR/discord-ipc-N) zuerst, dann Flatpak, alte Rückfälle, Snap
+    bases = [run, os.path.join(run, "app", "com.discordapp.Discord"),
+             os.path.join(run, "app", "io.github.equicord.equibop"),
+             os.path.join(run, "app", "dev.vencord.Vesktop"), os.path.join(run, "snap.discord")]
+    for v in ("TMPDIR", "TMP", "TEMP"):
+        if os.environ.get(v):
+            bases.append(os.environ[v])
+    bases.append("/tmp")
+    # Flatpak: startet Discord sich selbst neu (Update), fällt die socat-Brücke nach außen weg.
+    # Der Socket liegt dann nur noch in der Sandbox – über /proc/<pid>/root kommt man trotzdem ran.
+    bases += [os.path.join("/proc", pid, "root") + run for pid in discord_pids()]
+    for b in bases:
+        for n in range(10):
+            yield os.path.join(b, "discord-ipc-%d" % n)
+
+
+def inode(path):
+    try:
+        return os.stat(path).st_ino
+    except OSError:
+        return None
+
+
+def socket_alive(path):
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(1)
+    try:
+        s.connect(path)
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def discord_pids():
+    """Hauptprozesse von Discord (ohne --type=…-Kinder) des eigenen Users."""
+    out = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as f:
+                args = f.read().split(b"\0")
+        except OSError:
+            continue
+        if args and args[0].endswith(b"/Discord") and not any(a.startswith(b"--type=") for a in args):
+            out.append(pid)
+    return out
+
+
+class Ipc:
+    def __init__(self, path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(10)
+        self.sock.connect(path)
+
+    def fileno(self):
+        return self.sock.fileno()
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+    def send(self, op, payload):
+        body = json.dumps(payload).encode()
+        self.sock.sendall(struct.pack("<II", op, len(body)) + body)
+
+    def _read(self, n):
+        buf = b""
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise Closed("Socket zu")
+            buf += chunk
+        return buf
+
+    def recv(self, timeout=10):
+        self.sock.settimeout(timeout)
+        try:
+            op, ln = struct.unpack("<II", self._read(8))
+            self.sock.settimeout(10)
+            data = json.loads(self._read(ln) or b"null")
+        except socket.timeout:
+            raise
+        except (ValueError, struct.error) as e:
+            raise Closed("kaputter Rahmen: %s" % e)
+        if op == OP_PING:
+            self.send(OP_PONG, data)
+            return None
+        if op == OP_CLOSE:
+            data = data or {}
+            raise RpcError(data.get("code", 0), data.get("message", "geschlossen"))
+        return data
+
+
+# ---------------------------------------------------------------- Zustand
+
+def avatar_url(user):
+    uid = user.get("id") or "0"
+    if user.get("avatar"):
+        return "https://cdn.discordapp.com/avatars/%s/%s.png?size=64" % (uid, user["avatar"])
+    try:
+        disc = user.get("discriminator") or "0"
+        idx = (int(uid) >> 22) % 6 if disc in ("0", "0000") else int(disc) % 5
+    except ValueError:
+        idx = 0
+    return "https://cdn.discordapp.com/embed/avatars/%d.png" % idx
+
+
+def flag_of(vs, st, key):
+    for src in (st, vs):
+        if key in src:
+            return bool(src[key])
+    return None
+
+
+def member_from(vs):
+    u = vs.get("user") or {}
+    st = vs.get("voice_state") or {}
+    return {
+        "id": str(u.get("id") or ""),
+        "name": vs.get("nick") or u.get("global_name") or u.get("username") or "?",
+        "avatarUrl": avatar_url(u),
+        "mute": bool(st.get("mute") or st.get("self_mute") or st.get("suppress")),
+        "deaf": bool(st.get("deaf") or st.get("self_deaf")),
+        # Echte RPC-voice_states (geprüft 2026-10-18) haben nur mute/deaf/self_mute/self_deaf/suppress –
+        # kein self_video/self_stream. Falls es mal mitkommt, wird es genutzt, sonst bleibt es unbekannt (None).
+        "video": flag_of(vs, st, "self_video"),
+        "stream": flag_of(vs, st, "self_stream"),
+        "bot": bool(u.get("bot")),
+        # lokale Einstellungen (nur für dich): Lautstärke 0–200, stumm
+        "volume": int(round(vs.get("volume", 100) or 0)),
+        "localMute": bool(vs.get("mute")),
+    }
+
+
+def load_call():
+    try:
+        with open(CALL_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_call(channel_id, since):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp = CALL_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"channel_id": channel_id, "since": since}, f)
+        os.replace(tmp, CALL_FILE)
+    except OSError:
+        pass
+
+
+class Session:
+    def __init__(self, ipc, cfg, on_ready=lambda: None):
+        self.on_ready = on_ready
+        self.ipc = ipc
+        self.cfg = cfg
+        self.self_id = ""
+        self.channel = None          # {"id", "name", "guild_id", "type"}
+        self.guild_name = ""
+        self.guilds = {}
+        self.members = {}
+        self.speaking = set()
+        self.settings = {"mute": False, "deaf": False}
+        self.connection = ""
+        self.since = 0
+        self.dirty_channel = False   # VOICE_CHANNEL_SELECT -> Kanal neu holen (im Hauptloop)
+        self.pending = []            # Befehle von stdin, laufen im Hauptloop
+        self.cache = {}              # kurzer Cache für Server/Kanäle: key -> (zeit, daten)
+        self.can_write = False
+
+    # --- Befehle
+
+    def call(self, cmd, args=None, evt=None, timeout=10):
+        nonce = str(uuid.uuid4())
+        msg = {"cmd": cmd, "args": args or {}, "nonce": nonce}
+        if evt:
+            msg["evt"] = evt
+        self.ipc.send(OP_FRAME, msg)
+        deadline = time.monotonic() + timeout
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise RpcError(-1, "%s: keine Antwort" % cmd)
+            try:
+                m = self.ipc.recv(timeout=left)
+            except socket.timeout:
+                raise RpcError(-1, "%s: keine Antwort" % cmd)
+            if not m:
+                continue
+            if m.get("nonce") == nonce:
+                if m.get("evt") == "ERROR":
+                    d = m.get("data") or {}
+                    raise RpcError(d.get("code", 0), d.get("message", ""))
+                return m.get("data")
+            self.on_event(m)
+
+    def subscribe(self, evt, args=None, on=True):
+        try:
+            self.call("SUBSCRIBE" if on else "UNSUBSCRIBE", args or {}, evt=evt)
+        except RpcError as e:
+            log("%s %s: %s" % ("SUBSCRIBE" if on else "UNSUBSCRIBE", evt, e.code))
+
+    # --- Anmeldung
+
+    def handshake(self):
+        self.ipc.send(OP_HANDSHAKE, {"v": 1, "client_id": str(self.cfg["client_id"])})
+        end = time.monotonic() + 15
+        while True:
+            try:
+                m = self.ipc.recv(timeout=max(0.1, end - time.monotonic()))
+            except socket.timeout:
+                # Discord prüft die App beim Handshake online; hängt das (z. B. Rate-Limit), kommt kein READY
+                raise Closed("kein READY auf den Handshake")
+            if m and m.get("evt") == "READY":
+                return m.get("data") or {}
+
+    def authenticate(self):
+        cfg = self.cfg
+        if cfg.get("_reauth"):
+            return self.authorize()
+        token = cfg.get("access_token")
+        if token and cfg.get("refresh_token") and int(cfg.get("expires_at") or 0) < time.time() + 3600:
+            token = self.try_refresh()
+        if token:
+            try:
+                return self.call("AUTHENTICATE", {"access_token": token})
+            except RpcError as e:
+                if is_arrpc(e):
+                    raise Unsupported()
+                log("AUTHENTICATE abgelehnt (%s), versuche Refresh" % e.code)
+                token = self.try_refresh() if cfg.get("refresh_token") else None
+                if token:
+                    try:
+                        return self.call("AUTHENTICATE", {"access_token": token})
+                    except RpcError as e2:
+                        log("AUTHENTICATE nach Refresh abgelehnt (%s)" % e2.code)
+        return self.authorize()
+
+    def try_refresh(self):
+        try:
+            tok = refresh(self.cfg)
+        except OAuthError as e:
+            log("Refresh fehlgeschlagen: %s" % e)
+            return None
+        save_tokens(tok)
+        self.cfg.update(discord_cfg())
+        return tok["access_token"]
+
+    def authorize(self):
+        emit({"state": "authorizing", "configured": True})
+        try:
+            data = self.call("AUTHORIZE", {"client_id": str(self.cfg["client_id"]), "scopes": SCOPES}, timeout=300)
+        except RpcError as e:
+            if is_arrpc(e):
+                raise Unsupported()
+            raise Denied(e.message or "Linking was declined")
+        code = (data or {}).get("code")
+        if not code:
+            raise Denied("no code from Discord")
+        try:
+            tok = exchange_code(self.cfg, code)
+        except OAuthError as e:
+            raise Denied("Token exchange: %s" % e)
+        save_tokens(tok)
+        self.cfg.update(discord_cfg())
+        return self.call("AUTHENTICATE", {"access_token": tok["access_token"]})
+
+    # --- Ablauf
+
+    def run(self):
+        emit({"state": "connecting", "configured": True})
+        self.handshake()
+        auth = self.authenticate() or {}
+        self.self_id = str((auth.get("user") or {}).get("id") or "")
+        scopes = auth.get("scopes") or []
+        if "rpc.voice.read" not in scopes:
+            raise Denied("Scope rpc.voice.read missing – link again")
+        # Steuerung braucht rpc.voice.write; ältere Kopplungen haben es nicht -> nur Info
+        self.can_write = "rpc.voice.write" in scopes
+        log("angemeldet")
+        self.on_ready()
+
+        self.subscribe("VOICE_CHANNEL_SELECT")
+        self.subscribe("VOICE_SETTINGS_UPDATE")
+        self.subscribe("VOICE_CONNECTION_STATUS")
+        try:
+            vs = self.call("GET_VOICE_SETTINGS") or {}
+            self.settings = {"mute": bool(vs.get("mute")), "deaf": bool(vs.get("deaf"))}
+        except RpcError as e:
+            log("GET_VOICE_SETTINGS: %s" % e.code)
+        self.load_channel()
+        self.publish()
+
+        buf = b""
+        while True:
+            if self.dirty_channel:
+                self.dirty_channel = False
+                self.load_channel()
+                self.publish()
+            while self.pending:
+                self.do(*self.pending.pop(0))
+            fds = [self.ipc] + ([STDIN] if STDIN is not None else [])
+            r, _, _ = select.select(fds, [], [], 30)
+            if self.ipc in r:
+                m = self.ipc.recv(timeout=10)
+                if m:
+                    self.on_event(m)
+                    self.publish()
+            if STDIN is not None and STDIN in r:
+                buf += read_stdin()
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    self.command(line.decode(errors="replace").strip())
+
+    def command(self, line):
+        p = line.split()
+        if not p:
+            return
+        ids = lambda x: x.isdigit() and len(x) < 25
+        flag = lambda x: x in ("0", "1")
+        if p[0] == "open" and len(p) == 2 and ids(p[1]):
+            self.pending.append(("open", p[1]))
+        elif p[0] in ("mute", "deaf") and len(p) == 2 and flag(p[1]):
+            self.pending.append((p[0], p[1] == "1"))
+        elif p[0] == "leave" and len(p) == 1:
+            self.pending.append(("leave",))
+        elif p[0] == "uvol" and len(p) == 3 and ids(p[1]) and p[2].isdigit():
+            # Schieberegler schickt viele Werte: nur den letzten pro Person behalten
+            self.pending = [x for x in self.pending if not (x[0] == "uvol" and x[1] == p[1])]
+            self.pending.append(("uvol", p[1], max(0, min(200, int(p[2])))))
+        elif p[0] == "umute" and len(p) == 3 and ids(p[1]) and flag(p[2]):
+            self.pending.append(("umute", p[1], p[2] == "1"))
+        elif p[0] == "guilds" and len(p) == 1:
+            self.queue_once(("guilds",))
+        elif p[0] == "channels" and len(p) == 2 and ids(p[1]):
+            self.queue_once(("channels", p[1]))
+        elif p[0] == "peek" and 2 <= len(p) <= 9 and all(ids(x) for x in p[1:]):
+            self.queue_once(("peek",) + tuple(p[1:]))
+        elif p[0] == "join" and len(p) in (2, 3) and ids(p[1]) and (len(p) == 2 or flag(p[2])):
+            self.pending.append(("join", p[1], len(p) == 3 and p[2] == "1"))
+        elif p[0] == "reauth":
+            raise Reauth()
+        elif p[0] == "refresh":
+            self.dirty_channel = True
+
+    def queue_once(self, item):
+        if item not in self.pending:
+            self.pending.append(item)
+
+    def cached(self, key, max_age):
+        hit = self.cache.get(key)
+        return hit[1] if hit and time.monotonic() - hit[0] < max_age else None
+
+    def pause(self, seconds):
+        """Kurz warten, dabei Ereignisse weiter verarbeiten (Abstand zwischen Abfragen)."""
+        end = time.monotonic() + seconds
+        while True:
+            left = end - time.monotonic()
+            if left <= 0:
+                return
+            r, _, _ = select.select([self.ipc], [], [], left)
+            if r:
+                m = self.ipc.recv(timeout=10)
+                if m:
+                    self.on_event(m)
+
+    def channel_people(self, cid):
+        """Wer ist in einem Sprachkanal (GET_CHANNEL; Nachrichten werden verworfen). 30 s Cache."""
+        hit = self.cached("ch:" + cid, 30)
+        if hit is not None:
+            return hit
+        ch = self.call("GET_CHANNEL", {"channel_id": cid}) or {}
+        out = {
+            "id": cid,
+            "name": ch.get("name") or "",
+            "type": ch.get("type"),
+            "guildId": str(ch.get("guild_id") or ""),
+            "members": [{"id": m["id"], "name": m["name"], "avatarUrl": m["avatarUrl"]}
+                        for m in (member_from(vs) for vs in ch.get("voice_states") or []) if m["id"]],
+        }
+        self.cache["ch:" + cid] = (time.monotonic(), out)
+        return out
+
+    def do_lists(self, action, a):
+        if action == "guilds":
+            out = self.cached("guilds", 300)
+            if out is None:
+                d = self.call("GET_GUILDS") or {}
+                out = [{"id": str(g.get("id")), "name": g.get("name") or "?", "iconUrl": g.get("icon_url") or ""}
+                       for g in d.get("guilds") or [] if g.get("id")]
+                for g in out:
+                    self.guilds[g["id"]] = g["name"]
+                self.cache["guilds"] = (time.monotonic(), out)
+            emit_event({"event": "guilds", "guilds": out})
+        elif action == "channels":
+            gid = a[0]
+            out = self.cached("chs:" + gid, 45)
+            if out is None:
+                d = self.call("GET_CHANNELS", {"guild_id": gid}) or {}
+                voice = [c for c in d.get("channels") or [] if c.get("type") in (2, 13)]
+                voice.sort(key=lambda c: (c.get("position") is None, c.get("position") or 0))
+                out = [{"id": str(c["id"]), "name": c.get("name") or "?", "type": c.get("type"), "members": None}
+                       for c in voice[:25]]
+                # erst die Kanäle zeigen, dann nach und nach, wer drin ist (mit Abstand, wegen Rate-Limits)
+                emit_event({"event": "channels", "guildId": gid, "channels": out, "partial": True})
+                for c in out:
+                    self.pause(0.12)
+                    try:
+                        c["members"] = self.channel_people(c["id"])["members"]
+                    except RpcError as e:
+                        log("GET_CHANNEL: %s" % e.code)
+                        break
+                for c in out:
+                    if c["members"] is None:
+                        c["members"] = []
+                self.cache["chs:" + gid] = (time.monotonic(), out)
+            emit_event({"event": "channels", "guildId": gid, "channels": out, "partial": False})
+        elif action == "peek":
+            out = []
+            for cid in a[:8]:
+                try:
+                    out.append(self.channel_people(cid))
+                except RpcError as e:
+                    log("GET_CHANNEL: %s" % e.code)
+                    out.append({"id": cid, "missing": True, "members": []})
+                self.pause(0.08)
+            emit_event({"event": "peek", "channels": out})
+
+    def do(self, action, *a):
+        try:
+            if action in ("guilds", "channels", "peek"):
+                self.do_lists(action, a)
+                return
+            if action == "join":
+                self.call("SELECT_VOICE_CHANNEL", {"channel_id": a[0], "timeout": 10, "force": bool(a[1]), "navigate": False},
+                          timeout=15)
+                self.cache.pop("ch:" + a[0], None)
+                self.dirty_channel = True
+                return
+            if action == "open":
+                self.call("SELECT_TEXT_CHANNEL", {"channel_id": a[0], "timeout": 5})
+                emit_event({"event": "opened", "id": a[0]})
+                return
+            if not self.can_write and action in ("mute", "deaf", "uvol", "umute"):
+                emit_event({"event": "actionFailed", "action": action, "message": "Controls not authorized – link again"})
+                return
+            if action in ("mute", "deaf"):
+                d = self.call("SET_VOICE_SETTINGS", {action: a[0]}) or {}
+                self.update_settings(d)
+            elif action == "leave":
+                self.call("SELECT_VOICE_CHANNEL", {"channel_id": None, "timeout": 5})
+                self.dirty_channel = True
+            elif action in ("uvol", "umute"):
+                args = {"user_id": a[0]}
+                args["volume" if action == "uvol" else "mute"] = a[1]
+                d = self.call("SET_USER_VOICE_SETTINGS", args) or {}
+                m = self.members.get(a[0])
+                if m:
+                    if "volume" in d:
+                        m["volume"] = int(round(d["volume"]))
+                    elif action == "uvol":
+                        m["volume"] = a[1]
+                    m["localMute"] = bool(d["mute"]) if "mute" in d else (a[1] if action == "umute" else m["localMute"])
+            self.publish()
+        except RpcError as e:
+            log("%s: %s" % (action, e.code))
+            if action == "open":
+                emit_event({"event": "openFailed", "id": a[0]})
+            else:
+                emit_event({"event": "actionFailed", "action": action, "code": e.code, "id": a[0] if a else "",
+                            "message": e.message or str(e.code)})
+
+    def update_settings(self, d):
+        # VOICE_SETTINGS_UPDATE liefert mute/deaf nicht immer mit -> nur Vorhandenes übernehmen
+        for k in ("mute", "deaf"):
+            if k in d:
+                self.settings[k] = bool(d[k])
+
+    def load_channel(self):
+        try:
+            ch = self.call("GET_SELECTED_VOICE_CHANNEL")
+        except RpcError as e:
+            log("GET_SELECTED_VOICE_CHANNEL: %s" % e.code)
+            ch = None
+        self.set_channel(ch)
+
+    def set_channel(self, ch):
+        old = self.channel["id"] if self.channel else None
+        new = str(ch["id"]) if ch and ch.get("id") else None
+        if old and old != new:
+            for evt in VOICE_EVENTS:
+                self.subscribe(evt, {"channel_id": old}, on=False)
+        self.members = {}
+        self.speaking = set()
+        if not new:
+            self.channel = None
+            self.guild_name = ""
+            self.since = 0
+            save_call(None, 0)
+            return
+        # Nachrichten (ch["messages"]) werden bewusst nicht angefasst
+        self.channel = {"id": new, "name": ch.get("name") or "", "guild_id": ch.get("guild_id"), "type": ch.get("type")}
+        for vs in ch.get("voice_states") or []:
+            m = member_from(vs)
+            if m["id"]:
+                self.members[m["id"]] = m
+        if old != new:
+            for evt in VOICE_EVENTS:
+                self.subscribe(evt, {"channel_id": new})
+        gid = ch.get("guild_id")
+        self.guild_name = self.guild(gid) if gid else ""
+        prev = load_call()
+        if prev.get("channel_id") == new and time.time() * 1000 - (prev.get("since") or 0) < 12 * 3600 * 1000:
+            self.since = prev["since"]
+        elif old != new or not self.since:
+            self.since = int(time.time() * 1000)
+        save_call(new, self.since)
+
+    def guild(self, gid):
+        if gid not in self.guilds:
+            try:
+                g = self.call("GET_GUILD", {"guild_id": gid, "timeout": 5}) or {}
+                self.guilds[gid] = g.get("name") or ""
+            except RpcError as e:
+                log("GET_GUILD: %s" % e.code)
+                return ""
+        return self.guilds[gid]
+
+    def on_event(self, m):
+        if m.get("cmd") != "DISPATCH":
+            return
+        evt = m.get("evt")
+        d = m.get("data") or {}
+        if evt == "VOICE_CHANNEL_SELECT":
+            cur = self.channel["id"] if self.channel else None
+            if (str(d.get("channel_id")) if d.get("channel_id") else None) != cur:
+                self.dirty_channel = True
+        elif evt in ("VOICE_STATE_CREATE", "VOICE_STATE_UPDATE"):
+            mem = member_from(d)
+            if mem["id"]:
+                self.members[mem["id"]] = mem
+        elif evt == "VOICE_STATE_DELETE":
+            uid = str((d.get("user") or {}).get("id") or "")
+            self.members.pop(uid, None)
+            self.speaking.discard(uid)
+            if uid and uid == self.self_id:
+                self.dirty_channel = True
+        elif evt == "SPEAKING_START":
+            self.speaking.add(str(d.get("user_id")))
+        elif evt == "SPEAKING_STOP":
+            self.speaking.discard(str(d.get("user_id")))
+        elif evt == "VOICE_SETTINGS_UPDATE":
+            self.update_settings(d)
+        elif evt == "VOICE_CONNECTION_STATUS":
+            self.connection = d.get("state") or ""
+
+    def publish(self):
+        me = self.members.get(self.self_id) or {}
+        members = []
+        for m in self.members.values():
+            x = dict(m)
+            x["speaking"] = m["id"] in self.speaking
+            x["isSelf"] = m["id"] == self.self_id
+            members.append(x)
+        members.sort(key=lambda x: (x["isSelf"], x["name"].lower()))
+        ch = self.channel or {}
+        name = ch.get("name") or ""
+        if ch and not name:
+            # DM-/Gruppenanruf: Kanal ohne Namen -> Gesprächspartner
+            others = [m["name"] for m in members if not m["isSelf"]]
+            name = ", ".join(others[:3]) or "Privater Anruf"
+        emit({
+            "state": "ok",
+            "configured": True,
+            "inVoice": bool(self.channel),
+            "channelId": ch.get("id") or "",
+            "guildId": str(ch.get("guild_id") or ""),
+            "channelName": name,
+            "guildName": self.guild_name if ch.get("guild_id") else ("Privat" if ch else ""),
+            "since": self.since,
+            "connection": self.connection,
+            "canControl": self.can_write,
+            # im Call zählt dein voice_state (eine Quelle, kein Hin und Her); sonst die Client-Einstellungen
+            "self": {
+                "mute": bool(me["mute"] if me else self.settings["mute"]),
+                "deaf": bool(me["deaf"] if me else self.settings["deaf"]),
+                # None = Discord meldet es nicht (dann zeigt das Popout kein Kamera-Symbol statt "aus")
+                "video": me.get("video"),
+                "stream": me.get("stream"),
+            },
+            "members": members,
+        })
+
+
+def emit_event(obj):
+    # Einzelereignisse: immer ausgeben, Zustands-Dedupe nicht stören
+    try:
+        sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+    except BrokenPipeError:
+        sys.exit(0)
+
+
+class Denied(Exception):
+    pass
+
+
+class Unsupported(Exception):
+    """Am Socket lauscht arRPC (Equibop/Vesktop), nicht Discord selbst: kennt nur Rich Presence."""
+
+
+def is_arrpc(e):
+    # arRPC antwortet auf jeden Befehl außer SET_ACTIVITY & Co. mit Code 1000 "Unknown command: …"
+    return e.code == 1000 and "Unknown command" in (e.message or "")
+
+
+class Reauth(Exception):
+    """Neu koppeln (AUTHORIZE mit allen Scopes), z. B. nach Scope-Erweiterung."""
+
+
+# ---------------------------------------------------------------- Hauptloop
+
+STDIN = None  # Befehle von Quickshell (None = kein stdin / geschlossen)
+
+
+def read_stdin():
+    """Rohdaten von stdin; bei EOF stdin abschalten und b"" liefern."""
+    global STDIN
+    data = os.read(STDIN, 4096)
+    if not data:
+        STDIN = None
+    return data
+
+
+def wait(seconds, mtime=None):
+    """Warten; True = früher zurück wegen 'retry' auf stdin oder geänderter secrets.json."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        fds = [STDIN] if STDIN is not None else []
+        r, _, _ = select.select(fds, [], [], min(5, max(0.1, end - time.monotonic())))
+        if r:
+            data = read_stdin()
+            if b"reauth" in data:
+                return "reauth"
+            if b"retry" in data:
+                return True
+        if mtime is not None and secrets_mtime() != mtime:
+            return True
+    return False
+
+
+def park(mtime):
+    """Nicht ständig neu fragen: erst bei 'retry'/'reauth' oder geänderter secrets.json weiter."""
+    while True:
+        r = wait(3600, mtime)
+        if r:
+            return r == "reauth"
+
+
+def main():
+    global STDIN
+    STDIN = sys.stdin.fileno() if not sys.stdin.isatty() else None
+    reauth = False
+    arrpc_paths = {}         # Socket -> Inode, an dem nur arRPC lauscht (alter Rückfall Equibop/Vesktop)
+    fails = 0                # Verbindungsfehler in Folge -> wachsende Pause (schont Discord, kein Dauer-Neuversuch)
+
+    def ok():
+        nonlocal fails
+        fails = 0
+
+    def backoff():
+        nonlocal fails
+        fails += 1
+        return min(120, 5 * 2 ** (fails - 1))
+
+    while True:
+        cfg = discord_cfg()
+        if not cfg.get("client_id") or not cfg.get("client_secret"):
+            emit({"state": "unconfigured", "configured": False})
+            return 0
+
+        # erster Socket, an dem wirklich jemand lauscht (ein liegengebliebener vom RPM/Flatpak zählt nicht)
+        # und der nicht nur arRPC ist (läuft Equibop noch, belegt es oft discord-ipc-0, das echte Discord dann -1).
+        # arRPC-Merker gelten nur für dieselbe Socket-Datei (Inode): beendet sich Equibop und das Discord-RPM legt
+        # discord-ipc-0 neu an, wird der Socket sofort wieder probiert.
+        alive = [p for p in socket_candidates() if os.path.exists(p) and socket_alive(p)]
+        path = next((p for p in alive if arrpc_paths.get(p) != inode(p)), None)
+        if not path:
+            if alive:
+                emit({"state": "unsupported", "configured": True,
+                      "message": "Only arRPC (Equibop/Vesktop) is listening, Discord isn't (no call API)"})
+                wait(30)
+                arrpc_paths.clear()      # neu prüfen: vielleicht läuft jetzt das echte Discord
+            else:
+                emit({"state": "offline", "configured": True})
+                wait(10)
+            continue
+
+        ipc = None
+        if reauth:
+            cfg["_reauth"] = True
+            reauth = False
+        try:
+            ipc = Ipc(path)
+            Session(ipc, cfg, ok).run()
+        except Unsupported:
+            log("arRPC am Socket (kein Discord) – übersprungen")
+            arrpc_paths[path] = inode(path)
+        except Reauth:
+            log("neu koppeln angefordert")
+            reauth = True
+        except Denied as e:
+            log("nicht gekoppelt: %s" % e)
+            emit({"state": "denied", "configured": True, "message": str(e)})
+            reauth = park(secrets_mtime())
+        except RpcError as e:
+            log("RPC-Fehler %s" % e.code)
+            if e.code in (4000, 4007):
+                emit({"state": "error", "configured": True, "message": "invalid client_id"})
+                reauth = park(secrets_mtime())
+            else:
+                emit({"state": "offline", "configured": True})
+                wait(backoff())
+        except (OSError, Closed, socket.timeout) as e:
+            pause = backoff()
+            log("Verbindung weg: %s (%s), neuer Versuch in %d s" % (type(e).__name__, e, pause))
+            emit({"state": "offline", "configured": True})
+            wait(pause)
+        finally:
+            if ipc:
+                ipc.close()
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

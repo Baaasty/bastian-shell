@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""„Wie weit bist du?“ an eine Claude-Sitzung (Claude-Zentrale → Knopf „status“ an einer Sitzung).
+
+  claude-ask start <sitzung> <ordner>   Statusfrage starten, gibt die ID aus (läuft schon eine für die
+                                         Sitzung, kommt deren ID)
+  claude-ask list                        laufende + in den letzten 10 min fertige Fragen als JSON
+  claude-ask stop <id>                   abbrechen
+  claude-ask remove <id>                 Karte weg (Dateien weg)
+  claude-ask _run <id>                   intern: läuft als systemd-User-Unit claude-ask-<id>
+
+Die laufende Sitzung (z. B. in VS Code) wird nie angefasst: Claude bekommt einen Abzweig, der nur
+im Speicher lebt –
+  claude -p --resume <sitzung> --fork-session --no-session-persistence
+    --safe-mode            keine Hooks (sonst stünde der Abzweig als eigene Sitzung in der Bar), keine
+                           Plugins/Skills/MCP – schneller Start
+    --tools "" --strict-mcp-config   gar keine Werkzeuge (auch keine MCP-Tools): kann nichts lesen,
+                           schreiben oder ausführen
+    --permission-mode dontAsk --permission-prompts none   falls doch etwas fragen würde: abgelehnt
+    --max-turns 1 --effort low       ein kurzer Turn, Modell = Standard
+  DISABLE_PROMPT_CACHING=1: der Abzweig wird nie weiterbenutzt, ein Cache-Eintrag würde nur mehr kosten.
+Geprüft (2026-10-18, Claude Code 2.1.302): Original-Transkript bleibt byte-gleich (sha256), es entsteht
+keine neue <sitzung>.jsonl (taucht also weder in VS Code noch in der Zentrale auf), tools=[] im init.
+
+Dateien: ~/.local/state/desktop/claude-status/<id>.json (Ordner 700, Dateien 600), Stempel .changed
+(die Shell beobachtet ihn). Der Stream landet nur kurz in <id>.jsonl und wird nach dem Auswerten
+gelöscht; nach einer Stunde fliegt alles weg. Gibt nie Frage/Antwort auf stdout/stderr aus
+(außer in `list`, das nur die Shell liest) → nichts davon im Journal.
+"""
+import glob
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+# DESKTOP_STATE_DIR nur zum Testen
+STATE_DIR = os.environ.get("DESKTOP_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".local", "state", "desktop")
+DIR = os.path.join(STATE_DIR, "claude-status")
+STAMP = os.path.join(DIR, ".changed")
+SELF = os.path.abspath(__file__)
+PROJECTS = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+SHOW_AGE = 10 * 60            # so lange steht die Antwort im Popout
+KEEP_AGE = 3600               # danach fliegen die Dateien weg
+RESULT_MAX = 4000
+ACTIVE = ("starting", "running")
+
+PROMPT = ("Fasse in 3–5 Stichpunkten zusammen: Woran arbeitest du gerade, was ist erledigt, was ist offen, "
+          "brauchst du etwas von mir? Antworte nur mit den Stichpunkten, ändere nichts, führe keine Werkzeuge aus.")
+SYSTEM = ("Dies ist eine reine Statusabfrage aus der Desktop-Bar. Dir stehen keine Werkzeuge zur Verfügung. "
+          "Antworte immer mit sichtbarem Text.")
+
+
+# ---------- Dateien ----------
+
+def ensure_dir() -> None:
+    os.makedirs(DIR, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(DIR, 0o700)
+    except OSError:
+        pass
+
+
+def write_json(path: str, data) -> None:
+    """Atomar (tmp + rename), Rechte 600."""
+    fd, tmp = tempfile.mkstemp(dir=DIR, prefix=".ask.", suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def read_json(path: str):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def stamp() -> None:
+    try:
+        fd = os.open(STAMP, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(str(int(time.time() * 1000)))
+    except OSError:
+        pass
+
+
+def meta_path(aid: str) -> str:
+    return os.path.join(DIR, aid + ".json")
+
+
+def update(aid: str, **fields) -> dict:
+    m = read_json(meta_path(aid)) or {"id": aid}
+    m.update(fields)
+    write_json(meta_path(aid), m)
+    stamp()
+    return m
+
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def valid_id(aid: str) -> str:
+    if not ID_RE.match(aid or ""):
+        sys.exit("claude-ask: ungültige ID")
+    return aid
+
+
+def unlink(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def remove_files(aid: str) -> None:
+    for ext in (".json", ".jsonl", ".err"):
+        unlink(os.path.join(DIR, aid + ext))
+
+
+# ---------- Hilfen ----------
+
+def project_of(cwd: str) -> str:
+    probe = cwd
+    while probe and probe != os.path.dirname(probe):
+        if os.path.exists(os.path.join(probe, ".git")):
+            return os.path.basename(probe)
+        probe = os.path.dirname(probe)
+    return os.path.basename(cwd)
+
+
+def find_claude() -> str:
+    for c in (shutil.which("claude"), os.path.expanduser("~/.local/bin/claude")):
+        if c and os.access(c, os.X_OK):
+            return c
+    return ""
+
+
+def transcript(session: str) -> str:
+    """~/.claude/projects/<ordner>/<sitzung>.jsonl (nur Hauptsitzungen, keine Subagents)."""
+    hits = glob.glob(os.path.join(PROJECTS, "*", session + ".jsonl"))
+    return hits[0] if hits else ""
+
+
+def transcript_cwd(path: str) -> str:
+    """cwd aus den ersten Zeilen des Transkripts (nur dieses Feld, keine Inhalte)."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i > 200:
+                    break
+                if '"cwd"' not in line:
+                    continue
+                try:
+                    cwd = json.loads(line).get("cwd")
+                except ValueError:
+                    continue
+                if isinstance(cwd, str) and os.path.isdir(cwd):
+                    return os.path.realpath(cwd)
+    except OSError:
+        pass
+    return ""
+
+
+def alive(pid) -> bool:
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", "rb") as f:
+            return b"claude-ask" in f.read()
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def unit_of(aid: str) -> str:
+    return "claude-ask-" + aid
+
+
+def parse_log(path: str) -> dict:
+    out = {"result": "", "is_error": None, "subtype": "", "fork": "", "tools": None}
+    last_text = ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                t = d.get("type")
+                if t == "system" and d.get("subtype") == "init":
+                    out["fork"] = str(d.get("session_id") or "")
+                    out["tools"] = len(d.get("tools") or [])
+                elif t == "assistant" and not d.get("parent_tool_use_id"):
+                    for c in (d.get("message") or {}).get("content") or []:
+                        if isinstance(c, dict) and c.get("type") == "text" and c.get("text", "").strip():
+                            last_text = c["text"].strip()
+                elif t == "result":
+                    out["result"] = str(d.get("result") or "").strip()
+                    out["is_error"] = bool(d.get("is_error"))
+                    out["subtype"] = str(d.get("subtype") or "")
+    except OSError:
+        pass
+    if not out["result"]:
+        out["result"] = last_text
+    return out
+
+
+# ---------- start ----------
+
+def cmd_start(args) -> None:
+    if len(args) < 2:
+        sys.exit("claude-ask start <sitzung> <ordner>")
+    session = args[0].lower()
+    if not UUID_RE.match(session):
+        sys.exit("claude-ask: ungültige Sitzung")
+    path = transcript(session)
+    if not path:
+        sys.exit("claude-ask: Sitzung nicht gefunden")
+    # --resume sucht im Projektordner der Sitzung: deren eigener cwd vor dem übergebenen
+    cwd = transcript_cwd(path) or os.path.realpath(os.path.expanduser(args[1]))
+    if not os.path.isdir(cwd):
+        sys.exit("claude-ask: Ordner nicht gefunden")
+    if not find_claude():
+        sys.exit("claude-ask: claude nicht gefunden")
+
+    # läuft schon eine Frage für diese Sitzung? dann die
+    for name in os.listdir(DIR):
+        if name.endswith(".json") and ID_RE.match(name[:-5]):
+            m = read_json(os.path.join(DIR, name)) or {}
+            if m.get("session") == session and m.get("state") in ACTIVE:
+                print(m.get("id"))
+                return
+
+    aid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(2)
+    project = project_of(cwd)
+    write_json(meta_path(aid), {"id": aid, "session": session, "cwd": cwd, "project": project, "state": "starting",
+                                "started": now_ms(), "finished": 0, "unit": unit_of(aid)})
+    stamp()
+    argv = ["systemd-run", "--user", "--unit=" + unit_of(aid), "--collect", "--quiet",
+            "--description=Claude status question (" + project[:40] + ")",
+            "--working-directory=" + cwd, "-p", "TimeoutStopSec=15", "-p", "RuntimeMaxSec=300",
+            "--", SELF, "_run", aid]
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                           text=True, timeout=20)
+        ok, err = r.returncode == 0, (r.stderr or "").strip()[:200]
+    except (OSError, subprocess.TimeoutExpired) as e:
+        ok, err = False, type(e).__name__
+    if not ok:
+        update(aid, state="failed", finished=now_ms(), error="could not start: " + err)
+        sys.exit("claude-ask: Start fehlgeschlagen")
+    print(aid)
+
+
+# ---------- _run (in der Unit) ----------
+
+def cmd_run(args) -> None:
+    aid = valid_id(args[0] if args else "")
+    meta = read_json(meta_path(aid))
+    if not meta:
+        sys.exit(1)
+    claude = find_claude()
+    if not claude:
+        update(aid, state="failed", finished=now_ms(), error="claude not found")
+        sys.exit(1)
+
+    log = os.path.join(DIR, aid + ".jsonl")
+    errlog = os.path.join(DIR, aid + ".err")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDECODE", "CLAUDE_CODE_"))}
+    env["DISABLE_PROMPT_CACHING"] = "1"
+    base = [claude, "-p", "--resume", meta["session"], "--fork-session", "--no-session-persistence",
+            "--safe-mode", "--tools", "", "--strict-mcp-config",
+            "--permission-mode", "dontAsk", "--permission-prompts", "none",
+            "--max-turns", "1", "--append-system-prompt", SYSTEM,
+            "--output-format", "stream-json", "--verbose"]
+
+    stopped = {"flag": False}
+    child = {"p": None}
+
+    def on_term(_sig, _frm):
+        stopped["flag"] = True
+        if child["p"] and child["p"].poll() is None:
+            child["p"].terminate()
+    signal.signal(signal.SIGTERM, on_term)
+    signal.signal(signal.SIGINT, on_term)
+
+    def attempt(extra: list) -> int:
+        old = os.umask(0o077)
+        try:
+            with open(log, "w") as out, open(errlog, "w") as err:
+                os.umask(old)
+                p = subprocess.Popen(base + extra, cwd=meta["cwd"], env=env, stdin=subprocess.PIPE, stdout=out,
+                                     stderr=err, text=True)
+                child["p"] = p
+                try:
+                    p.stdin.write(PROMPT)
+                    p.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
+                return p.wait()
+        finally:
+            os.umask(old)
+
+    update(aid, state="running", pid=os.getpid())
+    try:
+        rc = attempt(["--effort", "low"])
+        info = parse_log(log)
+        # selten: nur Denken, kein sichtbarer Text -> einmal mit Standard-Aufwand
+        if not stopped["flag"] and info["is_error"] is False and not info["result"]:
+            rc = attempt([])
+            info = parse_log(log)
+    except OSError as e:
+        update(aid, state="failed", finished=now_ms(), error="could not run claude: " + type(e).__name__, pid=0)
+        sys.exit(1)
+
+    error = ""
+    if stopped["flag"]:
+        state = "stopped"
+    elif info["is_error"] is False and info["result"]:
+        state = "done"
+    else:
+        state = "failed"
+        error = info["subtype"] if info["subtype"] and info["subtype"] != "success" else ("no answer" if rc == 0 else f"exit {rc}")
+    # Sicherheitsnetz: der Abzweig darf keine Werkzeuge haben
+    if info["tools"]:
+        error = (error + " · " if error else "") + f"{info['tools']} tools active?"
+    update(aid, state=state, finished=now_ms(), result=info["result"][:RESULT_MAX],
+           cut=len(info["result"]) > RESULT_MAX, fork=info["fork"], error=error, pid=0)
+    unlink(log)
+    unlink(errlog)
+
+
+# ---------- list / stop / remove ----------
+
+def cmd_list(_args) -> None:
+    out = []
+    try:
+        names = os.listdir(DIR)
+    except OSError:
+        names = []
+    t = time.time()
+    for name in names:
+        if not name.endswith(".json") or not ID_RE.match(name[:-5]):
+            continue
+        aid = name[:-5]
+        path = os.path.join(DIR, name)
+        m = read_json(path)
+        if not m:
+            continue
+        try:
+            age = t - os.path.getmtime(path)
+        except OSError:
+            continue
+        state = m.get("state")
+        if state not in ACTIVE and age > KEEP_AGE:
+            remove_files(aid)
+            continue
+        if state == "running" and not alive(m.get("pid")):
+            m = update(aid, state="lost", finished=now_ms(), pid=0)
+        elif state == "starting" and age > 120:
+            m = update(aid, state="failed", finished=now_ms(), error="did not start")
+        if m.get("state") not in ACTIVE and t * 1000 - (m.get("finished") or 0) > SHOW_AGE * 1000:
+            continue
+        out.append({k: m.get(k) for k in ("id", "session", "fork", "cwd", "project", "state", "started",
+                                           "finished", "result", "cut", "error")})
+    out.sort(key=lambda e: e.get("started") or 0, reverse=True)
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def cmd_stop(args) -> None:
+    aid = valid_id(args[0] if args else "")
+    if not read_json(meta_path(aid)):
+        return
+    subprocess.run(["systemctl", "--user", "stop", unit_of(aid)], stdin=subprocess.DEVNULL,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+    m = read_json(meta_path(aid)) or {}
+    if m.get("state") in ACTIVE:
+        update(aid, state="stopped", finished=now_ms(), pid=0)
+
+
+def cmd_remove(args) -> None:
+    aid = valid_id(args[0] if args else "")
+    m = read_json(meta_path(aid))
+    if m and m.get("state") in ACTIVE:
+        cmd_stop([aid])
+    remove_files(aid)
+    stamp()
+
+
+def main() -> None:
+    cmds = {"start": cmd_start, "_run": cmd_run, "list": cmd_list, "stop": cmd_stop, "remove": cmd_remove}
+    if len(sys.argv) < 2 or sys.argv[1] not in cmds:
+        sys.exit(__doc__)
+    if sys.argv[1] != "list":
+        ensure_dir()
+    cmds[sys.argv[1]](sys.argv[2:])
+
+
+if __name__ == "__main__":
+    main()

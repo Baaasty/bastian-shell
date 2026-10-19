@@ -1,0 +1,9 @@
+# Desktop: erlaubt Quickshell die Fensterliste (TasksModel) unter KWin.
+# KWin prüft, ob /proc/<pid>/exe zum Exec= dieser Datei passt.
+# Rückgängig: rm ~/.local/share/applications/org.quickshell.desktop && kbuildsycoca6
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Name=Quickshell
+Exec=/usr/bin/quickshell
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,zkde_screencast_unstable_v1

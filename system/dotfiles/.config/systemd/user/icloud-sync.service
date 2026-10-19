@@ -1,0 +1,8 @@
+[Unit]
+Description=iCloud Drive bisync
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/icloud-sync
+Nice=10
+IOSchedulingClass=idle

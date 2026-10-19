@@ -1,0 +1,9 @@
+#!/bin/sh
+# sshs: Login-Shell auf dem Server. kitten ssh startet diese „bash“ (login_shell, gesetzt von scripts/sshs) und
+# hält sie für eine Bash: ENV zeigt auf kittys Shell-Integration. Hier geht es weiter mit der echten Bash und
+# ~/.local/share/sshs/bashrc, die erst die normalen Startdateien lädt, dann die Integration, dann eza.
+# Kopiert bei jeder Verbindung von config/sshs/remote – auf dem Server nichts von Hand ändern.
+export SSHS_KSI="$ENV"
+unset ENV KITTY_BASH_INJECT
+command -v bash >/dev/null 2>&1 || exec /bin/sh -l
+exec bash --rcfile "$HOME/.local/share/sshs/bashrc" -i

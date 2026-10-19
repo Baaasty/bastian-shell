@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Desktop – Varianten vergleichen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..500,0..1,0&display=block" rel="stylesheet">
+<!-- Alle Farben kommen aus theme/palette.json (→ palette.js via theme/gen/preview_palette.py). Nur Ansicht, schaltet nichts um. -->
+<script src="palette.js"></script>
+<style>
+:root { --ui: "Inter", system-ui, sans-serif; --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #2a2420; color: #efe6da; font: 14px/1.4 var(--ui); }
+
+/* Werkzeugleiste der Vorschau (nicht Teil des Rice, bewusst neutral) */
+.tools { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 24px; background: #221d1a; border-bottom: 1px solid #3a322d; font-size: 13px; color: #c9bcae; }
+.tools b { color: #f2e9de; margin-right: 8px; }
+.tools button { font: inherit; color: #f2e9de; background: #332b27; border: 1px solid #4a3f39; border-radius: 8px; padding: 6px 11px; cursor: pointer; }
+.tools button.on { background: #5a463d; border-color: #b9897a; }
+.tools .note { margin-left: auto; opacity: .7; }
+.tools code { font-family: var(--mono); font-size: 12px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(860px, 1fr)); gap: 28px; padding: 28px; }
+.grid.compact { grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
+.grid.compact .scene { zoom: .66; }
+
+.card h2 { font-size: 18px; font-weight: 600; display: flex; gap: 10px; align-items: baseline; margin: 0 4px 4px; }
+.card h2 .tag { font: 500 11px var(--ui); letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; background: #4a3f39; color: #f2e9de; }
+.card h2 .tag.new { background: #7a4a3c; }
+.card .desc { margin: 0 4px 10px; color: #c9bcae; font-size: 13px; }
+.card .cmd { font-family: var(--mono); font-size: 12px; color: #a99b8c; margin-left: auto; }
+.swatches { display: flex; gap: 6px; margin: 10px 4px 0; flex-wrap: wrap; }
+.sw { display: flex; align-items: center; gap: 6px; font: 11px var(--mono); color: #c9bcae; }
+.sw i { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(255,255,255,.15); display: inline-block; }
+.cr { margin: 6px 4px 0; font: 12px var(--mono); color: #a99b8c; }
+.cr b { color: #e9dfd2; font-weight: 500; }
+
+/* ---------- Szene je Variante (Farben als CSS-Variablen aus palette.json) ---------- */
+.scene { position: relative; height: 560px; border-radius: 12px; overflow: hidden; color: var(--text);
+  box-shadow: 0 20px 60px rgba(0,0,0,.45); font-size: 13px; }
+.scene .wall { position: absolute; inset: 0;
+  background: radial-gradient(ellipse 30% 30% at 12% 92%, var(--glow), transparent 70%),
+    url("claude-design/wallpaper/desktop-mitte-2560x1440.jpg") center / cover no-repeat; }
+body.bgvar .scene .wall { background: radial-gradient(ellipse 30% 30% at 12% 92%, var(--glow), transparent 70%),
+    linear-gradient(180deg, var(--bg), var(--bgBottom)); }
+.scene .dim { position: absolute; inset: 0; background: var(--dim); }
+.ms { font-family: "Material Symbols Rounded"; font-size: 18px; line-height: 1; display: inline-block; vertical-align: middle;
+  font-variation-settings: "FILL" 0, "wght" 400, "opsz" 24; user-select: none; }
+.ms.fill { font-variation-settings: "FILL" 1, "wght" 400, "opsz" 24; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.lbl { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--textFaint); }
+.muted { color: var(--textMuted); } .faint { color: var(--textFaint); } .acc { color: var(--accentText); }
+
+.glass { background: var(--glassTint); border: 1px solid var(--border); border-radius: 16px;
+  backdrop-filter: blur(24px) saturate(1.15); box-shadow: 0 16px 48px rgba(0,0,0,.35), inset 0 1px 0 var(--innerHighlight); }
+.glass.strong { background: var(--glassStrong); }
+
+/* Bar */
+.bar { position: absolute; top: 10px; left: 10px; right: 10px; height: 38px; border-radius: 12px; display: grid;
+  grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px; font-weight: 600; font-size: 13px; }
+.bar .l, .bar .r { display: flex; gap: 4px; align-items: center; }
+.bar .r { justify-content: flex-end; }
+.chip { height: 26px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; color: var(--textMuted); font-weight: 500; }
+.chip.cur { background: var(--raise); color: var(--text); }
+.chip.cur::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.bubble { height: 26px; padding: 0 9px; border-radius: 99px; display: inline-flex; align-items: center; gap: 5px; background: var(--raise); color: var(--textMuted); font-weight: 500; }
+.bubble .ms { font-size: 16px; }
+
+/* Dashboard */
+.dash { position: absolute; top: 66px; left: 22px; right: 22px; bottom: 22px; display: grid; gap: 14px;
+  grid-template-columns: 1.25fr 1fr 1fr; grid-template-rows: 1fr 1fr auto; }
+.tile { padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.clock { font: 600 44px/1 var(--mono); letter-spacing: -.02em; }
+.clock small { font-size: 22px; color: var(--textFaint); }
+.search { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; background: var(--raise); border: 1px solid var(--border); color: var(--textFaint); }
+.row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; }
+.row.sel { background: var(--accentSoft); color: var(--accentText); }
+.row .ic { width: 26px; height: 26px; border-radius: 7px; background: var(--wood); display: grid; place-items: center; color: var(--text); flex: none; }
+.row .ic .ms { font-size: 16px; }
+.row .k { margin-left: auto; font: 11px var(--mono); color: var(--textFaint); padding: 2px 6px; border: 1px solid var(--borderStrong); border-radius: 5px; }
+.ringwrap { display: flex; gap: 14px; align-items: center; }
+.ring { width: 92px; height: 92px; flex: none; }
+.ring text { font-family: var(--mono); font-weight: 600; }
+.bars { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.meter { display: grid; grid-template-columns: 34px 1fr 36px; align-items: center; gap: 8px; font-size: 12px; }
+.meter .t { height: 6px; border-radius: 99px; background: var(--borderStrong); overflow: hidden; }
+.meter .t i { display: block; height: 100%; border-radius: 99px; background: var(--woodLight); }
+.media { display: flex; gap: 12px; align-items: center; }
+.cover { width: 58px; height: 58px; border-radius: 10px; background: linear-gradient(135deg, var(--wood), var(--woodLight)); flex: none; display: grid; place-items: center; color: var(--cream); }
+.play { width: 34px; height: 34px; border-radius: 50%; background: var(--text); color: var(--bg); display: grid; place-items: center; margin-left: auto; flex: none; }
+.prog { height: 4px; border-radius: 99px; background: var(--borderStrong); margin-top: 6px; }
+.prog i { display: block; height: 100%; width: 38%; border-radius: 99px; background: var(--accent); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { height: 32px; padding: 0 13px; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 500;
+  background: var(--raise); border: 1px solid var(--border); color: var(--text); }
+.btn.pri { background: var(--accentSoft); border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accentText); }
+.btn .ms { font-size: 16px; }
+.banner { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--warningSoft); color: var(--warning); font-size: 12px; }
+.status { display: flex; gap: 12px; font-size: 12px; }
+.status span::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: currentColor; }
+
+/* KDE-Fenster (Farbschema "Desktop": Fenster = surface, Inhalt = bg, Auswahl wie kde_colors.py) */
+.kwin { border-radius: 12px; overflow: hidden; background: var(--surface); border: 1px solid var(--border); display: grid; grid-template-rows: 28px 1fr; }
+.kwin .tb { background: var(--header); color: var(--text); font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.kwin .bd { display: grid; grid-template-columns: 110px 1fr; }
+.kwin .side { padding: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--textMuted); }
+.kwin .side div { padding: 4px 8px; border-radius: 6px; }
+.kwin .side .s { background: var(--selection); color: var(--text); }
+.kwin .view { background: var(--bg); padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+.kwin .view a { color: var(--accentText); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="tools">
+  <b>Varianten vergleichen</b>
+  <button data-f="all" class="on">Alle</button>
+  <button data-f="new">Nur neue + ember</button>
+  <span style="width:12px"></span>
+  <button id="bgbtn">Hintergrund: Wallpaper</button>
+  <button id="sizebtn">Größe: groß</button>
+  <span class="note">Umschalten (Bastian entscheidet): <code>scripts/rice variant &lt;name&gt;</code> · zurück: <code>scripts/rice variant ember</code></span>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+const D = window.DESKTOP;
+const NEW = ["dusk", "clay", "linen"];
+
+// ---- Farb-Helfer (gleich wie theme/gen/_pal.py) ----
+function rgba(v) {
+  const m = /^rgba\(\s*(\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\s*\)$/.exec(v);
+  if (m) return [+m[1], +m[2], +m[3], +m[4]];
+  const h = v.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1];
+}
+const hex = c => "#" + c.slice(0, 3).map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join("").toUpperCase();
+const over = (v, base) => { const [r, g, b, a] = rgba(v), [R, G, B] = rgba(base); return hex([r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a)]); };
+const mix = (a, b, t) => { const A = rgba(a), B = rgba(b); return hex([0, 1, 2].map(i => A[i] + (B[i] - A[i]) * t)); };
+function lum(c) { return rgba(c).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+  .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0); }
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+function kdeSelection(t) {
+  let k = 0.32, s = mix(t.accent, t.surface, k);
+  while (contrast(t.text, s) < 4.5 && k < 0.9) { k += 0.04; s = mix(t.accent, t.surface, k); }
+  return s;
+}
+
+function ring(t, frac, label, sub) {
+  const r = 38, c = 2 * Math.PI * r;
+  return `<svg class="ring" viewBox="0 0 92 92">
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--borderStrong)" stroke-width="7"/>
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--accent)" stroke-width="7" stroke-linecap="round"
+      stroke-dasharray="${c * frac} ${c}" transform="rotate(-90 46 46)"/>
+    <text x="46" y="50" text-anchor="middle" font-size="20" fill="var(--text)">${label}</text>
+    <text x="46" y="66" text-anchor="middle" font-size="9" fill="var(--textFaint)">${sub}</text></svg>`;
+}
+
+function card(name) {
+  const t = D.themes[name];
+  const vars = Object.entries(t).map(([k, v]) => `--${k}:${v}`).join(";")
+    + `;--raise:color-mix(in srgb, ${t.text} 6%, transparent);--innerHighlight:${D.glass.innerHighlight}`
+    + `;--header:${mix(t.bg, t.bgBottom, 0.3)};--selection:${kdeSelection(t)}`;
+  // Kontrast: Glas über dem Wallpaper (dunkelste Stelle) und über bg – der schlechtere Wert zählt
+  const glassOn = [t.bg, "#120D0B", "#2A1A12"].map(b => over(t.glassTint, b));
+  const worst = fg => Math.min(...glassOn.map(g => contrast(fg, g))).toFixed(1);
+  const sw = ["bg", "surface", "glassTint", "text", "textMuted", "accent", "accentText", "wood", "woodLight"]
+    .map(k => `<span class="sw"><i style="background:${t[k]}"></i>${k}</span>`).join("");
+  const isNew = NEW.includes(name), active = name === D.default;
+  return `<section class="card" data-new="${isNew || name === "ember"}">
+  <h2>${name} ${active ? '<span class="tag">aktiv</span>' : ""}${isNew ? '<span class="tag new">neu</span>' : ""}
+    <span class="cmd">scripts/rice variant ${name}</span></h2>
+  <p class="desc">${(D.info || {})[name] || ""}</p>
+  <div class="scene" style="${vars}">
+    <div class="wall"></div>
+    <div class="dim"></div>
+    <div class="bar glass strong">
+      <div class="l"><span class="chip cur">Main</span><span class="chip">Code</span><span class="chip">Chat</span><span class="chip">Media</span></div>
+      <div class="c mono">20:47:13 <span class="faint" style="font-family:var(--ui);font-weight:500;margin-left:8px">Sun 18 Oct</span></div>
+      <div class="r"><span class="bubble"><span class="ms">volume_up</span>42</span><span class="bubble"><span class="ms">light</span>Cozy</span>
+        <span class="bubble" style="color:var(--accentText)"><span class="ms fill">timer</span>18:42</span></div>
+    </div>
+    <div class="dash">
+      <div class="tile glass" style="grid-row: span 2">
+        <span class="lbl">Sunday evening</span>
+        <div class="clock">20:47<small>:13</small></div>
+        <div class="muted">12° light rain · stays cozy inside</div>
+        <div class="search"><span class="ms">search</span>Search apps, files, commands</div>
+        <div class="row sel"><span class="ic"><span class="ms">terminal</span></span>Konsole<span class="k">Enter</span></div>
+        <div class="row"><span class="ic"><span class="ms">code</span></span>Visual Studio Code<span class="k faint">app</span></div>
+        <div class="row"><span class="ic"><span class="ms">folder</span></span>Dolphin<span class="k faint">app</span></div>
+        <div class="banner"><span class="ms">warning</span>GPU at 82° – fans are up</div>
+      </div>
+      <div class="tile glass">
+        <span class="lbl">Focus</span>
+        <div class="ringwrap">${ring(t, 0.62, "18:42", "of 25 min")}
+          <div><div style="font-weight:600;font-size:15px">Rice: color variants</div><div class="muted">Block 3 · goal 2h 10m / 3h</div>
+          <div class="btns" style="margin-top:10px"><span class="btn pri"><span class="ms">pause</span>Pause</span><span class="btn">Skip</span></div></div>
+        </div>
+      </div>
+      <div class="tile glass">
+        <span class="lbl">System</span>
+        <div class="bars">
+          <div class="meter"><span class="muted">CPU</span><span class="t"><i style="width:34%"></i></span><span class="mono">34%</span></div>
+          <div class="meter"><span class="muted">RAM</span><span class="t"><i style="width:58%"></i></span><span class="mono">58%</span></div>
+          <div class="meter"><span class="muted">GPU</span><span class="t"><i style="width:71%"></i></span><span class="mono">71%</span></div>
+        </div>
+        <div class="status"><span style="color:var(--success)">online</span><span style="color:var(--warning)">hot</span><span style="color:var(--error)">error</span></div>
+      </div>
+      <div class="tile glass">
+        <span class="lbl">Now playing</span>
+        <div class="media"><div class="cover"><span class="ms">music_note</span></div>
+          <div style="min-width:0"><div style="font-weight:600">Holocene</div><div class="muted">Bon Iver</div></div>
+          <div class="play"><span class="ms fill">pause</span></div></div>
+        <div class="prog"><i></i></div>
+        <div class="faint mono" style="font-size:11px">1:58 / 5:36</div>
+      </div>
+      <div class="tile" style="padding:0">
+        <div class="kwin" style="height:100%">
+          <div class="tb">Dolphin – Desktop color scheme</div>
+          <div class="bd"><div class="side"><div class="s">Home</div><div>Documents</div><div>Pictures</div></div>
+            <div class="view"><span>palette.json</span><span class="muted">shell.qml</span><a href="#">variants.html</a></div></div>
+        </div>
+      </div>
+      <div class="tile glass" style="grid-column: span 3; flex-direction: row; align-items: center; gap: 12px; padding: 10px 14px">
+        <span class="lbl">Notification</span><span>Discord</span><span class="muted">Alex: are we still on for tonight?</span>
+        <span class="btns" style="margin-left:auto"><span class="btn">Dismiss</span><span class="btn pri"><span class="ms">reply</span>Reply</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="swatches">${sw}</div>
+  <p class="cr">Kontrast auf Glas (schlechtester Fall): text <b>${worst(t.text)}</b> · textMuted <b>${worst(t.textMuted)}</b> · textFaint <b>${worst(t.textFaint)}</b>
+    · accentText <b>${worst(t.accentText)}</b> · accent (Ring) <b>${worst(t.accent)}</b></p>
+</section>`;
+}
+
+const grid = document.getElementById("grid");
+const order = [...NEW, ...Object.keys(D.themes).filter(n => !NEW.includes(n))];
+grid.innerHTML = order.filter(n => D.themes[n]).map(card).join("");
+
+document.querySelectorAll("[data-f]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-f]").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".card").forEach(c => c.style.display = b.dataset.f === "all" || c.dataset.new === "true" ? "" : "none");
+});
+document.getElementById("bgbtn").onclick = e => {
+  const on = document.body.classList.toggle("bgvar");
+  e.target.textContent = on ? "Hintergrund: Varianten-Verlauf (bg)" : "Hintergrund: Wallpaper";
+};
+document.getElementById("sizebtn").onclick = e => {
+  const on = grid.classList.toggle("compact");
+  e.target.textContent = on ? "Größe: kompakt" : "Größe: groß";
+};
+</script>
+</body>
+</html>

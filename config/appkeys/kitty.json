@@ -1,0 +1,42 @@
+{
+  "name": "Kitty",
+  "about": "Terminal (Super+Enter) · keys from config/kitty/kitty.conf",
+  "match": { "class": ["kitty", "kitty-drop", "sshs"] },
+  "order": 50,
+  "sections": [
+    {
+      "name": "Tabs",
+      "keys": [
+        { "keys": "Ctrl+Shift+T", "title": "New tab (same folder)" },
+        { "keys": ["Ctrl+Tab", "Ctrl+Shift+Tab"], "title": "Next / previous tab" },
+        { "keys": "Ctrl+Shift+1…9", "title": "Go to tab 1…9" },
+        { "keys": "Ctrl+Shift+W", "title": "Close tab" }
+      ]
+    },
+    {
+      "name": "Splits",
+      "keys": [
+        { "keys": "Ctrl+Shift+Enter", "title": "New split (same folder)" },
+        { "keys": "Ctrl+Shift+#", "title": "Split side by side" },
+        { "keys": "Ctrl+Shift+-", "title": "Split stacked" },
+        { "keys": "Ctrl+Shift+← ↑ ↓ →", "title": "Move between splits" },
+        { "keys": "Ctrl+Shift+Z", "title": "Zoom split (toggle)" },
+        { "keys": "Ctrl+Shift+Q", "title": "Close split" }
+      ]
+    },
+    {
+      "name": "Text",
+      "keys": [
+        { "keys": "Ctrl+Shift+C", "title": "Copy" },
+        { "keys": "Ctrl+Shift+V", "title": "Paste" },
+        { "keys": "Ctrl+C", "title": "Copy selection, else interrupt" },
+        { "keys": "Ctrl+Shift+F", "title": "Scrollback in less", "note": "/ search, n / N next / previous, q leaves" },
+        { "keys": "Shift+PgUp PgDn", "title": "Scroll a page" },
+        { "keys": "Ctrl+Shift+K", "title": "Clear the screen" },
+        { "keys": "Ctrl+Shift+E", "title": "Open a URL (letters on every link)" },
+        { "keys": "Ctrl+Shift+P", "title": "Copy current folder path" },
+        { "keys": ["Ctrl+Plus", "Ctrl+-", "Ctrl+0"], "title": "Font bigger / smaller / reset" }
+      ]
+    }
+  ]
+}

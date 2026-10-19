@@ -1,0 +1,83 @@
+{
+  "name": "Desktop shell",
+  "group": "shell",
+  "about": "Hyprland keys come live from hypr/binds.conf; these guides from config/appkeys/shell.json",
+  "sections": [
+    {
+      "name": "Bar mode",
+      "keys": [
+        { "keys": "Super+B", "title": "Bar mode on / off", "note": "the chips show their letter" },
+        { "keys": "← →", "title": "Pick a chip", "note": "Tab / Shift+Tab too" },
+        { "keys": "Enter", "title": "Open the picked chip", "note": "↓ or Space too" },
+        { "keys": "Esc", "title": "Leave bar mode" },
+        { "keys": "Super+Alt+S", "title": "Sound mixer directly" },
+        { "keys": "Super+Alt+L", "title": "Light directly" },
+        { "keys": "Super+Alt+Z", "title": "Notifications directly" }
+      ]
+    },
+    { "name": "Bar letters", "auto": "barLetters", "note": "in bar mode, the letter opens the popout" },
+    {
+      "name": "Popouts",
+      "keys": [
+        { "keys": ["↑ ↓", "Tab"], "title": "Move the highlight" },
+        { "keys": "← →", "title": "Adjust a slider", "note": "after Enter on the slider" },
+        { "keys": ["Enter", "Space"], "title": "Press the highlighted item" },
+        { "keys": ["Home", "End"], "title": "First / last item" },
+        { "keys": "Esc", "title": "Close (back to bar mode if you came from there)" }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "note": "Super+Alt+Z",
+      "keys": [
+        { "keys": "↑ ↓", "title": "Pick a notification" },
+        { "keys": "Enter", "title": "Open it" },
+        { "keys": "1…3", "title": "Press its buttons" },
+        { "keys": "s", "title": "Remind me later", "note": "then 1…4 picks when" },
+        { "keys": ["Del", "x"], "title": "Dismiss" },
+        { "keys": "Shift+A", "title": "Dismiss all" }
+      ]
+    },
+    {
+      "name": "Tray",
+      "note": "bar mode, T",
+      "keys": [
+        { "keys": "↑ ↓", "title": "Pick a tray icon" },
+        { "keys": "→", "title": "To its menu button or eye" },
+        { "keys": "Enter", "title": "Open / press" },
+        { "keys": ["Enter", "→"], "title": "Open a submenu", "note": "inside a menu" },
+        { "keys": ["←", "⌫"], "title": "Back out of a submenu" }
+      ]
+    },
+    {
+      "name": "Workspace mode",
+      "keys": [
+        { "keys": ["Alt (tap)", "Alt+Esc"], "title": "Workspace mode" },
+        { "keys": "1…9", "title": "Go to workspace" },
+        { "keys": "Shift+1…9", "title": "Move window there" },
+        { "keys": ["← →", "h l"], "title": "Pick a workspace" },
+        { "keys": "Shift+← →", "title": "Move the picked workspace" },
+        { "keys": "Enter", "title": "Go to the picked workspace" },
+        { "keys": "n", "title": "New workspace" },
+        { "keys": "t", "title": "New workspace from a template" },
+        { "keys": ["r", "F2"], "title": "Rename" },
+        { "keys": "q", "title": "Quick links + git of a project" },
+        { "keys": ["Del", "x"], "title": "Remove workspace" },
+        { "keys": "Esc", "title": "Leave workspace mode" }
+      ]
+    },
+    {
+      "name": "Launcher",
+      "keys": [
+        { "keys": "Super (tap)", "title": "Dashboard with search" },
+        { "keys": "↑ ↓", "title": "Pick a result" },
+        { "keys": "Enter", "title": "Run / open" },
+        { "keys": "Tab", "title": "Next mode (prefix)" },
+        { "keys": "Ctrl+P", "title": "Pin clipboard entry", "note": "in ; clipboard mode" },
+        { "keys": "Esc", "title": "Close" }
+      ]
+    },
+    { "name": "Launcher prefixes", "auto": "launcherPrefixes", "note": "type the prefix first, e.g. = 3*7" },
+    { "name": "Web shortcuts", "auto": "webShortcuts", "note": "in the launcher: key, space, search text" }
+  ]
+}

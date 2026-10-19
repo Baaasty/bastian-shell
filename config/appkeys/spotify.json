@@ -1,0 +1,34 @@
+{
+  "name": "Spotify",
+  "about": "Play, next and previous also work on the media keys and in the bar (Super+B, M)",
+  "match": { "class": ["spotify", "com.spotify.client"] },
+  "order": 80,
+  "sections": [
+    {
+      "name": "Play",
+      "keys": [
+        { "keys": "Space", "title": "Play / pause" },
+        { "keys": "Ctrl+S", "title": "Shuffle" },
+        { "keys": "Ctrl+R", "title": "Repeat" },
+        { "keys": "m", "title": "Mute / unmute" },
+        { "keys": "Alt+Shift+B", "title": "Like / unlike song" }
+      ]
+    },
+    {
+      "name": "Go to",
+      "keys": [
+        { "keys": "Ctrl+K", "title": "Search (quick)" },
+        { "keys": "Ctrl+L", "title": "Search page" },
+        { "keys": "Alt+Shift+H", "title": "Home" },
+        { "keys": "Alt+Shift+0", "title": "Your library" },
+        { "keys": "Alt+Shift+S", "title": "Liked songs" },
+        { "keys": "Alt+Shift+Q", "title": "Queue" },
+        { "keys": "Alt+Shift+J", "title": "Now playing" },
+        { "keys": "Alt+Shift+R", "title": "Now playing sidebar" },
+        { "keys": "Alt+Shift+L", "title": "Library sidebar" },
+        { "keys": "Ctrl+,", "title": "Settings" },
+        { "keys": "Ctrl+?", "title": "All Spotify keys" }
+      ]
+    }
+  ]
+}

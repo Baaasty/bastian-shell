@@ -1,0 +1,10 @@
+{
+  "g":    { "name": "Google",      "url": "https://www.google.com/search?q={q}" },
+  "ddg":  { "name": "DuckDuckGo",  "url": "https://duckduckgo.com/?q={q}" },
+  "yt":   { "name": "YouTube",     "url": "https://www.youtube.com/results?search_query={q}" },
+  "gh":   { "name": "GitHub",      "url": "https://github.com/search?q={q}" },
+  "w":    { "name": "Wikipedia",   "url": "https://de.wikipedia.org/w/index.php?search={q}" },
+  "maps": { "name": "Maps",        "url": "https://www.google.com/maps/search/{q}" },
+  "npm":  { "name": "npm",         "url": "https://www.npmjs.com/search?q={q}" },
+  "tr":   { "name": "Translate",   "url": "https://translate.google.com/?sl=auto&tl=de&text={q}&op=translate" }
+}

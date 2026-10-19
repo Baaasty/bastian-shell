@@ -1,0 +1,1078 @@
+#!/usr/bin/env python3
+"""pkg – Backend des grafischen Paketmanagers (shell/modules/packages).
+
+Nur Standardbibliothek. Lese-Befehle geben EIN JSON-Objekt aus ({"ok": true, ...} / {"ok": false, "error": ...}).
+Schreibende Aktionen laufen über `pkg exec` (Live-Ausgabe zeilenweise, letzte Zeile "@@done <code>").
+
+  pkg list    system|copr|flatpak|appimage
+  pkg search  system|copr|flatpak <text>
+  pkg updates system|flatpak                 (mit installierter Version)
+  pkg info    system|flatpak <id> [user|system]
+  pkg repos   system|flatpak                 (Paketquellen / Remotes)
+  pkg copr-packages <owner/projekt>          (verfügbare Pakete eines COPR-Repos)
+  pkg whatif  install|remove <name…>         (dnf --assumeno: was würde passieren)
+  pkg refresh                                (dnf-Metadaten neu laden, ohne Root)
+  pkg exec [--dry-run] <aktion> …            (installieren/entfernen/updaten; --dry-run druckt nur die Befehle)
+      system   install|remove|update [name…]          (update ohne Name = alles)
+      copr     enable|disable|remove <owner/projekt>
+      flatpak  install <user|system> <remote> <id> | remove <user|system> <id> | update <user|system|all> [id]
+               remote-enable|remote-disable <user|system> <name>
+      appimage desktop-add|desktop-remove|remove|chmod|update <pfad>
+      system   install-file <x.rpm> | repo-enable|repo-disable <id> | repo-add <https://…repo>
+      vendor   add <id>                               (Schritte aus scripts/pkg-vendors.json, EIN pkexec)
+      devtools update pipx|npm
+  pkg list    vendors|local|devtools        pkg vendor-preview <id>
+  pkg optdeps <name…> | --flatpak <user|system> <remote> <id>   (recommends/suggests bzw. optionale Flatpak-Extensions)
+  pkg preview <exec-Argumente…>             (genau die Befehle, die exec ausführen würde)
+  pkg whatif install [--no-weak] <name…>    (--no-weak = --setopt=install_weak_deps=False)
+
+Root nur über pkexec (Polkit-Dialog); Flatpak user braucht keinen.
+Test-Variablen: PKG_APPIMAGE_DIRS (Pfade mit :), PKG_APPS_DIR (Ziel der .desktop-Dateien).
+"""
+import concurrent.futures
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+
+SEP = "¦"
+HOME = os.path.expanduser("~")
+ENV = dict(os.environ, LC_ALL="C.UTF-8", LANG="C.UTF-8")
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:@/~-]*$")
+LIMIT = 300  # Suchtreffer pro Anfrage
+
+
+def out(obj):
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def fail(msg, code=1):
+    out({"ok": False, "error": msg})
+    sys.exit(code)
+
+
+def run(cmd, timeout=120, check=False):
+    """(rc, stdout, stderr) – nie eine Exception wegen fehlendem Programm."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=ENV)
+    except FileNotFoundError:
+        return 127, "", f"{cmd[0]}: not found"
+    except subprocess.TimeoutExpired:
+        return 124, "", f"{cmd[0]}: timeout"
+    if check and p.returncode != 0:
+        raise RuntimeError((p.stderr or p.stdout).strip().splitlines()[-1] if (p.stderr or p.stdout).strip() else f"{cmd[0]} failed")
+    return p.returncode, p.stdout, p.stderr
+
+
+def safe(name):
+    if not NAME_RE.match(name or ""):
+        fail(f"invalid name: {name!r}")
+    return name
+
+
+# ------------------------------------------------------------------ dnf / rpm
+
+def short_repo(repo):
+    """Hash-Repos (Image-Reste) und @commandline hübsch machen."""
+    if re.fullmatch(r"[0-9a-f]{32}", repo or ""):
+        return "image"
+    return repo or ""
+
+
+GROUPS = {
+    "fedora": ("Fedora", "official", "Official Fedora repository."),
+    "updates": ("Updates", "official", "Official Fedora updates (stable)."),
+    "testing": ("Updates testing", "official", "Fedora updates still in testing. May be buggy; enable only to test."),
+    "rpmfusion-free": ("RPM Fusion Free", "community", "Community repo for free software Fedora cannot ship (e.g. codecs). Trusted, widely used, not run by Fedora."),
+    "rpmfusion-nonfree": ("RPM Fusion Nonfree", "community", "Community repo for non-free software (e.g. NVIDIA driver). Trusted, widely used, not run by Fedora."),
+    "copr": ("COPR", "community", "Community builds. Not reviewed by Fedora."),
+    "terra": ("Terra", "community", "Community repo by Fyra Labs. Not reviewed by Fedora."),
+    "vendor": ("Vendor", "third-party", "Repo run by the software vendor. You trust them with root on install."),
+    "local": ("Local", "local", "Local or custom repo (file:// or self-added)."),
+    "image": ("Base image", "official", "Installed by the Fedora image, original repo unknown."),
+}
+GROUP_ORDER = ["fedora", "updates", "testing", "rpmfusion-free", "rpmfusion-nonfree", "copr", "terra", "vendor", "local", "image"]
+REPO_DIR = os.environ.get("PKG_REPO_DIR", "/etc/yum.repos.d")
+_VENDORS = None
+
+
+def vendors_data():
+    """scripts/pkg-vendors.json laden und streng prüfen (nur https, feste Dateinamen)."""
+    global _VENDORS
+    if _VENDORS is not None:
+        return _VENDORS
+    res = []
+    try:
+        raw = json.load(open(os.path.join(os.path.dirname(os.path.realpath(__file__)), "pkg-vendors.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    for v in raw.get("vendors", []):
+        try:
+            if not re.fullmatch(r"[a-z0-9-]+", v["id"]):
+                continue
+            ok = True
+            for st in v["steps"]:
+                if "import_key" in st or "addrepo" in st:
+                    u = st.get("import_key") or st.get("addrepo")
+                    ok &= u.startswith("https://") and " " not in u
+                elif "write_repo" in st:
+                    ok &= bool(re.fullmatch(r"[a-z0-9][a-z0-9._-]*\.repo", st["write_repo"]["file"]))
+                elif "run" in st:
+                    ok &= all(isinstance(a, str) and a for a in st["run"])
+                else:
+                    ok = False
+            if ok:
+                res.append(v)
+        except (KeyError, TypeError, AttributeError):
+            continue
+    _VENDORS = res
+    return res
+
+
+def repo_files():
+    """Repo-ID -> {enabled, baseurl, file} aus /etc/yum.repos.d (lesbar ohne Root)."""
+    import configparser
+    res = {}
+    try:
+        names = sorted(os.listdir(REPO_DIR))
+    except OSError:
+        return res
+    for f in names:
+        if not f.endswith(".repo"):
+            continue
+        cp = configparser.RawConfigParser(strict=False, interpolation=None)
+        try:
+            cp.read(os.path.join(REPO_DIR, f), encoding="utf-8")
+        except Exception:
+            continue
+        for sec in cp.sections():
+            res[sec] = {"enabled": cp.get(sec, "enabled", fallback="1").strip() == "1",
+                        "baseurl": cp.get(sec, "baseurl", fallback=cp.get(sec, "metalink", fallback=cp.get(sec, "mirrorlist", fallback=""))).strip().split("\n")[0],
+                        "file": f}
+    return res
+
+
+def repo_group(rid, files=None):
+    r = (rid or "").lower()
+    if r in ("image", ""):
+        return "image"
+    if r.startswith("copr:") or r.startswith("_copr:"):
+        return "copr"
+    if r.startswith("terra"):
+        return "terra"
+    if r.startswith("rpmfusion-nonfree"):
+        return "rpmfusion-nonfree"
+    if r.startswith("rpmfusion-free"):
+        return "rpmfusion-free"
+    if r in ("updates", "updates-archive"):
+        return "updates"
+    if r == "updates-testing":
+        return "testing"
+    if r == "fedora" or r.startswith("fedora-"):
+        return "fedora"
+    if r.startswith("@"):
+        return "local"
+    info = (files or {}).get(rid)
+    if info and info["baseurl"].startswith("file://"):
+        return "local"
+    for v in vendors_data():
+        if r in [m.lower() for m in v["match"]]:
+            return "vendor"
+    return "vendor" if info else "local"
+
+
+def copr_of(repo):
+    """'copr:copr.fedorainfracloud.org:owner:proj' -> 'owner/proj'"""
+    if repo and repo.startswith("copr:"):
+        parts = repo.split(":", 2)[2].split(":", 1)
+        if len(parts) == 2:
+            return "/".join(parts)
+    return ""
+
+
+def pkg_id(name, arch):
+    return name if arch in ("x86_64", "noarch") else f"{name}.{arch}"
+
+
+def dnf_query(args, fields):
+    """dnf repoquery mit Trenner; liefert Liste von Dicts (nur Zeilen mit Trenner = Daten)."""
+    qf = SEP.join("%{" + f + "}" for f in fields) + "\\n"
+    rc, so, se = run(["dnf", "repoquery", *args, "--qf", qf], timeout=90)
+    if rc != 0 and not so.strip():
+        raise RuntimeError(se.strip().splitlines()[-1] if se.strip() else "dnf failed")
+    rows = []
+    for line in so.splitlines():
+        p = line.split(SEP)
+        if len(p) == len(fields):
+            rows.append(dict(zip(fields, p)))
+    return rows
+
+
+def installed_system():
+    rows = dnf_query(["--installed"], ["name", "evr", "from_repo", "reason", "summary", "arch"])
+    seen, items = set(), []
+    for r in rows:
+        i = pkg_id(r["name"], r["arch"])
+        if i in seen:  # installonly (kernel) o. ä.: erste Version reicht
+            continue
+        seen.add(i)
+        repo = r["from_repo"]
+        items.append({
+            "id": i, "name": r["name"], "version": r["evr"], "desc": r["summary"],
+            "repo": short_repo(repo), "copr": copr_of(repo), "arch": r["arch"], "group": repo_group(short_repo(repo)),
+            "explicit": not r["reason"].lower().startswith(("dep", "weak")),
+            "installed": True,
+        })
+    items.sort(key=lambda x: x["name"].lower())
+    return items
+
+
+def upgrades_system():
+    rows = dnf_query(["--upgrades"], ["name", "evr", "repoid", "summary", "arch"])
+    return {pkg_id(r["name"], r["arch"]): r for r in rows}
+
+
+def cmd_list_system():
+    out({"ok": True, "source": "system", "items": installed_system()})
+
+
+def cmd_updates_system():
+    with concurrent.futures.ThreadPoolExecutor(2) as ex:
+        fi, fu = ex.submit(installed_system), ex.submit(upgrades_system)
+        inst, up = {i["id"]: i for i in fi.result()}, fu.result()
+    items = []
+    for i, r in up.items():
+        cur = inst.get(i, {})
+        items.append({
+            "id": i, "name": r["name"], "version": r["evr"], "current": cur.get("version", ""),
+            "desc": r["summary"], "repo": short_repo(r["repoid"]), "copr": copr_of(r["repoid"]),
+            "group": repo_group(r["repoid"]), "source": "system",
+        })
+    items.sort(key=lambda x: x["name"].lower())
+    out({"ok": True, "source": "system", "items": items})
+
+
+def rank(q_tokens, name, desc):
+    """Kleiner = besser; None = kein Treffer (alle Wörter müssen in Name oder Beschreibung vorkommen)."""
+    n, d = name.lower(), desc.lower()
+    for t in q_tokens:
+        if t not in n and t not in d:
+            return None
+    q = " ".join(q_tokens)
+    if n == q:
+        return 0
+    if n.startswith(q):
+        return 1
+    if all(t in n for t in q_tokens):
+        return 2
+    return 3
+
+
+def cmd_search_system(text):
+    toks = text.lower().split()
+    if not toks:
+        return out({"ok": True, "items": []})
+    with concurrent.futures.ThreadPoolExecutor(2) as ex:
+        fa = ex.submit(dnf_query, ["--available", "--latest-limit=1"], ["name", "evr", "repoid", "summary", "arch"])
+        fi = ex.submit(lambda: {l for l in run(["rpm", "-qa", "--qf", "%{NAME}\n"])[1].split("\n") if l})
+        avail, inst = fa.result(), fi.result()
+    best = {}
+    debug = "debug" in text.lower()
+    for r in avail:
+        if r["arch"] == "src" or (not debug and r["name"].endswith(("-debuginfo", "-debugsource"))):
+            continue
+        k = rank(toks, r["name"], r["summary"])
+        if k is None:
+            continue
+        cur = best.get(r["name"])
+        if cur and (cur[1]["arch"] != "i686" or r["arch"] == "i686"):
+            continue
+        best[r["name"]] = (k, r)
+    hits = sorted(best.values(), key=lambda kr: (kr[0], len(kr[1]["name"]), kr[1]["name"]))[:LIMIT]
+    items = [{
+        "id": pkg_id(r["name"], r["arch"]), "name": r["name"], "version": r["evr"], "desc": r["summary"],
+        "repo": short_repo(r["repoid"]), "copr": copr_of(r["repoid"]), "arch": r["arch"],
+        "group": repo_group(r["repoid"]), "installed": r["name"] in inst,
+    } for _, r in hits]
+    out({"ok": True, "items": items})
+
+
+def parse_keyvals(text):
+    d, last = {}, None
+    for line in text.splitlines():
+        m = re.match(r"^\s*([A-Za-z][A-Za-z _-]*?)\s*:\s?(.*)$", line)
+        if m and not line.startswith("               :"):
+            last = m.group(1).strip().lower()
+            d[last] = m.group(2).strip()
+        elif last and line.strip().startswith(":"):
+            d[last] += " " + line.strip()[1:].strip()
+    return d
+
+
+def cmd_info_system(name):
+    safe(name)
+    rc, so, _ = run(["dnf", "repoquery", "-i", "--latest-limit=1", name], timeout=60)
+    d = parse_keyvals(so)
+    if not d:
+        fail("no info")
+    out({"ok": True, "info": {
+        "Version": f"{d.get('version', '')}-{d.get('release', '')}", "Arch": d.get("architecture", ""),
+        "Download": d.get("download size", ""), "Installed size": d.get("installed size", ""),
+        "Repository": short_repo(d.get("repository", "")), "License": d.get("license", ""),
+        "URL": d.get("url", ""), "Vendor": d.get("vendor", ""),
+    }, "description": d.get("description", d.get("summary", ""))})
+
+
+def repo_item(r, files):
+    g = repo_group(r["id"], files)
+    label, trust, note = GROUPS[g]
+    info = files.get(r["id"], {})
+    owner = ""
+    if g == "copr":
+        owner = copr_of(r["id"]) or ""
+    return {"id": r["id"], "name": r["name"], "enabled": bool(r["is_enabled"]), "copr": g == "copr", "group": g,
+            "label": label, "trust": trust, "note": note, "owner": owner, "baseurl": info.get("baseurl", ""), "file": info.get("file", ""),
+            "desc": r["name"]}
+
+
+def cmd_repos_system():
+    rc, so, se = run(["dnf", "repolist", "--all", "--json"], timeout=60)
+    try:
+        data = json.loads(so)
+    except ValueError:
+        fail(se.strip() or "repolist failed")
+    files = repo_files()
+    items = [repo_item(r, files) for r in data]
+    items.sort(key=lambda r: (GROUP_ORDER.index(r["group"]), not r["enabled"], r["id"]))
+    out({"ok": True, "items": items, "groups": [{"id": g, "label": GROUPS[g][0], "trust": GROUPS[g][1], "note": GROUPS[g][2]} for g in GROUP_ORDER]})
+
+
+def cmd_list_local():
+    """Eigene / lokale Repos: file://-Quellen und alles, was weder Fedora, RPM Fusion, COPR, Terra noch bekannter Hersteller ist."""
+    rc, so, se = run(["dnf", "repolist", "--all", "--json"], timeout=60)
+    try:
+        data = json.loads(so)
+    except ValueError:
+        fail(se.strip() or "repolist failed")
+    files = repo_files()
+    items = [repo_item(r, files) for r in data]
+    items = [r for r in items if r["group"] == "local"]
+    items.sort(key=lambda r: (not r["enabled"], r["id"]))
+    out({"ok": True, "source": "local", "items": items, "dir": REPO_DIR})
+
+
+# ------------------------------------------------------------------ COPR
+
+COPR_RE = re.compile(r"^(?P<hub>[^/\s]+)/(?P<owner>[^/\s]+)/(?P<proj>[^/\s]+?)(?:\s+\((?P<state>\w+)\))?\s*$")
+
+
+def copr_repoid(full, hub="copr.fedorainfracloud.org"):
+    owner, proj = full.split("/", 1)
+    return f"copr:{hub}:{owner}:{proj}"
+
+
+def copr_local():
+    rc, so, se = run(["dnf", "copr", "list"], timeout=60)
+    items = []
+    for line in so.splitlines():
+        m = COPR_RE.match(line.strip())
+        if m:
+            full = f"{m['owner']}/{m['proj']}"
+            items.append({"id": full, "hub": m["hub"], "repoid": copr_repoid(full, m["hub"]),
+                          "enabled": (m["state"] or "enabled") != "disabled"})
+    return items
+
+
+def cmd_list_copr():
+    repos = copr_local()
+    try:
+        inst = installed_system()
+    except Exception:
+        inst = []
+    for r in repos:
+        mine = [p["id"] for p in inst if p["copr"] == r["id"]]
+        r["installed"] = len(mine)
+        r["packages"] = mine[:200]
+        r["name"] = r["id"]
+        r["desc"] = (", ".join(mine[:5]) + (" …" if len(mine) > 5 else "")) if mine else "No packages installed from this repo"
+    out({"ok": True, "source": "copr", "items": repos})
+
+
+def cmd_copr_packages(full):
+    safe(full)
+    if full.count("/") != 1:
+        fail("expected owner/project")
+    rows = dnf_query(["--repo=" + copr_repoid(full), "--available", "--latest-limit=1"], ["name", "evr", "summary", "arch"])
+    inst = {l for l in run(["rpm", "-qa", "--qf", "%{NAME}\n"])[1].split("\n") if l}
+    seen, items = set(), []
+    for r in rows:
+        if r["arch"] == "src" or r["name"] in seen or r["name"].endswith(("-debuginfo", "-debugsource")):
+            continue
+        seen.add(r["name"])
+        items.append({"id": pkg_id(r["name"], r["arch"]), "name": r["name"], "version": r["evr"], "desc": r["summary"],
+                      "arch": r["arch"], "installed": r["name"] in inst})
+    items.sort(key=lambda x: x["name"].lower())
+    out({"ok": True, "items": items})
+
+
+def cmd_search_copr(text):
+    if not text.strip():
+        return out({"ok": True, "items": []})
+    local = {r["id"]: r for r in copr_local()}
+    url = "https://copr.fedorainfracloud.org/api_3/project/search?" + urllib.parse.urlencode({"query": text, "limit": 40})
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "desktop-pkg"}), timeout=25) as r:
+            data = json.load(r)
+    except Exception as e:
+        fail(f"copr search failed: {e}")
+    items = []
+    for p in data.get("items", []):
+        full = p.get("full_name", "")
+        if full.startswith("@") or full.count("/") != 1:
+            continue  # Gruppen-Projekte (@…) hier weglassen
+        items.append({"id": full, "name": full, "desc": (p.get("description") or "").strip().replace("\n", " "),
+                      "homepage": p.get("homepage") or "", "installed": full in local,
+                      "enabled": local.get(full, {}).get("enabled", False), "repoid": copr_repoid(full)})
+    out({"ok": True, "items": items})
+
+
+# ------------------------------------------------------------------ Flatpak
+
+def fp_installs():
+    return ("user", "system")
+
+
+def fp_list_one(scope):
+    rc, so, _ = run(["flatpak", "list", "--app", f"--{scope}", "--columns=application,name,version,branch,origin,size,description"])
+    items = []
+    for line in so.splitlines():
+        p = line.split("\t")
+        if len(p) < 7:
+            p += [""] * (7 - len(p))
+        if not p[0]:
+            continue
+        items.append({"id": p[0], "name": p[1] or p[0], "version": p[2], "branch": p[3], "repo": p[4], "size": p[5],
+                      "desc": p[6], "scope": scope, "installed": True})
+    return items
+
+
+def fp_installed():
+    with concurrent.futures.ThreadPoolExecutor(2) as ex:
+        a, b = [f.result() for f in [ex.submit(fp_list_one, s) for s in fp_installs()]]
+    items = a + b
+    items.sort(key=lambda x: x["name"].lower())
+    return items
+
+
+def cmd_list_flatpak():
+    out({"ok": True, "source": "flatpak", "items": fp_installed()})
+
+
+def fp_updates_one(scope):
+    rc, so, _ = run(["flatpak", "remote-ls", "--updates", f"--{scope}", "--columns=application,name,version,branch,origin,ref"], timeout=90)
+    items = []
+    for line in so.splitlines():
+        p = line.split("\t")
+        if len(p) < 6 or not p[0]:
+            continue
+        items.append({"id": p[0], "name": p[1] or p[0], "version": p[2], "branch": p[3], "repo": p[4],
+                      "runtime": p[5].startswith("runtime/"), "scope": scope, "source": "flatpak"})
+    return items
+
+
+def cmd_updates_flatpak():
+    with concurrent.futures.ThreadPoolExecutor(3) as ex:
+        fu = [ex.submit(fp_updates_one, s) for s in fp_installs()]
+        fi = ex.submit(fp_installed)
+        inst = {(i["id"], i["scope"]): i for i in fi.result()}
+        items = [x for f in fu for x in f.result()]
+    for x in items:
+        x["current"] = inst.get((x["id"], x["scope"]), {}).get("version", "")
+        x["desc"] = "Runtime" if x["runtime"] else inst.get((x["id"], x["scope"]), {}).get("desc", "")
+    items.sort(key=lambda x: (x["runtime"], x["name"].lower()))
+    out({"ok": True, "source": "flatpak", "items": items})
+
+
+def fp_remotes():
+    rc, so, _ = run(["flatpak", "remotes", "--columns=name,url,options"])
+    res = []
+    for line in so.splitlines():
+        p = line.split("\t")
+        if len(p) < 3:
+            continue
+        opts = [o.strip() for o in p[2].split(",")]
+        scope = "user" if "user" in opts else "system"
+        res.append({"id": p[0], "name": p[0], "url": p[1], "scope": scope, "enabled": "disabled" not in opts,
+                    "desc": p[1] or "no url", "options": opts})
+    return res
+
+
+def cmd_repos_flatpak():
+    out({"ok": True, "items": fp_remotes()})
+
+
+def cmd_search_flatpak(text):
+    if not text.strip():
+        return out({"ok": True, "items": []})
+    with concurrent.futures.ThreadPoolExecutor(2) as ex:
+        fs = ex.submit(run, ["flatpak", "search", "--columns=name,description,application,version,branch,remotes", text], 60)
+        fi = ex.submit(fp_installed)
+        fr = ex.submit(fp_remotes)
+        rc, so, _ = fs.result()
+        inst, remotes = {i["id"]: i for i in fi.result()}, fr.result()
+    user_remotes = {r["name"] for r in remotes if r["scope"] == "user" and r["enabled"]}
+    system_remotes = {r["name"] for r in remotes if r["scope"] == "system" and r["enabled"]}
+    items, seen = [], set()
+    for line in so.splitlines():
+        p = line.split("\t")
+        if len(p) < 6 or not p[2] or p[2] in seen:
+            continue
+        seen.add(p[2])
+        rem = [x for x in p[5].split(",") if x]
+        # bevorzugt user-Installation (ohne Root), sonst system
+        scope, remote = "", ""
+        for pref in ("flathub",) + tuple(rem):
+            if pref in rem and pref in user_remotes:
+                scope, remote = "user", pref
+                break
+        if not remote:
+            for pref in ("flathub",) + tuple(rem):
+                if pref in rem and pref in system_remotes:
+                    scope, remote = "system", pref
+                    break
+        i = inst.get(p[2])
+        items.append({"id": p[2], "name": p[0], "desc": p[1], "version": p[3], "branch": p[4], "repo": ",".join(rem),
+                      "installed": bool(i), "scope": i["scope"] if i else scope, "remote": remote, "installable": bool(remote)})
+        if len(items) >= LIMIT:
+            break
+    q = text.strip().lower()
+    items.sort(key=lambda i: 0 if i["name"].lower() == q else 1 if i["name"].lower().startswith(q) else 2)  # stabil: sonst Flatpak-Reihenfolge
+    out({"ok": True, "items": items})
+
+
+def cmd_info_flatpak(appid, scope):
+    safe(appid)
+    scope = scope if scope in ("user", "system") else "user"
+    rc, so, se = run(["flatpak", "info", f"--{scope}", appid])
+    if rc != 0:
+        fail(se.strip() or "flatpak info failed")
+    d = {k: v.replace("\xa0", " ") for k, v in parse_keyvals(so).items()}
+    out({"ok": True, "info": {
+        "Version": d.get("version", ""), "Ref": d.get("ref", ""), "Origin": d.get("origin", ""),
+        "Installation": d.get("installation", scope), "Installed size": d.get("installed size", ""),
+        "License": d.get("license", ""), "Runtime": d.get("runtime", ""),
+    }, "description": so.strip().splitlines()[0] if so.strip() else ""})
+
+
+# ------------------------------------------------------------------ AppImage
+
+def apps_dir():
+    return os.environ.get("PKG_APPS_DIR") or os.path.join(HOME, ".local/share/applications")
+
+
+def appimage_dirs():
+    env = os.environ.get("PKG_APPIMAGE_DIRS")
+    if env:
+        return [d for d in env.split(":") if d]
+    return [os.path.join(HOME, d) for d in ("Applications", ".local/bin", "Downloads", "AppImages")]
+
+
+def scan_appimages():
+    found = {}
+    for base in appimage_dirs():
+        if not os.path.isdir(base):
+            continue
+        depth0 = base.rstrip("/").count("/")
+        # Applications/AppImages: eine Unterebene, Downloads/.local/bin: nur direkt
+        maxdepth = 1 if os.path.basename(base) in ("Applications", "AppImages") else 0
+        for root, dirs, files in os.walk(base):
+            if root.count("/") - depth0 >= maxdepth:
+                dirs[:] = []
+            for f in files:
+                if f.lower().endswith(".appimage"):
+                    full = os.path.join(root, f)
+                    real = os.path.realpath(full)
+                    if os.path.isfile(real):
+                        found.setdefault(real, full)
+    return found
+
+
+def desktop_entries():
+    """path -> .desktop-Datei (nur unsere eigenen: appimage-*.desktop oder X-AppImage-Path)"""
+    d, res = apps_dir(), {}
+    if not os.path.isdir(d):
+        return res
+    for f in os.listdir(d):
+        if not f.endswith(".desktop"):
+            continue
+        try:
+            txt = open(os.path.join(d, f), encoding="utf-8", errors="ignore").read(4000)
+        except OSError:
+            continue
+        m = re.search(r"^X-AppImage-Path=(.+)$", txt, re.M)
+        if m:
+            res[os.path.realpath(m.group(1).strip())] = os.path.join(d, f)
+    return res
+
+
+def pretty_appimage(base):
+    n = re.sub(r"\.appimage$", "", base, flags=re.I)
+    n = re.sub(r"[-_.](x86_64|amd64|linux|x64|aarch64)\b.*$", "", n, flags=re.I)
+    return n
+
+
+def human(n):
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1000 or u == "GB":
+            return f"{n:.0f} {u}" if u in ("B", "KB") else f"{n:.1f} {u}"
+        n /= 1000
+
+
+def cmd_list_appimage():
+    entries = desktop_entries()
+    items = []
+    for real, shown in scan_appimages().items():
+        st = os.stat(real)
+        items.append({"id": real, "name": pretty_appimage(os.path.basename(shown)), "version": "", "path": shown,
+                      "desc": shown.replace(HOME, "~"), "size": human(st.st_size), "mtime": int(st.st_mtime),
+                      "executable": os.access(real, os.X_OK), "desktop": real in entries, "installed": True,
+                      "repo": os.path.dirname(shown).replace(HOME, "~")})
+    items.sort(key=lambda x: x["name"].lower())
+    out({"ok": True, "source": "appimage", "updater": bool(shutil.which("appimageupdatetool") or shutil.which("AppImageUpdate")), "dirs": [d.replace(HOME, "~") for d in appimage_dirs()], "items": items})
+
+
+def appimage_target(path):
+    """Nur Dateien, die wir selbst gefunden haben (kein beliebiges Löschen)."""
+    real = os.path.realpath(path)
+    known = scan_appimages()
+    if real not in known and os.path.realpath(path) not in {os.path.realpath(v) for v in known.values()}:
+        raise RuntimeError(f"not a scanned AppImage: {path}")
+    return real, known.get(real, path)
+
+
+def x_exec_quote(p):
+    return '"' + p.replace("\\", "\\\\").replace('"', '\\"').replace("`", "\\`").replace("$", "\\$") + '"'
+
+
+# ------------------------------------------------------------------ whatif (dnf --assumeno)
+
+SECTION_RE = re.compile(r"^([A-Za-z][A-Za-z ]+):\s*$")
+CRITICAL = {"systemd", "glibc", "dnf5", "dnf", "rpm", "bash", "kernel", "kernel-core", "sudo", "polkit", "pam", "coreutils",
+            "NetworkManager", "plasma-desktop", "sddm", "hyprland", "quickshell", "uwsm", "fedora-release", "filesystem",
+            "grub2-common", "shim-x64", "xorg-x11-drv-nvidia", "akmod-nvidia", "mesa-dri-drivers", "pipewire", "wireplumber"}
+
+
+def rpm_file(path):
+    p = os.path.realpath(path)
+    if not p.endswith(".rpm") or not os.path.isfile(p) or not re.fullmatch(r"[^\x00-\x1f]+", p):
+        fail(f"not an .rpm file: {path}")
+    return p
+
+
+def cmd_whatif(action, names):
+    if action not in ("install", "remove"):
+        fail("whatif: install|remove")
+    noweak = action == "install" and bool(names) and names[0] == "--no-weak"
+    if noweak:
+        names = names[1:]
+    if action == "install" and len(names) == 1 and names[0].startswith("/"):
+        names = [rpm_file(names[0])]
+    else:
+        names = [safe(n) for n in names]
+    extra_opt = ["--setopt=install_weak_deps=False"] if noweak else []
+    rc, so, se = run(["dnf", action, "--assumeno", *extra_opt, *names], timeout=120)
+    sections, cur = [], None
+    for line in so.splitlines():
+        m = SECTION_RE.match(line)
+        if m and not line.startswith(" "):
+            cur = {"title": m.group(1), "pkgs": []}
+            sections.append(cur)
+            continue
+        if cur is not None and line.startswith(" ") and line.strip():
+            t = line.split()
+            if len(t) >= 6 and re.match(r"^[A-Za-z0-9_.+-]+$", t[0]) and t[1] in ("x86_64", "noarch", "i686", "aarch64", "src"):
+                cur["pkgs"].append({"name": t[0], "arch": t[1], "version": re.sub(r"^0:", "", t[2]), "repo": short_repo(" ".join(t[3:-2])), "size": " ".join(t[-2:])})
+            elif cur["title"] == "Transaction Summary":
+                pass
+    sections = [s for s in sections if s["pkgs"]]
+    total = sum(len(s["pkgs"]) for s in sections)
+    names_hit = {p["name"] for s in sections for p in s["pkgs"]}
+    summary = ""
+    m = re.search(r"After this operation,.*", so + "\n" + se)
+    if m:
+        summary = m.group(0).strip()
+    err = ""
+    if not sections:
+        raw = [l.strip() for l in (se.strip() or so.strip()).splitlines() if l.strip() and not l.startswith(("Updating and loading", "Repositories loaded"))]
+        err = " ".join(raw[-4:])[:400] if raw else "dnf: nothing to do"
+    out({"ok": bool(sections), "action": action, "noWeak": noweak, "sections": sections, "total": total, "summary": summary,
+         "critical": sorted(names_hit & CRITICAL) if action == "remove" else [], "error": err})
+
+
+# ------------------------------------------------------------------ Vendor-Repos
+
+def vendor_script(v):
+    """(Vorschau-Zeilen, sh-Skript) – dieselben Schritte für Anzeige und Ausführung."""
+    import shlex
+    lines, cmds = [], []
+    for st in v["steps"]:
+        if "import_key" in st:
+            cmds.append(["rpm", "--import", st["import_key"]])
+        elif "addrepo" in st:
+            cmds.append(["dnf", "config-manager", "addrepo", "--from-repofile=" + st["addrepo"]])
+        elif "write_repo" in st:
+            w = st["write_repo"]
+            dest = os.path.join(REPO_DIR, w["file"])
+            lines.append(f"write {dest}:")
+            lines += ["    " + l for l in w["content"].rstrip("\n").split("\n")]
+            cmds.append(("write", dest, w["content"]))
+            continue
+        elif "run" in st:
+            cmds.append(list(st["run"]))
+        if isinstance(cmds[-1], list):
+            lines.append(" ".join(shlex.quote(a) for a in cmds[-1]))
+    script = ["set -e"]
+    for c in cmds:
+        if isinstance(c, tuple):
+            script.append("printf '%s' " + shlex.quote(c[2]) + " > " + shlex.quote(c[1]))
+        else:
+            script.append(" ".join(shlex.quote(a) for a in c))
+    return lines, "\n".join(script)
+
+
+def vendor_by_id(vid):
+    for v in vendors_data():
+        if v["id"] == vid:
+            return v
+    fail(f"unknown vendor: {vid}")
+
+
+def cmd_list_vendors():
+    files = repo_files()
+    items = []
+    for v in vendors_data():
+        hit = [m for m in v["match"] if m in files]
+        lines, _ = vendor_script(v)
+        items.append({"id": v["id"], "name": v["name"], "desc": v["desc"], "homepage": v.get("homepage", ""), "section": v["section"],
+                      "note": v.get("note", ""), "packages": v.get("packages", []), "present": bool(hit),
+                      "enabled": any(files[m]["enabled"] for m in hit), "repoid": hit[0] if hit else "", "commands": lines})
+    out({"ok": True, "source": "vendors", "items": items, "notIncluded": "Mozilla/Firefox Nightly (no verifiable official RPM repo), Spotify (Flatpak only)"})
+
+
+def cmd_vendor_preview(vid):
+    v = vendor_by_id(vid)
+    lines, script = vendor_script(v)
+    out({"ok": True, "id": v["id"], "name": v["name"], "commands": ["pkexec sh -c  (one polkit prompt, runs as root):"] + ["  " + l for l in lines], "note": v.get("note", "")})
+
+
+# ------------------------------------------------------------------ Dev-Tools (pipx / npm / cargo / go)
+
+def cmd_list_devtools():
+    items, tools = [], []
+
+    def add(tool, name, ver, desc=""):
+        items.append({"id": f"{tool}:{name}", "name": name, "version": ver, "desc": desc or tool, "repo": tool, "tool": tool, "installed": True, "group": tool})
+
+    for t in ("pipx", "npm", "cargo", "go"):
+        tools.append({"id": t, "present": shutil.which(t) is not None})
+    if shutil.which("pipx"):
+        rc, so, _ = run(["pipx", "list", "--json"], 60)
+        try:
+            for n, v in json.loads(so).get("venvs", {}).items():
+                add("pipx", n, v["metadata"]["main_package"].get("package_version", ""), "pipx app")
+        except (ValueError, KeyError):
+            pass
+    if shutil.which("npm"):
+        rc, so, _ = run(["npm", "ls", "-g", "--depth=0", "--json"], 60)
+        try:
+            for n, v in json.loads(so).get("dependencies", {}).items():
+                add("npm", n, v.get("version", ""), "npm global")
+        except ValueError:
+            pass
+    if shutil.which("cargo"):
+        rc, so, _ = run(["cargo", "install", "--list"], 60)
+        for m in re.finditer(r"^(\S+) v(\S+?)(?: \(.*\))?:$", so, re.M):
+            add("cargo", m.group(1), m.group(2), "cargo crate")
+    gobin = os.environ.get("GOBIN") or os.path.join(os.environ.get("GOPATH", os.path.join(HOME, "go")), "bin")
+    if os.path.isdir(gobin):
+        for f in sorted(os.listdir(gobin)):
+            add("go", f, "", "go install binary in " + gobin.replace(HOME, "~"))
+    items.sort(key=lambda x: (x["tool"], x["name"].lower()))
+    out({"ok": True, "source": "devtools", "items": items, "tools": tools})
+
+
+# ------------------------------------------------------------------ optionale Abhängigkeiten
+
+def installed_names():
+    return {l for l in run(["rpm", "-qa", "--qf", "%{NAME}\n"])[1].split("\n") if l}
+
+
+def optdeps_one(name, kind):
+    """Namen der Pakete, die die empfohlenen/vorgeschlagenen Fähigkeiten von <name> liefern (nur was es in den Repos gibt)."""
+    rc, so, _ = run(["dnf", "repoquery", "--latest-limit", "1", f"--providers-of={kind}", name], timeout=60)
+    names, seen = [], set()
+    for line in so.splitlines():
+        m = re.match(r"^(.+)-(?:\d+:)?[^-]+-[^-]+\.([A-Za-z0-9_]+)$", line.strip())
+        if not m or m.group(2) in ("i686", "src"):
+            continue
+        n = m.group(1)
+        if n not in seen and n != name:
+            seen.add(n)
+            names.append(n)
+    return names
+
+
+def cmd_optdeps(names):
+    names = [safe(n) for n in names]
+    if not names:
+        fail("optdeps: <name…>")
+    with concurrent.futures.ThreadPoolExecutor(6) as ex:
+        fi = ex.submit(installed_names)
+        jobs = {(n, k): ex.submit(optdeps_one, n, k) for n in names for k in ("recommends", "suggests")}
+        inst = fi.result()
+        res = {k: f.result() for k, f in jobs.items()}
+    allnames = sorted({x for v in res.values() for x in v})
+    summ = {}
+    if allnames:
+        for r in dnf_query(["--available", "--latest-limit=1", *allnames], ["name", "summary"]):
+            summ.setdefault(r["name"], r["summary"])
+    out_items = {}
+    for n in names:
+        out_items[n] = {k: [{"name": x, "installed": x in inst, "desc": summ.get(x, "")} for x in res[(n, k)]] for k in ("recommends", "suggests")}
+    out({"ok": True, "items": out_items})
+
+
+def cmd_optdeps_flatpak(scope, remote, appid):
+    """Optionale Erweiterungen einer Flatpak-App: [Extension …] mit no-autodownload (ohne Locale/Debug/Sources), nur wenn es sie im Remote gibt."""
+    if scope not in ("user", "system"):
+        fail("scope: user|system")
+    safe(remote)
+    safe(appid)
+    rc, so, se = run(["flatpak", "remote-info", f"--{scope}", remote, appid, "-m"], timeout=60)
+    if rc != 0:
+        fail((se.strip() or "remote-info failed").splitlines()[-1])
+    cands = []
+    for m in re.finditer(r"^\[Extension ([^\]]+)\]\n((?:[^\[\n].*\n?)*)", so, re.M):
+        ext, body = m.group(1), m.group(2)
+        if ext.endswith((".Locale", ".Debug", ".Sources")) or "no-autodownload=true" not in body:
+            continue
+        cands.append(ext)
+    with concurrent.futures.ThreadPoolExecutor(4) as ex:
+        fl = ex.submit(lambda: set(run(["flatpak", "list", "--columns=application"])[1].split()))
+        checks = {e: ex.submit(run, ["flatpak", "remote-info", f"--{scope}", remote, e], 40) for e in cands}
+        inst = fl.result()
+        found = [e for e, f in checks.items() if f.result()[0] == 0]
+    items = [{"name": e, "installed": e in inst, "desc": "Optional extension"} for e in sorted(found)]
+    out({"ok": True, "items": {appid: {"recommends": [], "suggests": items}}})
+
+
+def cmd_preview(args):
+    """Genau die Befehle, die `pkg exec <args>` ausführen würde (für die Bestätigung)."""
+    import shlex
+    steps = plan(args)
+    cmds = []
+    for s in steps:
+        if s[0] == "@appimage":
+            cmds.append("appimage " + " ".join(s[1:]))
+        elif s[:3] == ["pkexec", "sh", "-c"]:
+            cmds += ["pkexec sh -c:"] + ["  " + l for l in s[3].splitlines()]
+        else:
+            cmds.append(" ".join(shlex.quote(a) for a in s))
+    out({"ok": True, "commands": cmds})
+
+
+# ------------------------------------------------------------------ refresh
+
+def cmd_refresh():
+    rc, so, se = run(["dnf", "makecache", "--refresh"], timeout=180)
+    out({"ok": rc == 0, "error": "" if rc == 0 else (se.strip() or so.strip())[-300:]})
+
+
+# ------------------------------------------------------------------ exec (Live-Ausgabe)
+
+def pkexec(*cmd):
+    return ["pkexec", *cmd]
+
+
+def plan(args):
+    """Aktion -> Liste von Befehlen (Argumentlisten). Prüft alle Namen."""
+    if len(args) < 2:
+        fail("exec: <quelle> <aktion> …")
+    src, act, rest = args[0], args[1], args[2:]
+    if src == "system":
+        if act == "install-file" and len(rest) == 1:
+            return [pkexec("dnf", "install", "-y", rpm_file(rest[0]))]
+        noweak = bool(rest) and rest[0] == "--no-weak"
+        names = [safe(n) for n in (rest[1:] if noweak else rest)]
+        if act == "install" and names:
+            return [pkexec("dnf", "install", "-y", *(["--setopt=install_weak_deps=False"] if noweak else []), *names)]
+        if act == "remove" and names:
+            return [pkexec("dnf", "remove", "-y", *names)]
+        if act == "update":
+            return [pkexec("dnf", "upgrade", "-y", *names)]
+        if act in ("repo-enable", "repo-disable") and len(names) == 1 and not names[0].startswith(("copr:", "_copr")):
+            return [pkexec("dnf", "config-manager", "setopt", f"{names[0]}.enabled={'1' if act == 'repo-enable' else '0'}")]
+        if act == "repo-add" and len(rest) == 1 and rest[0].endswith(".repo") and " " not in rest[0] and (rest[0].startswith("https://") or (rest[0].startswith("/") and os.path.isfile(rest[0]))):
+            return [pkexec("dnf", "config-manager", "addrepo", "--from-repofile=" + rest[0])]
+    elif src == "copr" and len(rest) == 1 and act in ("enable", "disable", "remove"):
+        full = safe(rest[0])
+        if full.count("/") != 1:
+            fail("expected owner/project")
+        return [pkexec("dnf", "copr", act, "-y", full)] if act == "enable" else [pkexec("dnf", "copr", act, full)]
+    elif src == "flatpak":
+        if act == "install" and len(rest) >= 3 and rest[0] in ("user", "system"):
+            return [["flatpak", "install", "-y", "--noninteractive", f"--{rest[0]}", safe(rest[1]), *[safe(x) for x in rest[2:]]]]
+        if act == "remove" and len(rest) == 2 and rest[0] in ("user", "system"):
+            return [["flatpak", "uninstall", "-y", "--noninteractive", f"--{rest[0]}", safe(rest[1])]]
+        if act == "update" and rest and rest[0] in ("user", "system", "all"):
+            scopes = ["user", "system"] if rest[0] == "all" else [rest[0]]
+            extra = [safe(rest[1])] if len(rest) > 1 else []
+            return [["flatpak", "update", "-y", "--noninteractive", f"--{s}", *extra] for s in scopes]
+        if act in ("remote-enable", "remote-disable") and len(rest) == 2 and rest[0] in ("user", "system"):
+            return [["flatpak", "remote-modify", "--enable" if act == "remote-enable" else "--disable", f"--{rest[0]}", safe(rest[1])]]
+    elif src == "vendor" and act == "add" and len(rest) == 1:
+        v = vendor_by_id(rest[0])
+        return [pkexec("sh", "-c", vendor_script(v)[1])]
+    elif src == "devtools" and act == "update" and len(rest) == 1 and rest[0] in ("pipx", "npm"):
+        return [["pipx", "upgrade-all"]] if rest[0] == "pipx" else [["npm", "update", "-g"]]
+    elif src == "appimage" and act == "update" and len(rest) == 1 and (shutil.which("appimageupdatetool") or shutil.which("AppImageUpdate")):
+        return [[shutil.which("appimageupdatetool") or shutil.which("AppImageUpdate"), "-O", rest[0]]]
+    elif src == "appimage" and len(rest) == 1 and act in ("desktop-add", "desktop-remove", "remove", "chmod"):
+        return [["@appimage", act, rest[0]]]
+    fail("exec: unknown action")
+
+
+def appimage_action(act, path):
+    real, shown = appimage_target(path)
+    entries = desktop_entries()
+    if act == "chmod":
+        os.chmod(real, os.stat(real).st_mode | 0o111)
+        print(f"made executable: {shown}")
+    elif act == "desktop-add":
+        if real in entries:
+            print("desktop entry already exists")
+            return
+        os.makedirs(apps_dir(), exist_ok=True)
+        name = pretty_appimage(os.path.basename(shown))
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "app"
+        dest = os.path.join(apps_dir(), f"appimage-{slug}.desktop")
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write("[Desktop Entry]\nType=Application\nName=%s\nExec=%s %%U\nIcon=application-x-executable\n"
+                    "Terminal=false\nCategories=Utility;\nX-AppImage-Path=%s\n" % (name, x_exec_quote(real), real))
+        print(f"created {dest}")
+    elif act == "desktop-remove":
+        if real in entries:
+            os.remove(entries[real])
+            print(f"removed {entries[real]}")
+        else:
+            print("no desktop entry")
+    elif act == "remove":
+        if real in entries:
+            os.remove(entries[real])
+            print(f"removed {entries[real]}")
+        if os.path.islink(shown):
+            os.remove(shown)
+        os.remove(real)
+        print(f"deleted {shown}")
+
+
+def cmd_exec(args):
+    dry = False
+    if args and args[0] == "--dry-run":
+        dry, args = True, args[1:]
+    steps = plan(args)
+    if dry:
+        for s in steps:
+            print("DRY: " + " ".join(s))
+        print("@@done 0")
+        return
+    rc = 0
+    for s in steps:
+        if s[0] == "@appimage":
+            print(f"$ appimage {s[1]} {s[2]}", flush=True)
+            try:
+                appimage_action(s[1], s[2])
+            except Exception as e:
+                print(f"error: {e}")
+                rc = 1
+            continue
+        if shutil.which(s[0]) is None:
+            print(f"error: {s[0]} not found")
+            rc = 127
+            break
+        print("$ " + (f"pkexec sh -c <{len(s[3].splitlines())} steps>" if s[:3] == ["pkexec", "sh", "-c"] else " ".join(s)), flush=True)
+        p = subprocess.Popen(s, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=ENV)
+        buf = b""
+        while True:
+            chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
+            if not chunk:
+                break
+            buf += chunk.replace(b"\r", b"\n")
+            *lines, buf = buf.split(b"\n")
+            for ln in lines:
+                t = ln.decode("utf-8", "replace").rstrip()
+                if t:
+                    print(t, flush=True)
+        if buf.strip():
+            print(buf.decode("utf-8", "replace").rstrip(), flush=True)
+        r = p.wait()
+        if r != 0:
+            rc = r
+            if s[0] == "pkexec" and r in (126, 127):
+                print("authorization failed or cancelled")
+            break
+    print(f"@@done {rc}", flush=True)
+    sys.exit(0)
+
+
+# ------------------------------------------------------------------ main
+
+def main(argv):
+    if len(argv) < 2 or argv[1] in ("-h", "--help", "help"):
+        print(__doc__)
+        return
+    c, a = argv[1], argv[2:]
+    try:
+        if c == "exec":
+            return cmd_exec(a)
+        if c == "list" and a:
+            return {"system": cmd_list_system, "copr": cmd_list_copr, "flatpak": cmd_list_flatpak, "appimage": cmd_list_appimage,
+                    "vendors": cmd_list_vendors, "local": cmd_list_local, "devtools": cmd_list_devtools}[a[0]]()
+        if c == "search" and len(a) >= 2:
+            return {"system": cmd_search_system, "copr": cmd_search_copr, "flatpak": cmd_search_flatpak}[a[0]](" ".join(a[1:]))
+        if c == "updates" and a:
+            return {"system": cmd_updates_system, "flatpak": cmd_updates_flatpak}[a[0]]()
+        if c == "info" and len(a) >= 2:
+            return cmd_info_system(a[1]) if a[0] == "system" else cmd_info_flatpak(a[1], a[2] if len(a) > 2 else "user")
+        if c == "repos" and a:
+            return {"system": cmd_repos_system, "flatpak": cmd_repos_flatpak}[a[0]]()
+        if c == "copr-packages" and a:
+            return cmd_copr_packages(a[0])
+        if c == "whatif" and len(a) >= 2:
+            return cmd_whatif(a[0], a[1:])
+        if c == "optdeps" and a:
+            if a[0] == "--flatpak" and len(a) == 4:
+                return cmd_optdeps_flatpak(a[1], a[2], a[3])
+            return cmd_optdeps(a)
+        if c == "preview" and a:
+            return cmd_preview(a)
+        if c == "vendor-preview" and a:
+            return cmd_vendor_preview(a[0])
+        if c == "refresh":
+            return cmd_refresh()
+    except KeyError:
+        pass
+    except RuntimeError as e:
+        fail(str(e))
+    except Exception as e:  # nie mit Traceback an die UI
+        fail(f"{type(e).__name__}: {e}")
+    fail("usage: pkg --help")
+
+
+if __name__ == "__main__":
+    main(sys.argv)

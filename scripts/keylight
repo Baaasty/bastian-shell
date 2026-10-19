@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Elgato Key Light Air per HTTP (Port 9123, kein Key):
+#   keylight an|aus|toggle|hell 1-100|heller|dunkler|warm 2900-7000|status   (on/off gehen auch)
+# Einziges keylight: ~/.local/bin/keylight ist ein Link hierher (system/dotfiles).
+# Adresse aus secrets.json: keylight.ip (feste IP) und keylight.host (mDNS-Name). Läuft auch beim
+# Herunterfahren (systemd/desktop-keylight-off.service) – darum erst die IP (mDNS ist dann evtl. schon
+# weg), dann der Name. Ist nichts eingetragen, sucht avahi-browse nach _elg._tcp im Netz.
+set -u
+SECRETS="$(dirname "$(readlink -f "$0")")/../secrets.json"
+HOSTS=()
+if [[ -r $SECRETS ]]; then
+    for k in ip host; do
+        h=$(jq -r ".keylight.$k // empty" "$SECRETS" 2>/dev/null)
+        [[ -n $h ]] && HOSTS+=("$h")
+    done
+fi
+if (( ${#HOSTS[@]} == 0 )) && command -v avahi-browse >/dev/null; then
+    # -p: Felder mit ; getrennt, Feld 8 = Adresse (nur IPv4)
+    while IFS=';' read -r ev _ proto _ _ _ _ addr _; do
+        [[ $ev == "=" && $proto == IPv4 && -n $addr ]] && HOSTS+=("$addr")
+    done < <(timeout 4 avahi-browse -rpt _elg._tcp 2>/dev/null)
+fi
+URL=""
+
+# erste Adresse, die antwortet
+find_url() {
+    local h
+    (( ${#HOSTS[@]} )) || { echo "keylight: keine Adresse – keylight.ip/keylight.host in secrets.json eintragen" >&2; exit 1; }
+    for h in "${HOSTS[@]}"; do
+        curl -s -m 3 -o /dev/null "http://$h:9123/elgato/lights" && { URL="http://$h:9123/elgato/lights"; return 0; }
+    done
+    echo "keylight: Lampe nicht erreichbar" >&2
+    exit 1
+}
+get() { curl -s -m 3 "$URL" | jq -r ".lights[0].$1"; }
+put() {
+    curl -s -m 3 -X PUT -H 'Content-Type: application/json' \
+        -d "{\"numberOfLights\":1,\"lights\":[{$1}]}" "$URL" >/dev/null
+}
+
+case "${1:-toggle}" in
+    an|on|aus|off|toggle|hell|heller|dunkler|warm|status) find_url ;;
+    *) sed -n '3p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac
+case "${1:-toggle}" in
+    an|on)   put '"on":1' ;;
+    aus|off) put '"on":0' ;;
+    toggle)  [[ $(get on) == 1 ]] && put '"on":0' || put '"on":1' ;;
+    hell)    put "\"on\":1,\"brightness\":${2:-50}" ;;
+    heller)  b=$(( $(get brightness) + 10 )); (( b > 100 )) && b=100; put "\"brightness\":$b" ;;
+    dunkler) b=$(( $(get brightness) - 10 )); (( b < 3 )) && b=3; put "\"brightness\":$b" ;;
+    warm)    k=${2:-4500}; m=$(( 1000000 / k )); (( m < 143 )) && m=143; (( m > 344 )) && m=344; put "\"temperature\":$m" ;;
+    status)  curl -s -m 3 "$URL" | jq '.lights[0] | {an: .on, helligkeit: .brightness, kelvin: (1000000 / .temperature | floor)}' ;;
+esac

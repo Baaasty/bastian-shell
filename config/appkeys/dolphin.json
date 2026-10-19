@@ -1,0 +1,47 @@
+{
+  "name": "Dolphin",
+  "about": "File manager (Super+E)",
+  "match": { "class": ["org.kde.dolphin", "dolphin"] },
+  "order": 40,
+  "sections": [
+    {
+      "name": "Navigate",
+      "keys": [
+        { "keys": "Ctrl+L", "title": "Type a path" },
+        { "keys": "Alt+←", "title": "Back" },
+        { "keys": "Alt+→", "title": "Forward" },
+        { "keys": "Alt+↑", "title": "Parent folder" },
+        { "keys": "Alt+Home", "title": "Home folder" },
+        { "keys": "Ctrl+F", "title": "Search" },
+        { "keys": "Ctrl+I", "title": "Filter this folder" },
+        { "keys": "Ctrl+H", "title": "Show hidden files" }
+      ]
+    },
+    {
+      "name": "Tabs & views",
+      "keys": [
+        { "keys": "Ctrl+T", "title": "New tab" },
+        { "keys": "Ctrl+W", "title": "Close tab" },
+        { "keys": "Ctrl+Shift+T", "title": "Reopen closed tab" },
+        { "keys": ["Ctrl+Tab", "Ctrl+Shift+Tab"], "title": "Next / previous tab" },
+        { "keys": "F3", "title": "Split view" },
+        { "keys": "Ctrl+1 2 3", "title": "Icons / compact / details" },
+        { "keys": "F4", "title": "Terminal panel" },
+        { "keys": "F9", "title": "Places panel" },
+        { "keys": "F11", "title": "Information panel" }
+      ]
+    },
+    {
+      "name": "Files",
+      "keys": [
+        { "keys": "F2", "title": "Rename" },
+        { "keys": "Ctrl+Shift+N", "title": "New folder" },
+        { "keys": "Del", "title": "Move to trash" },
+        { "keys": "Shift+Del", "title": "Delete permanently" },
+        { "keys": "Ctrl+Z", "title": "Undo" },
+        { "keys": "Alt+Enter", "title": "Properties" },
+        { "keys": "Shift+F4", "title": "Open a terminal here" }
+      ]
+    }
+  ]
+}
