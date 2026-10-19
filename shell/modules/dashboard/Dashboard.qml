@@ -25,7 +25,7 @@ Scope {
     onOpenChanged: {
         Hypr.setModal("dashboard", open);
         if (open)
-            Status.checkUpdates(false);
+            Updates.checkIfStale();
         else
             closed();   // Kacheln leeren ihre Eingaben (Dashboard geht jedes Mal frisch auf)
         if (!launcher)

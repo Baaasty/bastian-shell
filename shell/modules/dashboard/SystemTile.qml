@@ -17,7 +17,6 @@ Tile {
     // Logitech-Maus über UPower (HID++)
     readonly property var mouse: UPower.devices.values.find(d => d.type === UPowerDeviceType.Mouse) || null
     readonly property int mousePct: !mouse ? -1 : Math.round(mouse.percentage > 1 ? mouse.percentage : mouse.percentage * 100)
-    readonly property int updates: Status.dnfUpdates + Status.flatpakUpdates
 
     // eine Zeile: Symbol · Name · Wert rechts; warn = Amber/Rot-Wert; klickbar -> Hover + Hand
     component Line: Rectangle {
@@ -78,15 +77,13 @@ Tile {
         Line {
             icon: "system_update_alt"
             name: "Updates"
-            value: Status.dnfUpdates < 0 ? "…" : tile.updates === 0 ? "up to date" : String(tile.updates)
-            warn: Status.dnfUpdates >= 0 && tile.updates > 0
+            // dieselbe Zahl wie der Update-Chip in der Bar (Updates.qml)
+            value: Updates.checkedAt === 0 ? "…" : Updates.count === 0 ? "up to date" : String(Updates.count)
+            warn: Updates.count > 0
             tone: Theme.warning
-            // Discover macht dnf + Flatpak, fragt selbst nach dem Passwort
+            // eigener Paketmanager, Reiter „Updates“ (nicht Discover)
             clickable: true
-            onClicked: {
-                Status.updatesAt = 0;   // beim nächsten Öffnen neu zählen
-                Launch.cmd(["plasma-discover", "--mode", "update"]);
-            }
+            onClicked: Updates.openManager()
         }
         Line {
             icon: "hard_drive"

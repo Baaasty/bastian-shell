@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Dienste-Status: iCloud-Sync, Platten, Updates
+// Dienste-Status: iCloud-Sync, Platten (Updates: Updates.qml)
 Singleton {
     id: root
 
@@ -17,8 +17,6 @@ Singleton {
     // belegt 0..1 (für die Ringe im Dashboard)
     readonly property real rootUsed: rootSizeGb > 0 ? 1 - rootFreeGb / rootSizeGb : 0
     readonly property real dataUsed: dataSizeGb > 0 ? 1 - dataFreeGb / dataSizeGb : 0
-    property int dnfUpdates: -1
-    property int flatpakUpdates: -1
 
     Process {
         id: icloud
@@ -53,20 +51,6 @@ Singleton {
         }
     }
 
-    // langsam: nur alle 6 h, mit niedriger Priorität
-    Process {
-        id: updates
-        command: ["sh", "-c", "echo $(nice -n 19 dnf check-update -q 2>/dev/null | grep -cE '^[[:alnum:]]'); echo $(nice -n 19 flatpak remote-ls --updates 2>/dev/null | grep -c .)"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const l = text.trim().split("\n");
-                root.dnfUpdates = parseInt(l[0]);
-                root.flatpakUpdates = parseInt(l[1]);
-                root.updatesAt = Date.now();
-            }
-        }
-    }
-
     Timer {
         interval: 60000
         repeat: true
@@ -78,21 +62,6 @@ Singleton {
         }
     }
 
-    Timer {
-        interval: 6 * 3600 * 1000
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: updates.running = true
-    }
-
-    // force: sofort; sonst nur, wenn der letzte Stand älter als 15 min ist (z. B. beim Öffnen des Dashboards)
-    property real updatesAt: 0
-    function checkUpdates(force: bool): void {
-        if (updates.running || (!force && Date.now() - updatesAt < 15 * 60000))
-            return;
-        updates.running = true;
-    }
     function openFolder(path: string): void {
         Launch.cmd(["xdg-open", path]);
     }

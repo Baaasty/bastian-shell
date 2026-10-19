@@ -57,6 +57,12 @@ Singleton {
         }
     }
 
+    // beim Öffnen des Dashboards: nur prüfen, wenn der letzte Stand älter als 15 min ist
+    function checkIfStale(): void {
+        if (Date.now() - checkedAt > 15 * 60000)
+            check(false);
+    }
+
     // Paketmanager auf dem Reiter „Updates“ öffnen (IPC an dieselbe Shell)
     function openManager(): void {
         Quickshell.execDetached(["qs", "ipc", "--any-display", "-p", Quickshell.shellDir, "call", "packages", "page", "updates"]);
@@ -145,7 +151,10 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 const s = text.trim();
-                if (root._stamps !== "" && s !== root._stamps)
+                // erste Messung nach dem Start: auch Änderungen seit der letzten Prüfung zählen
+                // (sonst bleibt nach Update + Shell-Neustart die alte Zahl bis zu 4 h stehen)
+                const newest = Math.max(0, ...s.split(" ").filter(x => x).map(Number)) * 1000;
+                if (root._stamps !== "" ? s !== root._stamps : root.checkedAt > 0 && newest > root.checkedAt)
                     afterChange.restart();
                 root._stamps = s;
             }
