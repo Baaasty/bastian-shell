@@ -22,6 +22,7 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 - **Super+Return entprellen** – kleines Skript mit ≥ 0,5 s Sperre gegen Terminal-Fluten (AP 14); Vorschlag (Quelle: docs/ROADMAP-HYPRLAND.md)
 - **Kamera-Status ereignisgesteuert** – `Camera.qml` fragt `scripts/camera status` alle 5 s ab; könnte über `scripts/privacy-cam` (inotify auf `/dev/video`) laufen (Quelle: docs/ROADMAP-HYPRLAND.md)
 - **Abendwärme-Schalter in der Shell** – Anzeige/Schalter für die Abendwärme (z. B. im Licht-Popout) statt nur `scripts/nightlight` + Super+Alt+N; bisher bewusst nicht gebaut (2026-10-18, Quelle: docs/knowledge/shell-features.md)
+- **Mit mir geteilte Passwort-Gruppen** – Gruppen fremder Besitzer (Shared-DB + Teilnehmer-Schlüssel) in icp lesen; eigene Gruppen gehen schon (`~/Apps/icp/icp/sharing`) (2026-10-19, Quelle: Chat)
 
 ## In Ausarbeitung
 

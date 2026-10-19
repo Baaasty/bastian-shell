@@ -86,10 +86,11 @@ Rectangle {
             size: 15
             color: Theme.textFaint
         }
+        // aus einer geteilten Passwort-Gruppe (Name steht in den Details)
         Icon {
-            visible: row.modelData.custom
-            name: "edit"
-            size: 15
+            visible: !!row.modelData.group
+            name: "group"
+            size: 16
             color: Theme.textFaint
         }
         Icon {

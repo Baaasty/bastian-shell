@@ -2,13 +2,13 @@ import QtQuick
 import qs.config
 import qs.components
 
-// Rechte Seite: Titel (lokal umbenennbar), Benutzer, Passwort (verdeckt), 2FA-Code mit Ring, Notiz (verdeckt), Websites
+// Rechte Seite (nur Anzeige – icp liest nur, Änderungen auf iPhone/Mac): Titel, Benutzer, Passwort (verdeckt),
+// 2FA-Code mit Ring, Notiz (verdeckt), Websites
 Item {
     id: d
 
     required property var pw
     readonly property var e: pw.cur
-    signal done()
 
     // Feld-Kachel: Symbol + Beschriftung links, Inhalt (default) in der Mitte, Knöpfe rechts
     component Field: Rectangle {
@@ -106,7 +106,7 @@ Item {
             width: detailFlick.width
             spacing: 10
 
-            // Titel (Enter speichert lokal, Esc verwirft)
+            // Titel + Haupt-Website
             Item {
                 width: parent.width
                 height: 64
@@ -123,59 +123,20 @@ Item {
                     strongTone: true
                     letterSize: 22
                 }
-                Rectangle {
-                    anchors.fill: titleIn
-                    anchors.margins: -6
-                    radius: Theme.radiusSm
-                    color: titleIn.activeFocus ? Theme.raise : titleHover.containsMouse ? Qt.alpha(Theme.text, 0.04) : "transparent"
-                    border.width: titleIn.activeFocus ? 1 : 0
-                    border.color: Qt.alpha(Theme.accent, 0.5)
-                }
-                TextInput {
-                    id: titleIn
+                Txt {
+                    id: titleTxt
                     anchors.left: avatar.right
                     anchors.leftMargin: 16
-                    anchors.right: editIcon.left
-                    anchors.rightMargin: 8
+                    anchors.right: parent.right
                     y: 8
-                    clip: true
+                    elide: Text.ElideRight
                     text: d.e ? d.e.title : ""
-                    color: Theme.text
-                    selectionColor: Theme.accentSoft
-                    selectByMouse: true
-                    font.family: Theme.fontUi
                     font.pixelSize: 20
                     font.weight: Font.DemiBold
-                    function commit(): void {
-                        d.pw.rename(text);
-                        d.done();
-                    }
-                    Keys.onReturnPressed: commit()
-                    Keys.onEnterPressed: commit()
-                    Keys.onEscapePressed: {
-                        text = d.e ? d.e.title : "";
-                        d.done();
-                    }
-                    onActiveFocusChanged: if (!activeFocus && d.e && text !== d.e.title) text = d.e.title
-                    MouseArea {
-                        id: titleHover
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.IBeamCursor
-                        acceptedButtons: Qt.NoButton
-                    }
-                }
-                Icon {
-                    id: editIcon
-                    anchors.right: parent.right
-                    anchors.verticalCenter: titleIn.verticalCenter
-                    name: "edit"
-                    size: 16
-                    color: titleHover.containsMouse || titleIn.activeFocus ? Theme.textMuted : Theme.textFaint
                 }
                 Row {
-                    anchors.left: titleIn.left
-                    anchors.top: titleIn.bottom
+                    anchors.left: titleTxt.left
+                    anchors.top: titleTxt.bottom
                     anchors.topMargin: 5
                     spacing: 8
                     Txt {
@@ -184,25 +145,26 @@ Item {
                         font.weight: Font.Normal
                         color: Theme.textFaint
                     }
-                    Txt {
-                        visible: d.e && d.e.custom
-                        text: "·  edited locally"
-                        font.pixelSize: 12
-                        font.weight: Font.Normal
-                        color: Theme.textFaint
-                    }
-                    Txt {
-                        visible: d.e && d.e.custom
-                        text: "Reset"
-                        font.pixelSize: 12
-                        color: resetArea.containsMouse ? Theme.accentText : Theme.textMuted
-                        font.underline: resetArea.containsMouse
-                        MouseArea {
-                            id: resetArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: d.pw.resetOverride()
+                    // geteilte Passwort-Gruppe (z. B. WebBude)
+                    Row {
+                        visible: !!(d.e && d.e.group)
+                        spacing: 4
+                        Txt {
+                            text: "·"
+                            font.pixelSize: 12
+                            color: Theme.textFaint
+                        }
+                        Icon {
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "group"
+                            size: 14
+                            color: Theme.woodLight
+                        }
+                        Txt {
+                            text: d.e ? (d.e.group || "") : ""
+                            font.pixelSize: 12
+                            font.weight: Font.Normal
+                            color: Theme.textMuted
                         }
                     }
                 }
@@ -354,7 +316,7 @@ Item {
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 4
-                    text: "used for autofill · local only"
+                    text: "used for autofill"
                     font.pixelSize: 11
                     font.weight: Font.Normal
                     color: Theme.textFaint
@@ -369,7 +331,7 @@ Item {
                     width: col.width
                     height: 38
                     radius: Theme.radiusSm
-                    color: urlArea.containsMouse ? Theme.raise : "transparent"
+                    color: "transparent"
                     border.width: 1
                     border.color: Theme.border
                     Icon {
@@ -384,89 +346,16 @@ Item {
                     Txt {
                         anchors.left: gIcon.right
                         anchors.leftMargin: 10
-                        anchors.right: rm.left
-                        anchors.rightMargin: 8
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
                         text: urlRow.modelData.replace(/^https:\/\//, "")
                         font.pixelSize: 13
                         font.weight: Font.Normal
                     }
-                    MouseArea {
-                        id: urlArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        acceptedButtons: Qt.NoButton
-                    }
-                    PwBtn {
-                        id: rm
-                        anchors.right: parent.right
-                        anchors.rightMargin: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        size: 30
-                        icon: "close"
-                        opacity: urlArea.containsMouse || hovered ? 1 : 0.45
-                        onClicked: d.pw.removeUrl(urlRow.modelData)
-                    }
                 }
             }
 
-            // Website hinzufügen
-            Rectangle {
-                width: parent.width
-                height: 38
-                radius: Theme.radiusSm
-                color: urlIn.activeFocus ? Theme.raise : "transparent"
-                border.width: 1
-                border.color: urlIn.activeFocus ? Qt.alpha(Theme.accent, 0.5) : Qt.alpha(Theme.text, 0.06)
-                Icon {
-                    id: addIcon
-                    anchors.left: parent.left
-                    anchors.leftMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "add"
-                    size: 17
-                    color: urlIn.activeFocus ? Theme.accentText : Theme.textFaint
-                }
-                TextInput {
-                    id: urlIn
-                    anchors.left: addIcon.right
-                    anchors.leftMargin: 10
-                    anchors.right: parent.right
-                    anchors.rightMargin: 12
-                    anchors.verticalCenter: parent.verticalCenter
-                    clip: true
-                    color: Theme.text
-                    selectionColor: Theme.accentSoft
-                    selectByMouse: true
-                    font.family: Theme.fontUi
-                    font.pixelSize: 13
-                    function commit(): void {
-                        if (text.trim())
-                            d.pw.addUrl(text);
-                        text = "";
-                    }
-                    Keys.onReturnPressed: commit()
-                    Keys.onEnterPressed: commit()
-                    Keys.onEscapePressed: {
-                        text = "";
-                        d.done();
-                    }
-                    Txt {
-                        anchors.fill: parent
-                        visible: urlIn.text === ""
-                        text: "Add website (e.g. github.com)"
-                        color: Theme.textFaint
-                        font.pixelSize: 13
-                        font.weight: Font.Normal
-                    }
-                }
-            }
-            Connections {
-                target: d
-                function onEChanged() {
-                    urlIn.text = "";
-                }
-            }
         }
     }
 

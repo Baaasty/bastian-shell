@@ -5,6 +5,9 @@ Die icp-eigene Erweiterung („Apple Passwords“) wird nicht mehr gebraucht.
 
 Weg der Daten: Erweiterung → Native Host `de.bastian.desktop` (`scripts/chrome-ext`) → `scripts/passwords` → icp (`~/Apps/icp`, nur lesend).
 Login bei icp: `icp login`. Neue Einträge vom iPhone/Mac holen: `scripts/passwords sync`.
+Geteilte Passwort-Gruppen (z. B. WebBude) kommen beim Sync mit – nur Gruppen, die du **erstellt** hast
+(mit dir geteilte fehlen noch). Im Panel mit Gruppen-Symbol, Suche findet auch den Gruppennamen.
+Prüfen ohne Geheimnisse: `icp diag groups`. Format/Herkunft: `~/Apps/icp/RESEARCH.md` („Shared password groups“).
 
 ## Einrichten (einmal, in dieser Reihenfolge)
 
@@ -32,7 +35,7 @@ Login bei icp: `icp login`. Neue Einträge vom iPhone/Mac holen: `scripts/passwo
   → „Hide My Email“ mit den aktiven Adressen (passende Website zuerst). Neue Adressen anlegen geht hier nicht (nur in iCloud).
 - **Popup**: Logins der aktuellen Seite – Benutzer, Passwort, 2FA-Code kopieren, **Fill**. Kopiert wird über
   `passwords copy` (wl-copy `--sensitive`, Klipper/cliphist speichern es nicht), nach 30 s ist die Zwischenablage leer.
-- Seite nicht erkannt (anderer Domainname als im Schlüsselbund)? Website zuordnen: in der Shell (Passwörter, `shell/modules/passwords`) oder
+- Seite nicht erkannt (anderer Domainname als im Schlüsselbund)? Am besten die Website auf iPhone/Mac ergänzen und `sync`. Notlösung lokal (nur Kommandozeile):
   `scripts/passwords match <url>` (zeigt, was passt) und `scripts/passwords add-url <id> <url>`.
 
 ## Sicherheit (so gebaut)

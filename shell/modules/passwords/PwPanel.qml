@@ -418,7 +418,6 @@ Glass {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 22
         pw: panel.pw
-        onDone: panel.focusSearch()
     }
 
     // Rückmeldung (kopiert, Fehler)

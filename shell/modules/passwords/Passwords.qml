@@ -7,7 +7,7 @@ import qs.config
 import qs.services
 
 // Passwort-Speicher (Super+O): iCloud-Schlüsselbund über scripts/passwords (icp, nur lesend).
-// Lokal änderbar: Titel + Websites (Overrides). Passwörter ändern: auf iPhone/Mac.
+// Nur Anzeige: icp liest nur, Titel/Websites/Passwörter ändern auf iPhone/Mac.
 // Geheimnisse bleiben nur so lange im Speicher, wie sie angezeigt werden; Kopieren läuft im CLI
 // (wl-copy --sensitive, nach 30 s geleert), nie über QML.
 Scope {
@@ -16,7 +16,7 @@ Scope {
     property bool open: false
     property string screenName: Config.mainScreen
 
-    property var items: []              // [{id,title,user,urls,hasTotp,hasPassword,hasNotes,custom}]
+    property var items: []              // [{id,title,user,urls,hasTotp,hasPassword,hasNotes,custom,wifi,group}]
     property string loadState: ""       // "" | loading | ready | error:…
     property string query: ""
     property int sel: 0
@@ -66,7 +66,7 @@ Scope {
             return list;
         const out = [];
         for (const e of list) {
-            const s = Math.max(Fuzzy.score(q, e.title), Fuzzy.score(q, (e.urls || []).map(hostOf).join(" ")) - 20, Fuzzy.score(q, e.user) - 40);
+            const s = Math.max(Fuzzy.score(q, e.title), Fuzzy.score(q, (e.urls || []).map(hostOf).join(" ")) - 20, Fuzzy.score(q, e.user) - 40, Fuzzy.score(q, e.group || "") - 30);
             if (s > 0)
                 out.push({ e: e, s: s });
         }
@@ -195,12 +195,6 @@ Scope {
                 Favicons.start(iconDomains(), false);
         });
     }
-    function replaceItem(e: var): void {
-        if (!e || !e.id)
-            return;
-        items = items.map(x => x.id === e.id ? e : x).sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
-        selectId(e.id);
-    }
     function copy(field: string): void {
         const e = cur;
         if (!e)
@@ -251,30 +245,6 @@ Scope {
             if (d && cur && cur.id === e.id)
                 totp = { code: d.code, period: d.period || 30, expires: Date.now() + d.remaining * 1000 };
         });
-    }
-    function mutate(args: var): void {
-        runJson(args, (d, err) => {
-            if (d)
-                replaceItem(d);
-            else
-                showToast(err || "Could not save");
-        });
-    }
-    function rename(title: string): void {
-        if (cur && title.trim() && title.trim() !== cur.title)
-            mutate(["rename", cur.id, title.trim()]);
-    }
-    function addUrl(url: string): void {
-        if (cur && url.trim())
-            mutate(["add-url", cur.id, url.trim()]);
-    }
-    function removeUrl(url: string): void {
-        if (cur)
-            mutate(["remove-url", cur.id, url]);
-    }
-    function resetOverride(): void {
-        if (cur)
-            mutate(["reset", cur.id]);
     }
     function sync(): void {
         if (syncBusy)
