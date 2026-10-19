@@ -67,7 +67,7 @@ Das Repo liegt in **`~/Workspace/bastian-shell`** (Branch `main`). Alle Repo-Pfa
 `DESKTOP=` in `~/.config/desktop/hyprland.env` (schreibt `scripts/hypr install`, Rückfall `~/Workspace/bastian-shell`).
 Links, die schon in einen der `CHECKOUTS` zeigen, gelten als `ok` und werden nicht umgebogen. Umbiegen = den jeweiligen
 Installer aus dem gewünschten Checkout aufrufen (`scripts/hypr install`, `scripts/session install`, `scripts/claude-skills install` …).
-Umzug aus den alten Ordnern (`desktop` + `desktop-hyprland` in `~/Workspace`): **`system/migrate`** ([docs/MIGRATE.md](../docs/MIGRATE.md)).
+Umzug aus den alten Ordnern (`desktop` + `desktop-hyprland` in `~/Workspace`): **`system/migrate`** ([docs/setup/migrate.md](../docs/setup/migrate.md)).
 
 ## Dotfiles: Links, Kopien, Sync
 
@@ -137,14 +137,14 @@ Steht gekürzt auch am Ende von `bootstrap` (Schritt 11).
 - [ ] Wake-on-LAN: `nmcli connection modify "<Kabel>" 802-3-ethernet.wake-on-lan magic`
 - [ ] **Helium:** Erweiterung + Theme „Desktop“ laden (`helium://extensions`, Entwicklermodus, Ordner aus `theme/out/`)
 - [ ] **VS Code:** Theme „Desktop“ wählen, Settings Sync anmelden
-- [ ] **Discord:** einmal starten, anmelden, beenden → `scripts/equicord inject` (eigener Equicord-Build, Plugin desktopBridge, [DISCORD-CAMS.md](../docs/DISCORD-CAMS.md))
+- [ ] **Discord:** einmal starten, anmelden, beenden → `scripts/equicord inject` (eigener Equicord-Build, Plugin desktopBridge, [knowledge/discord.md](../docs/knowledge/discord.md))
 - [ ] **Spotify/Steam:** in spotify-client anmelden · Steam-Bibliothek `~/Data/Games/SteamLibrary` hinzufügen
 - [ ] **Login-Bildschirm:** `scripts/loginscreen install && scripts/loginscreen on` (sudo, mit Backup)
 - [ ] **Share-Picker aktiv:** `systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal` (nur ohne laufenden Stream)
 - [ ] **…craft-Flatpaks:** aus den `.flatpak`-Dateien
 - [ ] **Projekte:** eigene Repos nach `~/Workspace` per `gh` klonen (Liste: `projects/projects.json`, lokal), `.env` aus `.env.example` · danach `scripts/vscode-colors refresh`
 
-Übersicht aller Logins: [docs/setup/README.md](../docs/setup/README.md).
+Übersicht aller Logins: [CLAUDE.md](../CLAUDE.md).
 
 ## Hinweise
 

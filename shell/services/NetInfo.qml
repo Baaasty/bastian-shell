@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Netz-Daten für den Netz-Chip und das Netz-Popout (scripts/netinfo, JSON). Doku: docs/NET.md
+// Netz-Daten für den Netz-Chip und das Netz-Popout (scripts/netinfo, JSON). Doku: docs/knowledge/shell-features.md
 //  - Verbindung (Kabel/WLAN, Name, IP, Tempo): bei Netz-Änderungen (`ip monitor`, entprellt), beim Öffnen und alle ~15 s solange offen.
 //  - Ping zu den Zielen aus ~/.config/desktop/net.json: NUR solange das Popout offen ist (`active`), alle 3 s.
 Singleton {

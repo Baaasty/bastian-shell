@@ -10,7 +10,7 @@ import Quickshell.Services.Pipewire
 //  - Kamera:   PipeWire-Video-Streams, die an einer Kamera hängen (v4l2/libcamera, media.role Camera), plus Programme, die /dev/video direkt
 //              geöffnet haben (scripts/privacy-cam, inotify)
 //  - Teilen:   PipeWire-Video-Streams, die an einer Bildschirm-Quelle hängen (xdg-desktop-portal-hyprland: Discord, Browser, OBS …)
-// Aktualisiert bei Änderungen der PipeWire-Verbindungen (Link-Gruppen) und Eigenschaften. Doku: docs/PRIVACY.md
+// Aktualisiert bei Änderungen der PipeWire-Verbindungen (Link-Gruppen) und Eigenschaften. Doku: docs/knowledge/shell-features.md
 Singleton {
     id: root
 

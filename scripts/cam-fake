@@ -4,7 +4,7 @@
   cam-fake               legt $XDG_RUNTIME_DIR/desktop/cams.sock an, schickt einen Fake-Call (4 Leute, 3 mit Kamera/Übertragung)
                          und, was die Shell anpinnt, als bewegte Testbilder (360p, 10 fps, JPEG). Strg+C beendet.
 Reagiert auf mute/deaf/leave/join/uvol/umute/pin/unpin wie das Plugin. Weigert sich, wenn das echte Plugin den Socket belegt.
-Nur zum Testen (docs/DISCORD-CAMS.md); sendet nichts an Discord.
+Nur zum Testen (docs/knowledge/discord.md); sendet nichts an Discord.
 """
 
 import io

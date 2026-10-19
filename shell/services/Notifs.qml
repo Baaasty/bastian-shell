@@ -8,7 +8,7 @@ import Quickshell.Services.Notifications
 // Verlauf-Eintrag = { key, file, app, summary, body, icon, desktop, kind, urgent, time }.
 // Popups: normal 6 s, dringend bis Klick. Fokus-Modus: nur Dringendes poppt auf. Verlauf: letzte 50.
 // Später erinnern (Snooze): Meldung verschwindet und kommt zur Zeit als neue Meldung wieder (notify-send, Zustand in
-// ~/.local/state/desktop/notifs-snoozed.json). Ruhezeiten + App-Regeln: NotifRules.qml, Doku docs/NOTIFICATIONS.md.
+// ~/.local/state/desktop/notifs-snoozed.json). Ruhezeiten + App-Regeln: NotifRules.qml, Doku docs/knowledge/shell-features.md.
 Singleton {
     id: root
 

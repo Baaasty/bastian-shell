@@ -3,7 +3,7 @@
 Vorher gab es zwei Ordner: `~/Workspace/desktop` (Branch `kwin`, KWin-Stand) und `~/Workspace/desktop-hyprland` (Branch `hyprland` = `main`).
 Danach gibt es nur noch einen Klon von `bastian-shell` in **`~/Workspace/bastian-shell`**. Der PC startet nach dem LUKS-Passwort
 per Autologin direkt in Hyprland mit der Shell, ohne Login-Bildschirm und ohne Sitzungsauswahl; gesperrt wird mit dem Sperrbildschirm
-der Shell (`docs/LOCKSCREEN.md`, optional nur Leertaste). Die KWin-Variante kommt weg. **Plasma bleibt installiert, aber unsichtbar**
+der Shell (`docs/knowledge/hyprland.md`, optional nur Leertaste). Die KWin-Variante kommt weg. **Plasma bleibt installiert, aber unsichtbar**
 (Bluetooth/WLAN-Dienste, Dolphin, Dateidialog und Qt-Theme hängen teils daran); ganz runter nur mit `--remove-plasma` (dann greetd als
 Login-Ersatz, siehe unten). Das Skript dafür ist **`system/migrate`**. Ohne Schalter macht es nur einen Probelauf und ändert nichts.
 Andere Inhalte in `~/Workspace` (Projekte, `*.code-workspace`) fasst es nicht an.

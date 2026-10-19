@@ -7,7 +7,7 @@ import qs.components
 
 // Hyperfokus-Wecker: ruhige Karte oben mittig unter der Bar (Hauptmonitor), Logik in services/Breaks.qml.
 // Keine Tastatur (kein Fokusklau), klickbar ist nur die Karte. Steht das Pausen-Banner des Fokus-Timers
-// dort schon, rutscht die Karte darunter. Doku: docs/BREAKS.md
+// dort schon, rutscht die Karte darunter. Doku: docs/knowledge/shell-features.md
 Scope {
     Variants {
         model: Config.mainScreens

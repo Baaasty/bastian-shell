@@ -22,7 +22,7 @@ location, projects) lives in local, git-ignored files with an `.example` next to
 - **Focus & breaks** – focus mode, break reminder, project time, daily recap, scenes (game mode, evening routine), night light
 - **Theming** – one palette (`theme/palette.json`) feeds generators in `theme/gen/` for Qt/KDE, Kvantum, GTK, Kitty, Konsole,
   Starship, VS Code, Discord, the browser, Thunderbird, yazi, lazygit, the cursor and the wallpaper
-- **Projects** – per-project color, ports and workspace layout (`projects/`, see `docs/PROJECTS.md`)
+- **Projects** – per-project color, ports and workspace layout (`projects/`, see `docs/knowledge/projects.md`)
 
 ## Requirements
 
@@ -47,7 +47,7 @@ Colors and app themes: edit `theme/palette.json`, then `python3 -I theme/gen/all
 
 The older KDE Plasma / KWin variant (`scripts/rice on|off`, `bridge/`, `plasma/`) is still in the tree but no longer the focus.
 
-Keybindings: press **Super+K** in the session, or read [docs/HOTKEYS.md](docs/HOTKEYS.md).
+Keybindings: press **Super+K** in the session, or read [docs/knowledge/hotkeys.md](docs/knowledge/hotkeys.md).
 
 ## Layout
 

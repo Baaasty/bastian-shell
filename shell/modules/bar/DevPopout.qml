@@ -13,7 +13,7 @@ import qs.components
 //   der die Container des Servers darunter aufklappt – nach Projekt (Compose-/Stack-Name), laufend/gestoppt, Ports.
 // Zeile anklicken = im Browser öffnen (Helium). Stoppen immer mit schlanker Rückfrage in der Zeile.
 // Daten + Aktionen: DevServices.qml → scripts/devservices, Servers.qml → scripts/sshs.
-// Doku: docs/DEVSERVICES.md, docs/SSHS.md
+// Doku: docs/knowledge/shell-features.md, docs/knowledge/shell-features.md
 PopupWindow {
     id: pop
 
@@ -1416,7 +1416,7 @@ PopupWindow {
                         }
                     }
 
-                    // sshs-Server: zuletzt benutzter oben; Upload / Files / Terminal (Servers.qml, docs/SSHS.md)
+                    // sshs-Server: zuletzt benutzter oben; Upload / Files / Terminal (Servers.qml, docs/knowledge/shell-features.md)
                     Item {
                         width: parent.width
                         height: 40

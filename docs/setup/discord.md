@@ -3,10 +3,10 @@
 > **Chat-Client (Stand 2026-10-18): das normale Discord als RPM** (RPM Fusion, `/usr/bin/discord`, Fensterklasse `discord`, Daten in `~/.config/discord`),
 > Start per Skript: `scripts/app-run discord` (RPM zuerst, Flatpak `com.discordapp.Discord` nur, wenn das RPM fehlt). Equibop ist raus (bleibt nur als alter Rückfall erkannt).
 > **Zwei Datenwege:** (1) **Eigener Equicord-Build mit Plugin `desktopBridge`, eingespielt ins Discord-RPM**: Call-Anzeige, Steuerung und Kamera-Kacheln ohne eigene Developer-App –
-> Bau/Aktivierung/Rückweg in [`docs/DISCORD-CAMS.md`](../DISCORD-CAMS.md). (2) **Offizielle RPC** (`scripts/discord-bridge`, Socket `$XDG_RUNTIME_DIR/discord-ipc-N`;
+> Bau/Aktivierung/Rückweg in [`docs/knowledge/discord.md`](../knowledge/discord.md). (2) **Offizielle RPC** (`scripts/discord-bridge`, Socket `$XDG_RUNTIME_DIR/discord-ipc-N`;
 > diese Anleitung, ab Abschnitt 1): Köpfe, Mic/Deafen/Leave, Lautstärke – aber **keine Kameras** in der Shell. Läuft das Plugin, hat es Vorrang; sonst gilt die Bridge.
 > Lauscht am Socket nur ein arRPC (läuft noch ein Equibop), überspringt die Bridge ihn; ist es der einzige, zeigt das Popout „has no call API“. Das Bar-Symbol ist immer das Discord-Logo.
-> Look: Theme „Desktop“ (PC-Look, Discord bleibt erkennbar) – `scripts/equibop-theme install|off|status`, Details in [`docs/THEMING.md`](../THEMING.md) (Abschnitt Equibop).
+> Look: Theme „Desktop“ (PC-Look, Discord bleibt erkennbar) – `scripts/equibop-theme install|off|status`, Details in [`docs/knowledge/theming.md`](../knowledge/theming.md) (Abschnitt Equibop).
 
 Das Popout am Discord-Symbol in der Bar zeigt deinen Voice-Call (wer drin ist, wer spricht, Mic/Kopfhörer/Cam)
 und lässt dich das Nötigste steuern: eigenes Mic, Taub, Kanal verlassen, Lautstärke/Stumm pro Person.

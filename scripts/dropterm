@@ -10,7 +10,7 @@
 Das Fenster hat die Klasse "kitty-drop" (kitty --class) und startet über `uwsm app --` (eigene systemd-Einheit,
 stirbt nicht mit der Shell). Hyprland-Regeln dafür: hypr/rules.conf (schwebend, Spezial-Workspace). Größe und Platz
 setzt dieses Skript bei jedem Einblenden neu, damit es auf jedem Monitor passt (Bar oben wird ausgespart).
-Anleitung: docs/LAYOUTS.md (Abschnitt Drop-down-Terminal)
+Anleitung: docs/knowledge/shell-features.md (Abschnitt Drop-down-Terminal)
 """
 import json
 import subprocess

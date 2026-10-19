@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Szenen steuern (config/scenes.json, Engine: shell/services/Scenes.qml, Doku: docs/SCENES.md).
+"""Szenen steuern (config/scenes.json, Engine: shell/services/Scenes.qml, Doku: docs/knowledge/shell-features.md).
 
   scene list                  alle Szenen, an/aus, Schritte (läuft auch ohne Shell)
   scene on|off|toggle NAME    Szene schalten (über die laufende Shell)

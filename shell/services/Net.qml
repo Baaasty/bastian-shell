@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Netz-Durchsatz der aktiven Schnittstelle (NetInfo.iface) + Speedtest auf Knopfdruck. Doku: docs/NET.md
+// Netz-Durchsatz der aktiven Schnittstelle (NetInfo.iface) + Speedtest auf Knopfdruck. Doku: docs/knowledge/shell-features.md
 //  - Durchsatz: alle 5 s die Byte-Zähler lesen (/sys/class/net/<iface>/statistics), pro Minute mitteln,
 //    die letzten 60 Minuten im Speicher (rxHistory/txHistory, Byte/s). Sparsam: zwei kleine Datei-Lesungen alle 5 s.
 //  - Speedtest: nur auf Knopfdruck (nie automatisch), curl lädt 25 MB von speed.cloudflare.com, Ergebnis in Mbit/s.

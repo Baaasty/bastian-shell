@@ -6,7 +6,7 @@ import Quickshell.Io
 // Kamera (Elgato Facecam) über scripts/camera: Auto-Belichtung immer an, nur die Helligkeit ist einstellbar.
 // Die Facecam nimmt Einstellungen nur an, solange sie streamt. Darum: Wunsch-Helligkeit merken
 // (~/.local/state/desktop/camera.json) und beim Einschalten der Kamera (z. B. Discord-Call) neu setzen,
-// zusammen mit Auto-Belichtung und Anti-Flimmern 50 Hz. Hintergrund: docs/facecam.md
+// zusammen mit Auto-Belichtung und Anti-Flimmern 50 Hz. Hintergrund: docs/knowledge/hardware.md
 Singleton {
     id: root
 

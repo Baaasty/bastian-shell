@@ -782,7 +782,7 @@ PopupWindow {
                             case "offline":
                                 return Chat.title + " isn’t running.";
                             case "unsupported":
-                                return Chat.title + " has no call API (only activity status). Call info needs the Desktop plugin – see docs/DISCORD-CAMS.md.";
+                                return Chat.title + " has no call API (only activity status). Call info needs the Desktop plugin – see docs/knowledge/discord.md.";
                             case "authorizing":
                                 return "Click “Authorize” in Discord to link the desktop.";
                             case "denied":

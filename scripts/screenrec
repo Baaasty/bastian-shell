@@ -79,7 +79,7 @@ cmd_start() {
     [ $# -ge 4 ] || { echo "usage: screenrec start X Y W H [SCALE]" >&2; exit 2; }
     if running_pid >/dev/null; then echo "already recording" >&2; exit 1; fi
     if on_hyprland; then
-        command -v wf-recorder >/dev/null || { notify "Screen recording not set up" "Install wf-recorder (docs/HYPRLAND.md)" dialog-warning; exit 1; }
+        command -v wf-recorder >/dev/null || { notify "Screen recording not set up" "Install wf-recorder (docs/knowledge/hyprland.md)" dialog-warning; exit 1; }
     elif [ ! -x "$BIN" ] || [ ! -f "$GRANT" ]; then
         notify "Screen recording not set up" "Run: scripts/screenrec install" dialog-warning
         exit 1

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -I
-"""Tagesrückblick: Commits eines Tages in allen Repos (Doku: docs/PROJECTTIME.md). Nur lesen.
+"""Tagesrückblick: Commits eines Tages in allen Repos (Doku: docs/knowledge/shell-features.md). Nur lesen.
 
   recap commits [YYYY-MM-DD] [--json]     eigene Commits (alle Branches, ohne Stash) in ~/Workspace + projects.json
 

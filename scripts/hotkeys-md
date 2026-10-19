@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Erzeugt docs/HOTKEYS.md aus hypr/binds.conf (Abschnitte '# ---- Name ----' + Inline-Titel '# Titel').
+"""Erzeugt docs/knowledge/hotkeys.md aus hypr/binds.conf (Abschnitte '# ---- Name ----' + Inline-Titel '# Titel').
 
-Nie von Hand in HOTKEYS.md ändern: Kürzel in hypr/binds.conf ändern, dann `scripts/hotkeys-md`.
+Nie von Hand in docs/knowledge/hotkeys.md ändern: Kürzel in hypr/binds.conf ändern, dann `scripts/hotkeys-md`.
 Live ansehen: Super+K (Keybind-Viewer der Shell, liest dieselbe Datei zur Laufzeit).
 """
 import re
@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONF = ROOT / "hypr" / "binds.conf"
-OUT = ROOT / "docs" / "HOTKEYS.md"
+OUT = ROOT / "docs" / "knowledge" / "hotkeys.md"
 
 SECTION = re.compile(r"^#\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
 BIND = re.compile(r"^(bind[a-z]*)\s*=\s*(.*?)\s+#\s+(\S.*)$")

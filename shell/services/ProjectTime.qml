@@ -5,7 +5,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.config
 
-// Zeit pro Projekt (Doku docs/PROJECTTIME.md): zählt automatisch, solange ein Projekt-Workspace der aktuelle
+// Zeit pro Projekt (Doku docs/knowledge/shell-features.md): zählt automatisch, solange ein Projekt-Workspace der aktuelle
 // Desktop ist (Name = Projekt aus projects/projects.json, GitInfo.projectFor) – nur wenn du da bist:
 // nicht im Leerlauf (idleSec ohne Eingabe; die Leerlauf-Minuten davor werden wieder abgezogen), nicht gesperrt.
 // Lücken > 90 s (Ruhezustand, Shell aus) zählen nicht.

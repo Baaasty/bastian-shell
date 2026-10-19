@@ -8,7 +8,7 @@ import qs.config
 import qs.services
 import qs.components
 
-// Bildschirm-teilen-Auswahl im Desktop-Look (Ersatz für hyprland-share-picker, Doku: docs/SHARING.md).
+// Bildschirm-teilen-Auswahl im Desktop-Look (Ersatz für hyprland-share-picker, Doku: docs/knowledge/shell-features.md).
 // xdg-desktop-portal-hyprland startet pro Teilen-Anfrage scripts/share-pick (custom_picker_binary in xdph.conf),
 // das ruft hier „open“ mit der Fensterliste von xdph auf und wartet auf die Ergebnisdatei
 // $XDG_RUNTIME_DIR/desktop-share-pick/<token>.result („ok <flags>/<auswahl>“ oder „cancel“).

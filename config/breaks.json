@@ -1,6 +1,6 @@
 {
   "_hilfe": [
-    "Hyperfokus-Wecker (shell/services/Breaks.qml, Doku: docs/BREAKS.md). Datei wird live gelesen.",
+    "Hyperfokus-Wecker (shell/services/Breaks.qml, Doku: docs/knowledge/shell-features.md). Datei wird live gelesen.",
     "Eigene Werte am besten in ~/.config/desktop/breaks.json: Schlüssel dort ersetzen die hier.",
     "afterMin = Minuten am Stück am PC bis zum Hinweis. breakMin = so lange ohne Maus/Tastatur zählt als Pause (setzt zurück).",
     "snoozeMin = was '10 more min' verschiebt. respectInhibitors: false (Standard) = Video ohne Eingabe zählt als Pause; true = Video/Idle-Inhibit zählt nicht als Pause.",

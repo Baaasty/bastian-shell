@@ -6,7 +6,7 @@ import qs.components
 
 // Update-Chip in der Bar: nur sichtbar, wenn dnf- oder Flatpak-Updates da sind (Updates.qml prüft alle 4 h im Hintergrund).
 // Links-Klick öffnet den Paketmanager auf dem Reiter „Updates“ (dort installiert man selbst), Rechts-Klick prüft sofort neu.
-// IPC: qs ipc call updates status|check|refresh|open|fake <n>   Doku: docs/UPDATES.md
+// IPC: qs ipc call updates status|check|refresh|open|fake <n>   Doku: docs/knowledge/shell-features.md
 Chip {
     id: chip
     hintKey: BarKeys.keyFor("updates")   // Bar-Modus (Super+B)

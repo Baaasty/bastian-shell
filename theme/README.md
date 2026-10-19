@@ -78,7 +78,7 @@ Ganz entfernen: `scripts/vscode-colors off`, `… theme off`, dann `code --unins
 `chrome://extensions` → Entwicklermodus an → „Entpackte Erweiterung laden“ → `~/Workspace/bastian-shell/theme/out/chrome-desktop`.
 Zurück: `chrome://settings/appearance` → Design „Zurücksetzen“ (entfernt das Theme).
 
-**Thunderbird** (Theme + userChrome/userContent, Details `docs/THEMING.md`)
+**Thunderbird** (Theme + userChrome/userContent, Details `docs/knowledge/theming.md`)
 ```sh
 python3 -I theme/gen/thunderbird.py apply    # an: XPI + chrome/ + user.js-Block, greift nach Neustart
 python3 -I theme/gen/thunderbird.py status   # was liegt im Profil, welches Theme ist aktiv

@@ -5,7 +5,7 @@
  */
 
 // DesktopBridge: Call-Zustand + gepinnte Kameras an die lokale Desktop-Shell (Quickshell) – nur über einen
-// 0600-Unix-Socket (native.ts), nichts geht ins Netz. Doku: docs/DISCORD-CAMS.md im Desktop-Repo.
+// 0600-Unix-Socket (native.ts), nichts geht ins Netz. Doku: docs/knowledge/discord.md im Desktop-Repo.
 //
 // Renderer-Seite:
 //  - liest Stores (VoiceStateStore, MediaEngineStore, …) und schickt bei jeder Änderung einen Zustand ("S"),

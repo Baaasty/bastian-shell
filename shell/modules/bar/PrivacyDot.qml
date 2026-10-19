@@ -6,7 +6,7 @@ import qs.services
 import qs.components
 
 // Privatsphäre-Punkte in der Bar: je ein kleines Symbol, solange Mikrofon (amber), Kamera (rot/Terrakotta) oder Bildschirmfreigabe (Akzent)
-// in Benutzung ist. Nichts aktiv = unsichtbar und ohne Platz. Hovern zeigt, welche App (Tooltip). Daten: Privacy.qml. Doku: docs/PRIVACY.md
+// in Benutzung ist. Nichts aktiv = unsichtbar und ohne Platz. Hovern zeigt, welche App (Tooltip). Daten: Privacy.qml. Doku: docs/knowledge/shell-features.md
 Row {
     id: dots
 

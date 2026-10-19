@@ -9,7 +9,7 @@ import qs.components
 // Ausschneiden (Druck / Super+Shift+S): Bildschirm einfrieren, Bereich ziehen, kopieren + speichern.
 // Einfrieren macht grim (wlr-screencopy unter Hyprland): ein Bild aller Monitore, Auswahl und Zuschnitt darauf.
 // Aufnahme-Modus (Meta+R): gleiche Auswahl, danach nimmt Recording.qml den Bereich als Video auf.
-// Extras (docs/SNIP.md): T = Text aus Bild (OCR, scripts/snip-ocr) · C = Farbpipette (scripts/snip-color) · P = Ausschnitt anpinnen (SnipPin.qml).
+// Extras (docs/knowledge/shell-features.md): T = Text aus Bild (OCR, scripts/snip-ocr) · C = Farbpipette (scripts/snip-color) · P = Ausschnitt anpinnen (SnipPin.qml).
 Scope {
     id: root
 

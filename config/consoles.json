@@ -1,6 +1,6 @@
 {
   "_hilfe": [
-    "Web-Konsolen im Reiter Server des Dev-Popouts (shell/services/Servers.qml, Doku: docs/SSHS.md). Datei wird live gelesen.",
+    "Web-Konsolen im Reiter Server des Dev-Popouts (shell/services/Servers.qml, Doku: docs/knowledge/shell-features.md). Datei wird live gelesen.",
     "Klick auf eine Zeile öffnet url in Helium. label = kleine Angabe rechts. Ohne url ist die Zeile ausgegraut.",
     "Private Adressen (z. B. die eigene Dokploy-Instanz) nicht hier eintragen (Repo ist öffentlich), sondern in",
     "~/.config/desktop/consoles.json: { \"consoles\": [ { \"id\": \"dokploy\", \"url\": \"https://…\" } ] } – Einträge dort ersetzen Felder gleicher id.",

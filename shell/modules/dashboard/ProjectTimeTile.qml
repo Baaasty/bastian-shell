@@ -4,7 +4,7 @@ import qs.config
 import qs.services
 import qs.components
 
-// Zeit pro Projekt, Woche Mo–So (Doku docs/PROJECTTIME.md): oben eine Säule je Tag (heute im Akzent, Überfahren zeigt
+// Zeit pro Projekt, Woche Mo–So (Doku docs/knowledge/shell-features.md): oben eine Säule je Tag (heute im Akzent, Überfahren zeigt
 // die Projekte des Tages), darunter die Projekte der Woche mit Balken und Stunden. ‹ › blättert wochenweise.
 // Daten: ProjectTime.week (scripts/projecttime week --json), frisch beim Zeigen und jede Minute, solange sichtbar.
 Tile {

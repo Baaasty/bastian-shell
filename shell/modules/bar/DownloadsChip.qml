@@ -7,7 +7,7 @@ import qs.components
 
 // Downloads-Chip in der Bar: sonst ein leises Symbol; lädt gerade etwas -> „downloading“ im Glut-Ton,
 // ist eben ein Download fertig geworden -> Haken-Symbol + Punkt (15 min oder bis man das Popout öffnet).
-// Klick öffnet das Downloads-Popout (DownloadsPopout.qml). Doku: docs/DOWNLOADS.md
+// Klick öffnet das Downloads-Popout (DownloadsPopout.qml). Doku: docs/knowledge/shell-features.md
 // IPC: qs ipc call downloads open|close|toggle|status|cleanupPreview <tage>|testDir <pfad>|fresh
 Chip {
     id: chip

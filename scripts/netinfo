@@ -9,7 +9,7 @@ Konfiguration (optional, fehlt = Standard): ~/.config/desktop/net.json
   { "targets": [ { "name": "Internet", "host": "1.1.1.1" }, { "name": "Router", "host": "gateway" } ], "count": 2 }
   "gateway" = der Router (Standardroute). "count" = Pakete pro Messung (1-5). Ein Host darf nur aus Buchstaben, Ziffern, . : - _ bestehen.
 
-Doku: docs/NET.md
+Doku: docs/knowledge/shell-features.md
 """
 import concurrent.futures
 import json

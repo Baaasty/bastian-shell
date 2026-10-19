@@ -1,19 +1,20 @@
-# desktop – Bastians Rice (Quickshell über KWin)
+# desktop – Bastians Shell (Quickshell auf Hyprland)
 
-Bastians einziges Theme „desktop“ (früher „Hütte“): Quickshell (QML, Layer-Shell) auf Fedora 44 / Plasma 6.7 / KWin Wayland.
-Plasma bleibt Fundament (Fenster, Einstellungen, Fallback). Was gebaut wird, steht in [SPEC.md](SPEC.md).
+Bastians einziges Theme „desktop“ (früher „Hütte“): Quickshell (QML, Layer-Shell) auf Fedora 44 / Hyprland 0.56 (uwsm).
+Plasma bleibt installiert (Dolphin, Dateidialog, Qt-Theme, Bluetooth/WLAN), ist aber nicht mehr die Sitzung.
+Der alte KWin-Weg liegt noch im Repo (`plasma/`, `bridge/kwin/`, `scripts/rice`) – Kurzfassung in `docs/knowledge/hyprland.md`.
 
 ## Regeln
 
 - Antworten kurz und auf Deutsch.
 - Vor jedem `sudo` fragen.
 - Secrets (Hue-Key, Tokens, Passwörter) nur in `secrets.json` (gitignored). Nie loggen, nie committen.
-- Nichts an Plasma ändern, was sich nicht mit einem Befehl rückgängig machen lässt (`scripts/rice off`).
+- Nichts an System/Plasma ändern, was sich nicht mit einem Befehl rückgängig machen lässt (`scripts/hypr uninstall`, `scripts/rice off`).
   Plasma-Dateien vorher sichern. Nie `kded6` oder `plasmashell` killen. Farbschemata nur neu anlegen, nie überschreiben.
 - Eine Komponente pro Runde → Bastian testet mit `qs -p ~/Workspace/bastian-shell/shell` und schickt Screenshot → erst dann committen.
-- `refs/` ist nur Referenz (Hyprland/niri). Hyprland-Spezifisches für KWin anpassen oder weglassen.
-  Code aus caelestia/end-4 ist GPL-3.0: Herkunfts-Header beim Übernehmen behalten.
-- Apps aus der Shell nur per `kstart --application …` oder `systemd-run --user --scope` starten, nie direkt
+- `refs/` ist nur Referenz (caelestia, end-4, noctalia …). Code daraus ist GPL-3.0: Herkunfts-Header behalten
+  und Zeile in `THIRD_PARTY.md` ergänzen.
+- Apps aus der Shell nur über `Launch.qml` starten (`uwsm app --`, sonst `systemd-run --user --scope`), nie direkt
   (sonst sterben sie mit, wenn Quickshell neu startet).
   Discord/Spotify/Thunderbird sind RPMs (früher Flatpak): starten über `Launch.run("discord")` bzw. `scripts/app-run`
   (RPM zuerst, Flatpak-Fallback), Umzug der Daten: `scripts/flatpak-to-native`.
@@ -31,19 +32,14 @@ Weiche Ecken, ruhige Schatten, viel Luft, klare aktiv/inaktiv-Zustände. Inter +
 Farben nur aus `theme/palette.json` (aktive Variante **hearth**; die alte Glas-Variante **ember** bleibt: `scripts/rice variant ember`), nie hart im QML.
 Flächen aus Tokens `surface` / `surfaceRaised` / `surfaceSunken`; `Glass.qml` liefert die Fläche, `Theme.blurEnabled` (Palette `blur`) steuert Blur.
 
-## KWin-Fakten (geprüft, Details in SPEC.md §4)
+## Hyprland-Fakten (Details: `docs/knowledge/hyprland.md`)
 
-- Quickshell **0.3.2 aus COPR `errornointernet/quickshell`** (Fedoras 0.2.1-Snapshot kann keinen Blur).
-- Da: layer-shell, ext_background_effect (Blur), ext_idle_notifier, ext_data_control.
-- Fehlt: foreign-toplevel, ext-workspace, ext-session-lock, screencopy, Hyprland-GlobalShortcut/FocusGrab.
-- Ersatz:
-  - Fenster/Desktops = `import org.kde.taskmanager` + Freigabe in `org.quickshell.desktop`
-  - D-Bus = `import org.kde.plasma.workspace.dbus`
-  - Kürzel = `.desktop` mit `X-KDE-Shortcuts` → `qs ipc call`
-  - Klick außerhalb = `PopupWindow.grabFocus` / Klick-Schutz-Fläche
-  - Lockscreen = Plasma-Shell-Paket
-- **Nie einen zweiten `kwin_wayland` starten** (auch nicht `--virtual` zum Testen): Beim Beenden markiert er alle KWin-Kürzel als tot (Alt+Tab …). Reparatur: `scripts/rice keys-fix`.
-- Erste Anlaufstelle für KWin-Lösungen: `refs/caelestia-kde`. CLI: `qdbus-qt6` oder `busctl --user` (kein `qdbus6`).
+- Hyprland aus COPR `sdegler/hyprland` unter uwsm · Quickshell **0.3.2 aus COPR `errornointernet/quickshell`** (Fedoras 0.2.1 zu alt).
+- Fenster/Workspaces über `Quickshell.Hyprland` (`shell/services/Hypr.qml`).
+- Kürzel nur in `hypr/binds.conf` → `qs ipc call …`; der Titel `# …` dahinter speist Super+K und `scripts/hotkeys-md`
+  (erzeugt `docs/knowledge/hotkeys.md` – nie von Hand ändern).
+- Sperre = eigene Shell-Sperre (`shell/modules/lock`, ext-session-lock), Notfall hyprlock.
+- KWin-Weg: **nie einen zweiten `kwin_wayland` starten** (macht alle KWin-Kürzel tot, Reparatur `scripts/rice keys-fix`).
 
 ## Monitore
 
@@ -52,14 +48,13 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 ## Struktur
 
 - `shell/` Quickshell-Config (`shell.qml`, `services/`, `components/`, `modules/`)
-- `bridge/` rice-bridge (Python, dbus_next) + `bridge/kwin/` KWin-Script · `plasma/` Plasma-Shell-Paket (ohne Panel)
-- `theme/` `palette.json` + Generatoren (KDE, Konsole, Starship, Cursor)
-- `design/` Inspos, Claude-Design-Ergebnisse, `preview.html`
-- `docs/` Doku: `ROADMAP.md`, `design-brief.md`, `HOTKEYS.md`, `HYPRLAND.md` (`hypr/`, `scripts/hypr`), `LOCKSCREEN.md`, `MIGRATE.md` (Umzug aus den alten Ordnern, `system/migrate`) · `docs/setup/` Logins & Kopplungen
-  (Spotify, Discord, Hue, Mail & Kalender; Übersicht in `docs/setup/README.md`). `SPEC.md` + `CLAUDE.md` bleiben im Hauptordner.
-- `projects/` Projekt-Einstellungen (`projects.json`: Farbe, Ports, Öffnen, Links – nur über `scripts/project`) · `profiles/` Desktop-Vorlagen · `scripts/` `rice on|off|status` · `systemd/` User-Dienst
-- `claude/skills/` Claude-Code-Skill `/desktop-project` (Projekt-Registry, Doku: `docs/PROJECTS.md`), verlinkt per `scripts/claude-skills install`.
-  Eigene Projekt-Skills (`/new-project`, `/project`) liegen in einem privaten Skill-Repo mit eigenem Install, nicht hier
+- `hypr/` Hyprland-Konfig (binds, rules, monitors) · `config/` App- und Shell-Einstellungen (`*.json`)
+- `scripts/` Hilfsprogramme für Shell und Kürzel · `systemd/` User-Dienste (`desktop-shell-hyprland` u. a.)
+- `theme/` `palette.json` + Generatoren `theme/gen/` für alle Apps · `design/` Inspos, Design-Brief, `preview.html`
+- `projects/` Projekt-Registry (`projects.json`: Farbe, Ports, Öffnen, Links – nur über `scripts/project`) · `profiles/` Desktop-Vorlagen
+- `equicord/` Discord-Plugin `desktopBridge` · alter KWin-Weg: `plasma/`, `bridge/kwin/`
+- `claude/skills/desktop-project/` nur der Wrapper `project` um `scripts/project` (kein Slash-Befehl; genutzt von
+  `/project` und `/new-project` aus dem privaten Skill-Repo), verlinkt per `scripts/claude-skills install`
 - `system/` PC neu aufsetzen: `packages/` (dnf, Repos, Flatpak, VS-Code-Erweiterungen, Sonstiges), `dotfiles.md`,
   `bootstrap` (Standard dry-run, echt mit `--apply`) – Anleitung `system/README.md`
 
@@ -68,10 +63,11 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - Testen: `qs -p ~/Workspace/bastian-shell/shell` (nicht `qs -p .`, sonst liest Quickshell `refs/` mit ein).
   Immer derselbe absolute Pfad wie in Kürzeln und systemd, sonst finden die Kürzel die Instanz nicht.
 - IPC: `qs ipc --any-display -p ~/Workspace/bastian-shell/shell call <target> <function>`
-- An/Aus: `scripts/rice on|off|restart|status` (läuft als User-Unit `desktop-shell`, Log: `journalctl --user -u desktop-shell`)
-- Not-Aus: Strg+Alt+Shift+Q = `scripts/rice off` (stellt Vanilla-Plasma wieder her)
-- Lockscreen-Paket: `scripts/shellpkg install|test|on|off` · Wallpaper: `scripts/wallpaper set|restore`
-- Kürzel-Datei ändern: `rice off && rice on` (kglobalaccel übernimmt Änderungen an bestehenden Dateien nicht live)
+- Einrichten: `scripts/hypr install|uninstall|status|check` · Shell neu starten: `scripts/hypr restart`
+  (User-Unit `desktop-shell-hyprland`, Log: `journalctl --user -u desktop-shell-hyprland`)
+- Not-Aus: Strg+Alt+Shift+Q = `scripts/hypr panic` (Shell aus, Konsole auf)
+- Kürzel geändert: `scripts/hotkeys-md` (Cheat-Sheet neu) · Farben geändert: `python3 -I theme/gen/all.py`
+- PC neu aufsetzen: `system/bootstrap` (dry-run, echt mit `--apply`) · Umzug: `docs/setup/migrate.md`
 - Checks: `scripts/check` (Tests unter `scripts/tests/`, qmllint wenn installiert) – läuft auch als Git-Hook
 
 ## Qualität
@@ -94,7 +90,7 @@ Scope = Bereich (`bar`, `workbar`, `launcher`, `bridge`, `hypr`, `theme`, `syste
 ## Workflow
 
 - Größere Features: Plan Mode → Plan bestätigen lassen → umsetzen → Checks zeigen → Roadmap abhaken.
-- Roadmap: aktuell `docs/ROADMAP-HYPRLAND.md` (Hyprland-Umzug), `docs/ROADMAP.md` = KWin-Weg + Gesamtliste.
+- Roadmap: aktuell `docs/ROADMAP-HYPRLAND.md`, `docs/ROADMAP.md` = Gesamtliste (KWin-Zeit).
   Nur `- [ ]` / `- [x]` (kein `[~]` → `- [ ] … (teilweise: was fehlt)`), erster offener Punkt = nächster Schritt.
 - Ideen „nicht jetzt“: eine Zeile in `docs/BACKLOG.md` statt umsetzen; ganzes Konzept → `docs/BACKLOG-<THEMA>.md`.
 - Beim Kompaktieren erhalten: geänderte Dateien, offene TODOs, aktueller Roadmap-Punkt.
@@ -104,7 +100,7 @@ Scope = Bereich (`bar`, `workbar`, `launcher`, `bridge`, `hypr`, `theme`, `syste
 Doku im selben Commit wie der Code. **Code ist die Quelle der Wahrheit:** Docs behaupten nie Umgesetztes, das nicht im
 Code steht, und wiederholen nicht, was der Code schon zeigt (Versionen, Feldlisten, IPC-Funktionen) – sie verweisen auf die
 Stelle und erklären das Warum. Widerspricht die Doku dem Code: Doku sofort korrigieren. Ausnahme Planung
-(ROADMAP, BACKLOG) – dort steht Geplantes, klar als geplant markiert. Inhaltsverzeichnis aller Docs: [docs/README.md](docs/README.md).
+(ROADMAP, BACKLOG) – dort steht Geplantes, klar als geplant markiert. Nur erklären, was man aus dem Code nicht sieht.
 
 | Auslöser | Doc |
 | --- | --- |
@@ -113,9 +109,23 @@ Stelle und erklären das Warum. Widerspricht die Doku dem Code: Doku sofort korr
 | Idee „nicht jetzt“ | `docs/BACKLOG.md` (eine Zeile) |
 | Neues Paket, Werkzeugwechsel | `docs/TECHSTACK.md` (warum) + `docs/DECISIONS.md` + `system/packages/` – nach OK |
 | Grundsatzentscheidung | `docs/DECISIONS.md`: `JJJJ-MM-TT · Entscheidung · Grund · Status` |
-| Scope ändert sich (Ziel, Nicht-Ziel) | `SPEC.md` (gilt als PRD) + DECISIONS – nur nach OK |
-| Komponente gebaut/umgebaut | `docs/<THEMA>.md` (Bedienung, IPC, Grenzen) + Zeile in `docs/README.md` |
-| Neues Kürzel | `docs/HOTKEYS.md` |
+| Scope ändert sich (Ziel, Nicht-Ziel) | `docs/PRD.md` (gilt als PRD) + DECISIONS – nur nach OK |
+| Neues Feature | eine Zeile in `docs/PRD.md` (Kern-Funktionen) |
+| Konfig, Grenze, Stolperfalle eines Features | `docs/knowledge/shell-features.md` (≤ 6 Zeilen je Feature) |
+| Neues Kürzel | `hypr/binds.conf` mit Titel, dann `scripts/hotkeys-md` |
 | Neuer Befehl, Ordner, Skript | CLAUDE.md „Befehle“ / „Struktur“ |
 | Setup-/Login-Schritt gelernt | `docs/setup/<thema>.md` |
 | Fehler passiert zum zweiten Mal | Regel unter „Regeln“ |
+
+## Doku
+
+| Datei | Wofür |
+| --- | --- |
+| `README.md` | öffentlich (Englisch): was es ist, Installation |
+| `THIRD_PARTY.md` | übernommener fremder Code + Lizenzen (Pflicht, Repo ist GPL und öffentlich) |
+| `docs/PRD.md` | was die Shell kann und warum, Nicht-Ziele |
+| `docs/ARCHITECTURE.md` | wie sie gebaut ist (Ordner, Datenfluss, IPC, Start) |
+| `docs/ROADMAP-HYPRLAND.md` · `docs/ROADMAP.md` | was dran ist / Gesamtliste |
+| `docs/BACKLOG.md` · `docs/TECHSTACK.md` · `docs/DECISIONS.md` | Ideen · womit und warum · Entscheidungs-Log |
+| `docs/knowledge/` | `shell-features` (Konfig/Grenzen je Feature) · `hyprland` (Sitzung, Sperre, hyprflow, alter KWin-Weg) · `theming` · `hotkeys` (erzeugt) · `projects` (Registry) · `discord` (Plugin, Kameras) · `hardware` (Facecam, RGB) |
+| `docs/setup/` | einmal einrichten: discord, goxlr, hue, spotify, mail-calendar, passwords, loginscreen, migrate |

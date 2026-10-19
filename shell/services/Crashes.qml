@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Absturz-Meldungen statt DrKonqi (Karte: modules/crash, Doku: docs/CRASHES.md).
+// Absturz-Meldungen statt DrKonqi (Karte: modules/crash, Doku: docs/knowledge/shell-features.md).
 // Quelle: systemd-coredump schreibt jeden Absturz eines User-Prozesses ins User-Journal (lesbar ohne sudo).
 //  - seed:   einmal beim Start `journalctl --user -t systemd-coredump --since today` → zählt die Abstürze von heute, zeigt nichts
 //  - follow: `journalctl --user -f -n 0 …` → ereignisgesteuert, jede neue Zeile = ein neuer Absturz → Karte

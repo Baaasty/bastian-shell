@@ -5,7 +5,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "timewin.js" as TW
 
-// Hyperfokus-Wecker (Doku docs/BREAKS.md): nach afterMin Minuten am Stück am PC eine ruhige Karte unter der Bar
+// Hyperfokus-Wecker (Doku docs/knowledge/shell-features.md): nach afterMin Minuten am Stück am PC eine ruhige Karte unter der Bar
 // (shell/modules/breaks/BreakCard.qml). Pause = breakMin Minuten ohne Maus/Tastatur (IdleMonitor, auch während ein Video
 // Idle-Inhibit hält) oder Fokus-Pause.
 // Schweigt bei Vollbild, Spiel, Discord-Call, laufendem Fokus-Block, Sperre und in den Szenen aus silentScenes

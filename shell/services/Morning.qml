@@ -6,7 +6,7 @@ import Quickshell.Wayland
 import "timewin.js" as TW
 
 // Morgen-Übersicht: einmal pro Kalendertag eine ruhige Karte (shell/modules/morning/MorningCard.qml) mit Termine, Mail,
-// Wetter, To-dos, Inbox. Wann sie kommt, steht von Hand pflegbar in ~/.config/desktop/morning.json (Doku docs/MORNING.md):
+// Wetter, To-dos, Inbox. Wann sie kommt, steht von Hand pflegbar in ~/.config/desktop/morning.json (Doku docs/knowledge/shell-features.md):
 //   { "enabled": true, "from": "05:00", "to": "11:00", "delaySec": 30, "closeSec": 20 }
 // Auslöser: alle 15 s prüfen. Sie kommt, sobald (1) die Uhrzeit im Fenster liegt, (2) heute noch keine war,
 // (3) die Shell seit delaySec läuft, (4) du da bist (nicht gesperrt, nicht im Leerlauf, kein Spiel/Vollbild, kein Nicht stören/Fokus),

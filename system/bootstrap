@@ -19,7 +19,7 @@ set -u
 # ---------------------------------------------------------------- Pfade (NUR HIER ändern)
 WORKSPACE="$HOME/Workspace"
 REPO_NAME="bastian-shell"
-REPO_BRANCH="main"                     # Hyprland-Stand (der alte KWin-Stand liegt nur noch im Bundle, docs/MIGRATE.md)
+REPO_BRANCH="main"                     # Hyprland-Stand (der alte KWin-Stand liegt nur noch im Bundle, docs/setup/migrate.md)
 EXPECTED_REPO="$WORKSPACE/$REPO_NAME"  # Ort des Klons (README Schritt 2)
 # Weitere Checkouts desselben Repos. Links/Pfade, die in einen davon zeigen, gelten als „unsere“
 # und werden NICHT umgebogen (sonst springt das System zwischen den Checkouts hin und her).
@@ -627,7 +627,7 @@ if want 11; then
    2. ~/Data: verschlüsselte btrfs-Platte (/dev/mapper/data) in /etc/crypttab + /etc/fstab eintragen
    3. SSH-Keys (Namen wie in system/dotfiles/.ssh/config, Vorlage: config.example): ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_<name> → GitHub · gh auth login · gh config set git_protocol ssh
    4. Claude: \`claude\` (Login) · Claude Desktop starten (Login)
-   5. secrets.json: cp secrets.example.json secrets.json && chmod 600 secrets.json, dann laut docs/setup/README.md:
+   5. secrets.json: cp secrets.example.json secrets.json && chmod 600 secrets.json, dann laut CLAUDE.md:
       Hue (scripts/hue-pair), Spotify (scripts/spotify-auth), Discord, Mail + Kalender → danach scripts/rice feeds
    6. Thunderbird-Konten: docs/setup/mail-calendar.md
    7. iCloud: rclone config (Remotes icloud + icloud-photos) → icloud-login

@@ -8,7 +8,7 @@ import qs.components
 
 // Quicklinks eines Projekt-Workspaces (Idee n): localhost-Ports aus dev.ports (mit „läuft“-Punkt), Container des
 // Projekts (Zuordnung aus DevServices, dieselbe wie im Dev-Popout) und Links aus projects.json (links). Klick öffnet in Helium. „Add link“ und das X an einem Link gehen über scripts/project
-// (link add / link rm) – die Datei wird nie von Hand oder aus QML geschrieben. Doku: docs/QUICKLINKS.md
+// (link add / link rm) – die Datei wird nie von Hand oder aus QML geschrieben. Doku: docs/knowledge/shell-features.md
 // Reihenfolge fest: Local (Ports nach Nummer) · Containers · Repos · übrige Links · Add link; ein Icon je Kategorie
 // (icon aus projects.json zählt hier nicht). Mit-Projekte aus der
 // .code-workspace (soulwick → soulwick-platform) liefern Ports, Container und Repo-Links dazu.

@@ -12,7 +12,7 @@
 Zuordnung zum Projekt: Arbeitsordner des Prozesses (/proc/<pid>/cwd) bzw. compose-Ordner des Containers liegt in
 `paths` (längster Treffer) – sonst ein Port, der genau einem Projekt gehört (dev.ports/dev.infra). Sonst „Other“.
 Nur eigene Prozesse (ss zeigt fremde ohne PID). Apps (Discord, VS Code …) zählen nicht als Dev-Server (kind "app").
-Doku: docs/DEVSERVICES.md
+Doku: docs/knowledge/shell-features.md
 """
 import json
 import os

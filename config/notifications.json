@@ -1,6 +1,6 @@
 {
   "_hilfe": [
-    "Ruhezeiten, Ausnahmen und App-Regeln für Benachrichtigungen (shell/services/NotifRules.qml, Doku: docs/NOTIFICATIONS.md).",
+    "Ruhezeiten, Ausnahmen und App-Regeln für Benachrichtigungen (shell/services/NotifRules.qml, Doku: docs/knowledge/shell-features.md).",
     "Eigene Änderungen am besten in ~/.config/desktop/notifications.json: Schlüssel dort ersetzen die hier (quiet, through, apps, snooze). Beide Dateien werden live gelesen.",
     "quiet.windows: from/to = 'HH:MM' (von > bis = über Mitternacht). days = Tage, an denen das Fenster BEGINNT: mon…sun, 'weekdays', 'weekend', leer = alle.",
     "through: kommt auch in der Ruhezeit als Popup durch. critical = dringende Meldungen. rules: Regex auf app (App-Name oder desktop-entry) und/oder summary (Titel), ohne Groß/Klein.",

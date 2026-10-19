@@ -1,5 +1,5 @@
 [Desktop Entry]
-# Textdateien per Doppelklick: eigenes, schlichtes VS-Code-Fenster (nicht in ein offenes Projekt). Rückweg: docs/THEMING.md „Bedienung & Verhalten“
+# Textdateien per Doppelklick: eigenes, schlichtes VS-Code-Fenster (nicht in ein offenes Projekt). Rückweg: docs/knowledge/theming.md „Bedienung & Verhalten“
 Type=Application
 Name=VS Code (Text)
 Comment=Datei in einem eigenen VS-Code-Fenster öffnen

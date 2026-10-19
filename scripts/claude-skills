@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Claude-Code-Skills der Shell (claude/skills/<name>, z. B. desktop-project) nach ~/.claude/skills verlinken.
-# Nur Ordner mit SKILL.md sind Skills. Eigene/Firmen-Skills aus anderen Repos bringen ihr eigenes Install mit und
+# Claude-Code-Ordner der Shell (claude/skills/<name>) nach ~/.claude/skills verlinken: Skills (mit SKILL.md) und
+# Werkzeug-Ordner ohne Slash-Befehl (ausführbare Datei, z. B. desktop-project/project = Wrapper um scripts/project). Eigene/Firmen-Skills aus anderen Repos bringen ihr eigenes Install mit und
 # rufen für den Desktop-Teil ~/.claude/skills/desktop-project/project auf (Wrapper um scripts/project).
 #   claude-skills            Übersicht
 #   claude-skills install    Symlinks anlegen (vorhandene fremde Ordner werden nie angefasst) + tote eigene Links weg
@@ -10,9 +10,12 @@ src="$(dirname "$(readlink -f "$0")")/../claude/skills"
 src="$(readlink -f "$src")"
 dst="$HOME/.claude/skills"
 
+# Skill (SKILL.md) oder Werkzeug-Ordner (mindestens eine ausführbare Datei)
+ours() { [ -f "$1/SKILL.md" ] || [ -n "$(find "$1" -maxdepth 1 -type f -perm -u+x -print -quit)" ]; }
+
 status() {
   for d in "$src"/*/; do
-    [ -f "$d/SKILL.md" ] || continue
+    ours "$d" || continue
     n=$(basename "$d")
     l="$dst/$n"
     if [ -L "$l" ] && [ "$(readlink -f "$l")" = "${d%/}" ]; then s="installiert"
@@ -36,7 +39,7 @@ case "${1:-status}" in
   install)
     mkdir -p "$dst"
     for d in "$src"/*/; do
-      [ -f "$d/SKILL.md" ] || continue
+      ours "$d" || continue
       n=$(basename "$d")
       l="$dst/$n"
       if [ -L "$l" ]; then ln -sfn "${d%/}" "$l"

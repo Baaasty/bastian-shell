@@ -1,5 +1,5 @@
 # hyprflow-Konfiguration für den Desktop (verlinkt nach ~/.config/hyprflow/config.toml durch `scripts/session install`).
-# Anleitung: docs/SESSION.md
+# Anleitung: docs/knowledge/hyprland.md
 #
 # WICHTIG – Positivliste: Wiederhergestellt wird nur, was unten als [apps."<Fensterklasse>"] steht
 # (scripts/session-prepare filtert die gespeicherte Sitzung, bevor hyprflow sie liest). Alles andere

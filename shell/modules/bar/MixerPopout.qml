@@ -13,7 +13,7 @@ import qs.components
 //   3) Apps: alle App-Streams mit Lautstärke + Stumm und dem Kanal, auf dem sie landen (Mixer.group: Spotify -> Music, Discord -> Chat, Rest -> System)
 // Alle Zeilen fluchten: Name links, Regler/Balken/Chips ab colX. Routing und Pegel kommen aus den gemeinsamen Komponenten
 // components/GoxlrPanel.qml + GoxlrLevel.qml (auch in der Dashboard-Kachel).
-// Ausgang/Eingang werden hier nicht gewechselt. Doku: docs/MIXER.md
+// Ausgang/Eingang werden hier nicht gewechselt. Doku: docs/knowledge/shell-features.md
 PopupWindow {
     id: pop
 

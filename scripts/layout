@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -I
-"""Fenster-Layout pro Projekt merken und wieder aufbauen (Hyprland). Anleitung: docs/LAYOUTS.md
+"""Fenster-Layout pro Projekt merken und wieder aufbauen (Hyprland). Anleitung: docs/knowledge/shell-features.md
 
   layout save [name]      Fenster des aktuellen Desktops merken -> config/layouts/<name>.toml
   layout restore [name]   fehlende Fenster starten (über uwsm) und auf den aktuellen Desktop legen
@@ -202,7 +202,7 @@ def q(s):
 def write_toml(path, name, desk, windows, note):
     lines = [
         f"# Layout \"{name}\" – gespeichert {time.strftime('%Y-%m-%d %H:%M')} von scripts/layout save (Desktop {desk}).",
-        "# Von Hand änderbar. Anleitung: docs/LAYOUTS.md",
+        "# Von Hand änderbar. Anleitung: docs/knowledge/shell-features.md",
         "# Reihenfolge = Startreihenfolge = Kachelreihenfolge (dwindle: das zweite Fenster teilt rechts vom ersten, das dritte",
         "# teilt das zweite). Gestartet wird nur, was auf dem Workspace des Monitors noch nicht läuft (gleiche Klasse).",
         "# monitor: Name wie in hypr/monitors.conf. cmd: Programm + Argumente (ohne Shell). box: x y Breite Höhe als",

@@ -8,7 +8,7 @@ import qs.config
 //  - Die System-Lautstärke (Standard-Ausgang) wird hier NIE verändert – sie bleibt fest auf 100 % (Wächter in Audio.qml,
 //    Doku docs/setup/goxlr.md). Ausgang und Eingang sind fest (GoXLR System / Chat Mic) und werden hier nicht gewechselt.
 //  - GoXLR-Pegel/Routing: gemeinsame Komponente components/GoxlrPanel.qml (Daten: GoXLR.qml).
-// Doku: docs/MIXER.md
+// Doku: docs/knowledge/shell-features.md
 Singleton {
     id: root
 

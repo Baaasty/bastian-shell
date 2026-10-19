@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fenster-Sitzung sichern und nach Neustart/Absturz wiederherstellen (Backend: hyprflow, geprüft: docs/SESSION.md).
+# Fenster-Sitzung sichern und nach Neustart/Absturz wiederherstellen (Backend: hyprflow, geprüft: docs/knowledge/hyprland.md).
 #
 #   session install      Konfiguration + Autosave-Timer einrichten (ohne sudo, nichts wird gebaut oder gestartet)
 #   session build        hyprflow aus dem geprüften, festgenagelten Quellstand bauen (braucht cargo = Freigabe!)
@@ -22,7 +22,7 @@ RT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/desktop-session"
 OFF="$STATE/session-off"
 LOG="$STATE/session.log"
 SRC="$HOME/.local/src/hyprflow"
-# Geprüfter Stand von github.com/isorensen/hyprflow v0.2.1 (Quellcode-Prüfung 18.10.2026, docs/SESSION.md).
+# Geprüfter Stand von github.com/isorensen/hyprflow v0.2.1 (Quellcode-Prüfung 18.10.2026, docs/knowledge/hyprland.md).
 # Neuer Stand erst nach neuer Prüfung eintragen.
 PIN=efc96e9aa7bf96ad00706e77511a3daf99ca4c63
 UNITS=(desktop-session-save.service desktop-session-save.timer)
@@ -35,7 +35,7 @@ hyprflow_bin() {
     if [ -x "$HOME/.local/bin/hyprflow" ]; then echo "$HOME/.local/bin/hyprflow"; else command -v hyprflow; fi
 }
 need_hf() {
-    HF=$(hyprflow_bin) || { say "hyprflow ist nicht installiert → scripts/session build (braucht cargo, siehe docs/SESSION.md)"; return 1; }
+    HF=$(hyprflow_bin) || { say "hyprflow ist nicht installiert → scripts/session build (braucht cargo, siehe docs/knowledge/hyprland.md)"; return 1; }
 }
 sd() { [ -n "$NOSD" ] || systemctl --user "$@"; }
 
@@ -65,7 +65,7 @@ cmd_install() {
     if hyprflow_bin >/dev/null; then
         say "hyprflow: $(hyprflow_bin)"
     else
-        say "hyprflow fehlt noch → cargo bereitstellen (docs/SESSION.md), dann: scripts/session build"
+        say "hyprflow fehlt noch → cargo bereitstellen (docs/knowledge/hyprland.md), dann: scripts/session build"
         say "Bis dahin sind Autosave und Login-Restore harmlos (tun nichts)."
     fi
     say "Fertig. Test ohne Risiko: scripts/session dry-run   ·   Not-Aus: scripts/session off"

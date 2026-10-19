@@ -11,7 +11,7 @@ import Quickshell.Io
 // Einstellungen (von Hand pflegbar): ~/.config/desktop/cams.json  { "width": 300, "show": true, "corner": "top-right", "screen": "DP-2" }
 //   width: Kachelbreite in px (Eck-Griff oder Mausrad am Overlay); screen: Monitor (Overlay auf einen anderen Monitor ziehen); show: Kameras an/aus – an = alle Kameras der anderen im Call
 //   zusammen im Overlay (Schalter im Discord-Popout); corner: Ecke des Overlays (top-right|top-left|bottom-right|bottom-left, Knopf im Overlay).
-// Doku: docs/DISCORD-CAMS.md
+// Doku: docs/knowledge/discord.md
 Singleton {
     id: root
 

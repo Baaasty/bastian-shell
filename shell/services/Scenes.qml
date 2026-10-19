@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 // Szenen-Engine: Gruppen von Schritten (Licht, Ruhe, Fenster, Musik …) auf einer Taste, an und aus.
-// Dateibasiert und ohne KI pflegbar: config/scenes.json (Format und Beispiele: docs/SCENES.md).
+// Dateibasiert und ohne KI pflegbar: config/scenes.json (Format und Beispiele: docs/knowledge/shell-features.md).
 // Beim Einschalten merkt sich jeder Schritt den vorherigen Zustand (nur die Felder, die er ändert);
 // beim Ausschalten wird er zurückgesetzt, danach laufen die "off"-Schritte der Szene.
 // Zustand: ~/.local/state/desktop/scenes.json. Bedienung: scripts/scene, IPC "scene", Kürzel in hypr/binds.conf.

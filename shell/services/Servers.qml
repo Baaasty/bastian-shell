@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 // Reiter „Server“ im Dev-Popout (DevPopout.qml): Web-Konsolen aus config/consoles.json und Server aus scripts/sshs.
-// Doku: docs/SSHS.md
+// Doku: docs/knowledge/shell-features.md
 // Konsolen: config/consoles.json (feste Liste), private Adressen in ~/.config/desktop/consoles.json (gleiche id ersetzt
 // Felder), beide live gelesen. Öffnen wie die Ports im Dev-Popout (DevServices.openUrl).
 // Liste: `sshs list --json` (liest nur die SSH-Konfiguration, verbindet nicht), zuletzt benutzte zuerst – sshs merkt sich

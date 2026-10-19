@@ -6,7 +6,7 @@ import qs.config
 import qs.services
 import qs.components
 
-// Morgen-Übersicht (Doku docs/MORNING.md): eine ruhige Karte mit Begrüßung, Terminen, Mails, Wetter, To-dos, Inbox.
+// Morgen-Übersicht (Doku docs/knowledge/shell-features.md): eine ruhige Karte mit Begrüßung, Terminen, Mails, Wetter, To-dos, Inbox.
 // Schließt per Klick, Esc, Enter/Leertaste oder nach Morning.closeSec Sekunden (Überfahren hält sie offen).
 // Auslöser und Zeitfenster: services/Morning.qml. Von Hand zeigen: qs ipc … call morning open.
 // Tastatur: Esc/Enter gehen, sobald die Karte den Fokus hat (Layer-Shell „OnDemand“ – nach Überfahren/Klick); Klick geht immer.

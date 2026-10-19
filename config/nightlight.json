@@ -1,5 +1,5 @@
 {
-  "_help": "Abendwärme (scripts/nightlight, Doku docs/NIGHTLIGHT.md). Änderungen gelten innerhalb von 15 s, kein Neustart nötig. Werkzeug: hyprsunset (wirkt auf ALLE Monitore gemeinsam).",
+  "_help": "Abendwärme (scripts/nightlight, Doku docs/knowledge/shell-features.md). Änderungen gelten innerhalb von 15 s, kein Neustart nötig. Werkzeug: hyprsunset (wirkt auf ALLE Monitore gemeinsam).",
   "enabled": true,
   "evening": { "at": "sunset", "offsetMin": 0 },
   "morning": { "at": "sunrise", "offsetMin": 0 },

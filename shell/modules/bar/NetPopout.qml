@@ -8,7 +8,7 @@ import qs.components
 // Netz-Popout unter dem Netz-Chip (Klick öffnet, Klick daneben / Esc schließt). Bewusst schlicht:
 //  - Kopf: Online / No internet / Offline in einer Zeile (+ Ping ins Internet), „Details“ klappt Name/IP/Router/Link auf
 //  - Reachability: Ping zu Internet (1.1.1.1), Router, GitHub, Discord (Ziele: ~/.config/desktop/net.json) – nur solange offen
-//  - Last hour: Ø-Durchsatz ↓/↑ (Minutenmittel, Net.qml) als kleines Diagramm + Speedtest-Knopf (nur auf Knopfdruck). Doku: docs/NET.md
+//  - Last hour: Ø-Durchsatz ↓/↑ (Minutenmittel, Net.qml) als kleines Diagramm + Speedtest-Knopf (nur auf Knopfdruck). Doku: docs/knowledge/shell-features.md
 PopupWindow {
     id: pop
 

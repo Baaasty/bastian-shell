@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hyprland als zweite Sitzung neben Plasma (Branch hyprland). Plasma bleibt unberührt und Standard-Fallback.
-# Anleitung, Pakete, Zurück zu Plasma: docs/HYPRLAND.md
+# Anleitung, Pakete, Zurück zu Plasma: docs/knowledge/hyprland.md
 #
 #   hypr install     Konfiguration verlinken/anlegen (ohne sudo): ~/.config/hypr, uwsm-Umgebung, Portale,
 #                    Shell-Dienst desktop-shell-hyprland. Vorhandene fremde Dateien werden gesichert.
@@ -11,7 +11,7 @@
 #   hypr power       Power-Menü der Shell; ohne Shell: Abmelden nach Rückfrage (Strg+Alt+Entf, Power-Taste)
 #   hypr restart     Shell-Dienst neu starten
 #   hypr drkonqi off|on|status   Absturz-Fenster: off = Karte der Shell statt DrKonqi (nur Hyprland, Standard nach install),
-#                    on = DrKonqi wieder überall (docs/CRASHES.md)
+#                    on = DrKonqi wieder überall (docs/knowledge/shell-features.md)
 set -uo pipefail
 
 SELF=$(readlink -f "$0")
@@ -29,7 +29,7 @@ ENVFILE="$CONF/desktop/hyprland.env"
 DRKONQI_DROPIN="$CONF/systemd/user/drkonqi-coredump-launcher@.service.d/not-on-hyprland.conf"
 MARK="# ERZEUGT von scripts/hypr install"
 
-# Pakete, ohne die die Sitzung nicht läuft (Liste + Befehle: docs/HYPRLAND.md, system/packages)
+# Pakete, ohne die die Sitzung nicht läuft (Liste + Befehle: docs/knowledge/hyprland.md, system/packages)
 NEED=(Hyprland hyprctl hypridle hyprlock uwsm grim wf-recorder wpctl xdg-terminal-exec)
 
 say() { printf '%s\n' "$*"; }
@@ -154,7 +154,7 @@ missing_packages() {
     for c in "${NEED[@]}"; do command -v "$c" >/dev/null 2>&1 || miss+=("$c"); done
     [ -e /usr/share/wayland-sessions/hyprland-uwsm.desktop ] || miss+=("Sitzung hyprland-uwsm.desktop")
     if [ ${#miss[@]} -gt 0 ]; then
-        say "Fehlt noch: ${miss[*]}  → Befehle in docs/HYPRLAND.md (sudo)"
+        say "Fehlt noch: ${miss[*]}  → Befehle in docs/knowledge/hyprland.md (sudo)"
         return 1
     fi
     say "Pakete: alles da"

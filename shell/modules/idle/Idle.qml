@@ -7,7 +7,7 @@ import qs.config
 import qs.services
 
 // Kamin-Idle: nach Leerlauf ein ruhiger Kamin-Bildschirm auf dem Hauptmonitor, auf den anderen Monitoren dunkel.
-// hypridle → scripts/idle show|hide → IPC „fireplace“ (hypr/hypridle.conf). Doku: docs/IDLE.md
+// hypridle → scripts/idle show|hide → IPC „fireplace“ (hypr/hypridle.conf). Doku: docs/knowledge/shell-features.md
 // KEINE Sperre: gesperrt wird weiter von der Lock-Kette (scripts/lock, Lock.qml). Die Sperre liegt über diesem Fenster.
 // Jede Taste/Mausbewegung beendet es: hypridle ruft beim Resume „hide“, zusätzlich beendet jede Mausbewegung
 // auf dem Kamin es selbst (falls hypridle nicht läuft). Fenster gibt es nur, solange der Kamin sichtbar ist.

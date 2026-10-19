@@ -10,7 +10,7 @@ stdout (JSON-Zeilen):
 stdin (eine Zeile): pin <id> · unpin <id> · mute 0|1 · deaf 0|1 · leave · join <id> · uvol <id> <0-200> · umute <id> 0|1 ·
   guilds · channels <gid> · peek <id>… · open <id> – alles andere reicht das Plugin weiter oder weist es ab.
 Bilder: $XDG_RUNTIME_DIR/desktop/cam-<key>.jpg (RAM, atomar ersetzt, bei Entpinnen/Trennung gelöscht). Nichts wird auf Platte
-oder ins Netz geschrieben. Doku: docs/DISCORD-CAMS.md
+oder ins Netz geschrieben. Doku: docs/knowledge/discord.md
 """
 
 import json

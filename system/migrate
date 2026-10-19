@@ -2,7 +2,7 @@
 # Umzug auf EIN Theme: ~/Workspace/desktop (Worktree, Branch kwin) + ~/Workspace/desktop-hyprland (Branch hyprland)
 # → Klon von bastian-shell in ~/Workspace/bastian-shell. Danach startet der PC direkt in Hyprland + Shell (Autologin nach dem
 # LUKS-Passwort), die KWin-Variante ist weg. Plasma bleibt installiert, aber unsichtbar (nur mit --remove-plasma runter).
-# Anleitung, Reihenfolge, Rückweg, Notfall aus dem TTY: docs/MIGRATE.md
+# Anleitung, Reihenfolge, Rückweg, Notfall aus dem TTY: docs/setup/migrate.md
 #
 #   system/migrate                    Probelauf (Standard): zeigt jeden Schritt, ändert NICHTS, kein sudo
 #   system/migrate --apply            Schritte 1–6 wirklich ausführen (7 und 8 brauchen eigene Schalter, s. u.)
@@ -412,8 +412,8 @@ fi
 if want 4; then
     step_title 4
     R="$NEW"; [ -d "$NEW/.git" ] || R="$HERE"
-    hits="$(git -C "$R" grep -nE "$GREP_RE" -- . ':!docs/MIGRATE.md' ':!system/migrate' 2>/dev/null || true)"
-    if [ -z "$hits" ]; then ok "keine festen Pfade auf desktop/desktop-hyprland in $(tilde "$R") (außer MIGRATE.md + migrate)"
+    hits="$(git -C "$R" grep -nE "$GREP_RE" -- . ':!docs/setup/migrate.md' ':!system/migrate' 2>/dev/null || true)"
+    if [ -z "$hits" ]; then ok "keine festen Pfade auf desktop/desktop-hyprland in $(tilde "$R") (außer setup/migrate.md + migrate)"
     else warn "feste Pfade gefunden:"; printf '%s\n' "$hits" | head -20 | sed 's/^/      /'; fi
     if [ -d "$NEW/.git" ]; then
         dirty="$(git -C "$NEW" status --porcelain)"
@@ -460,7 +460,7 @@ if want 6; then
     info "keylight-off (beim Herunterfahren) liest DESKTOP bei jedem Aufruf aus hyprland.env – kein Neustart nötig (schaltet sonst das Licht aus)"
     echo "  -- Prüfung"
     if check_green; then ok "GRÜN – Schritt 7 und 8 sind frei"
-    elif (( APPLY )); then bad "nicht grün – Schritt 7/8 gesperrt. Rückweg: docs/MIGRATE.md („Zurück“)"; FAILS+=("Prüfung Schritt 6 rot"); gate 6
+    elif (( APPLY )); then bad "nicht grün – Schritt 7/8 gesperrt. Rückweg: docs/setup/migrate.md („Zurück“)"; FAILS+=("Prüfung Schritt 6 rot"); gate 6
     else info "(Probelauf: vor Schritt 1–6 ist die Prüfung naturgemäß rot)"; fi
 fi
 
@@ -597,7 +597,7 @@ if want 7; then
         guser="$(awk '$1=="u"{print $2; exit}' /usr/lib/sysusers.d/greetd.conf 2>/dev/null || true)"; guser="${guser:-greetd}"
         if grep -qs 'tuigreet' /etc/greetd/config.toml; then ok "/etc/greetd/config.toml nutzt tuigreet"
         else
-            run "sudo cp -an /etc/greetd/config.toml /etc/greetd/config.toml.vor-migrate 2>/dev/null; printf '%s\n' '# system/migrate: tuigreet (Konsole), Standard = Hyprland unter uwsm. Rückweg: docs/MIGRATE.md' '[terminal]' 'vt = 1' '' '[default_session]' \"command = \\\"tuigreet --time --asterisks --remember --sessions /usr/share/wayland-sessions --cmd 'uwsm start -e -D Hyprland hyprland.desktop'\\\"\" 'user = \"$guser\"' | sudo tee /etc/greetd/config.toml >/dev/null"
+            run "sudo cp -an /etc/greetd/config.toml /etc/greetd/config.toml.vor-migrate 2>/dev/null; printf '%s\n' '# system/migrate: tuigreet (Konsole), Standard = Hyprland unter uwsm. Rückweg: docs/setup/migrate.md' '[terminal]' 'vt = 1' '' '[default_session]' \"command = \\\"tuigreet --time --asterisks --remember --sessions /usr/share/wayland-sessions --cmd 'uwsm start -e -D Hyprland hyprland.desktop'\\\"\" 'user = \"$guser\"' | sudo tee /etc/greetd/config.toml >/dev/null"
         fi
         # KWallet beim Login entsperren (wie heute bei plasmalogin)
         if [ -f /etc/pam.d/greetd ] && ! grep -q pam_kwallet5 /etc/pam.d/greetd; then

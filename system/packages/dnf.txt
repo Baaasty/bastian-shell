@@ -22,7 +22,7 @@ akmod-nvidia
 xorg-x11-drv-nvidia-cuda       # nvidia-smi (Shell: GPU-Ring), CUDA/NVENC
 libva-nvidia-driver            # VA-API über NVDEC (Video im Browser); hypr/env.conf setzt LIBVA_DRIVER_NAME
 
-# == Hyprland-Sitzung (Repo sdegler/hyprland aus repos.txt) – docs/HYPRLAND.md, danach ohne sudo: scripts/hypr install
+# == Hyprland-Sitzung (Repo sdegler/hyprland aus repos.txt) – docs/knowledge/hyprland.md, danach ohne sudo: scripts/hypr install
 hyprland                       # 0.56.x; hyprlang (.conf) ist ab 0.55 veraltet → vor Updates auf 0.57+ die Release-Notes lesen
 hyprland-uwsm                  # Sitzungsdatei „Hyprland (uwsm-managed)“ für den Login
 hyprland-guiutils              # Hyprlands eigene Dialoge (App hängt, Erlaubnis-Abfragen)
@@ -161,7 +161,7 @@ liberation-sans-fonts
 %krdp                          # Remote Desktop (Plasma); Firewall-Dienst rdp nur, wenn installiert
 
 # == Optional / nicht (mehr) nötig – installiert nur mit --optional, nichts wird gelöscht
-?hyprpicker                    # Farbpipette – nicht nötig, Snip liest das Pixel selbst (docs/SNIP.md); kam als schwache Abhängigkeit
+?hyprpicker                    # Farbpipette – nicht nötig, Snip liest das Pixel selbst (docs/knowledge/shell-features.md); kam als schwache Abhängigkeit
 ?gamemode                      # Host-Dienst gamemoded (CPU „performance“ während Spielen); kam mit Steam; Nutzen meist klein
                                #   → in Steam pro Spiel Startoption „gamemoderun %command%“
 ?chezmoi                       # nicht mehr nötig: Dotfiles liegen in system/dotfiles + system/copies (weg: sudo dnf remove chezmoi)

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -I
-"""Abendwärme: der Bildschirm wird abends wärmer (hyprsunset), tagsüber neutral. Doku: docs/NIGHTLIGHT.md
+"""Abendwärme: der Bildschirm wird abends wärmer (hyprsunset), tagsüber neutral. Doku: docs/knowledge/shell-features.md
 
   nightlight status [--json]  Zustand, aktuelle Farbtemperatur, Zeiten von heute
   nightlight on               jetzt warm (Abendwert), bis zum nächsten Zeitplan-Wechsel

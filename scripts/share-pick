@@ -4,7 +4,7 @@
 Eingetragen in ~/.config/hypr/xdph.conf (scripts/share-picker install):
     screencopy { custom_picker_binary = <Repo>/scripts/share-pick }
 
-Ablauf (Protokoll aus xdph 1.4.1, src/shared/ScreencopyShared.cpp – Details: docs/SHARING.md):
+Ablauf (Protokoll aus xdph 1.4.1, src/shared/ScreencopyShared.cpp – Details: docs/knowledge/shell-features.md):
   - xdph startet uns pro Teilen-Anfrage, optional mit --allow-token (screencopy:allow_token_by_default),
     Fensterliste in XDPH_WINDOW_SHARING_LIST: <id>[HC>]<Klasse>[HT>]<Titel>[HE>]<Fensteradresse dezimal>[HA>]…
   - wir öffnen das Shell-Overlay (qs ipc … call sharepicker open '<json>') und warten auf die Ergebnisdatei

@@ -22,7 +22,7 @@ icloud-login   eigenes Skript → system/dotfiles/.local/bin – rclone reconnec
 hyprflow                         github.com/isorensen/hyprflow            → scripts/session build
 hyprland-preview-share-picker    github.com/WhySoBad/hyprland-preview-share-picker → scripts/share-picker build
 equicord                         github.com/Equicord/Equicord             → von Hand klonen (git clone), dann scripts/equicord build; Hinweis in bootstrap 11
-                                 (Plugin desktopBridge liegt in equicord/ im Repo; Details docs/DISCORD-CAMS.md)
+                                 (Plugin desktopBridge liegt in equicord/ im Repo; Details docs/knowledge/discord.md)
 
 ## RPMs aus GitHub-Releases (kein Repo → nicht in dnf.txt; bootstrap 2 lädt das neueste)
 goxlr-utility 1.2.4       GoXLR-on-Linux/goxlr-utility, goxlr-utility-<ver>-1.x86_64.rpm (nicht die -suse-Datei)
@@ -106,7 +106,7 @@ Schalter der Shell (von Hand pflegbar, optional): ~/.config/desktop/{goxlr,audio
 Nicht mehr nötig: Chrome-Repo/Brave-Repo (siehe repos.txt), KWin-Shell-Paket (~/.local/share/plasma/shells/de.bastian.desktop, nur --kwin)
 
 ## Ordner, die vorausgesetzt werden
-<Workspace>/<repo>   dieses Repo (~/Workspace/bastian-shell; Umzug aus den alten Ordnern desktop/desktop-hyprland: docs/MIGRATE.md –
+<Workspace>/<repo>   dieses Repo (~/Workspace/bastian-shell; Umzug aus den alten Ordnern desktop/desktop-hyprland: docs/setup/migrate.md –
                      bootstrap leitet den Pfad aus seinem eigenen Ort ab), ~/Workspace/<org> (eigene Projekt-Repos, per gh geklont; Pfade: projects/projects.json),
 ~/Data (zweite Platte/Partition: iCloud/, Games/SteamLibrary, .cache/rclone), ~/Apps/icp
 (~/Notes/inbox.md für „Gedanken parken“, Super+N, legt die Shell bei der ersten Notiz selbst an)

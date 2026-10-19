@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """App-Kürzel für den Keybind-Viewer (Super+K): liest config/appkeys/*.json und gibt JSON auf stdout aus.
 
-Eine Datei pro Programm, von Hand gepflegt (Format: docs/HOTKEYS.md, Abschnitt „App-Kürzel“):
+Eine Datei pro Programm, von Hand gepflegt (Format: docs/knowledge/hotkeys.md, Abschnitt „App-Kürzel“):
   { "name": "Discord", "about": "…", "order": 20,
     "match": { "class": ["discord"], "title": "^regex" },        # Hyprland-Klasse (klein), optional Fenstertitel
     "sections": [ { "name": "Navigate", "keys": [ { "keys": "Ctrl+K", "title": "Quick switcher", "note": "…" } ] } ] }

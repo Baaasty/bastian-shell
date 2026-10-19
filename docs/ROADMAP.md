@@ -1,6 +1,6 @@
 # Roadmap – Desktop
 
-Arbeitsliste in Reihenfolge. Details zu jedem Punkt stehen in [SPEC.md](../SPEC.md).
+Arbeitsliste in Reihenfolge. Details zu jedem Punkt stehen in [docs/PRD.md](PRD.md).
 Jeder Punkt wird erst abgehakt, wenn er läuft und committet ist.
 
 ## Erledigt
@@ -48,9 +48,9 @@ Jeder Punkt wird erst abgehakt, wenn er läuft und committet ist.
 - Dashboard neu: Uhr, Discord, Spotify, Fokus · System (CPU/RAM/GPU/Internet + Speicher, Updates, Maus, Bildschirmzeit) · Licht & Ton (Raster, Kamera-Helligkeit) · Coding · Wetter · Benachrichtigungen · Termine + Mail (iCloud)
 - Mail: Thunderbird ESR, Mail-Wächter (Push, Codes kopieren, Code-Mail in den Papierkorb) · Konten in `secrets.json`
 - Theme: Varianten (ember aktiv; walnut, dusk, clay, linen), Wallpaper glut-clean, neue Cursor, Konsole schlank + Starship
-- Kürzel aufgeräumt (`docs/HOTKEYS.md`), Super+P/Shift+P anpinnen/oben halten, Key Light + GoXLR-Profil beim Herunterfahren
+- Kürzel aufgeräumt (`docs/knowledge/hotkeys.md`), Super+P/Shift+P anpinnen/oben halten, Key Light + GoXLR-Profil beim Herunterfahren
 - VS Code nativ installiert (Shell nimmt es automatisch), Einstellungen + Erweiterungen kopiert
-- Doku in `docs/` (setup/ für alle Logins) · Theme-Übersicht: `docs/THEMING.md`
+- Doku in `docs/` (setup/ für alle Logins) · Theme-Übersicht: `docs/knowledge/theming.md`
 
 ## Offen (Stand 2026-10-18)
 
@@ -81,7 +81,7 @@ Ziel: Ordnung oben links, sauber an mehreren Projekten gleichzeitig arbeiten, Cl
 
 ### Projekt-Ersteller (2026-10-18)
 
-- [ ] (gebaut, wartet auf Test) Skill `/new-project`: CLAUDE.md, PRD, Roadmap, Git + Hook, Checks je Stack, Projektfarbe, optional privates GitHub-Repo (`docs/PROJECTS.md`)
+- [ ] (gebaut, wartet auf Test) Skill `/new-project`: CLAUDE.md, PRD, Roadmap, Git + Hook, Checks je Stack, Projektfarbe, optional privates GitHub-Repo (`docs/knowledge/projects.md`)
 - [ ] (gebaut, wartet auf Test) Launcher „New Project“: Projekt-Desktop + `~/Workspace/<name>` + VS Code mit Claude-Tab „/new-project <name>“ (`scripts/new-project`)
 
 ### Idee: Orchestrator in der Claude-Zentrale (2026-10-18, Bastian)

@@ -12,7 +12,7 @@ bzw. mit --ci-only { "<ordner>": { "ci": { "state", "status", "conclusion", "wor
 - CI: `gh run list --limit 1` im Ordner, Timeout 5 s, nur für github.com-Remotes; Fehler werden still zu null.
   Es werden nie Tokens gelesen, gespeichert oder ausgegeben (gh nutzt seine eigene Anmeldung).
 - Ordner dürfen mit ~ beginnen. Fehler pro Ordner werden still übersprungen.
-Doku: docs/QUICKLINKS.md
+Doku: docs/knowledge/shell-features.md
 """
 import json
 import os

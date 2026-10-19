@@ -7,7 +7,7 @@ import qs.services
 import qs.components
 import qs.modules.morning
 
-// Tagesrückblick (Doku docs/PROJECTTIME.md): „das hast du heute geschafft“ – im Look der Morgen-Übersicht.
+// Tagesrückblick (Doku docs/knowledge/shell-features.md): „das hast du heute geschafft“ – im Look der Morgen-Übersicht.
 // Commits, Projektzeit, Fokus, abgehakte To-dos, fertige Claude-Aufgaben; Bereiche ohne Inhalt fehlen.
 // Kommt mit der Feierabend-Szene (Super+Alt+B) oder per Super+Alt+R / IPC recap open.
 // Schließt per Klick, Esc/Enter/Leertaste oder nach Recap.closeSec (Überfahren hält sie offen).

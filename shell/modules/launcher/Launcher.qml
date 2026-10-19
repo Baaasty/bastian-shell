@@ -8,7 +8,7 @@ import qs.config
 import qs.services
 import qs.components
 
-// Launcher: ein Feld, Tastatur zuerst – die eine Suche für alles (Doku: docs/LAUNCHER.md).
+// Launcher: ein Feld, Tastatur zuerst – die eine Suche für alles (Doku: docs/knowledge/shell-features.md).
 // Einzeichen-Präfixe: # Projekte, = Rechner, : Emoji, ; Zwischenablage, / Dateien, @ Browser-Tabs (Helium), ? Hilfe (leer) bzw. Websuche (?<text>)
 // Wort-Präfixe (mit Leerzeichen): pw Passwörter, cal Termine, c Claude fragen, dazu die Web-Kürzel aus config/launcher/web.json (g, yt, gh …)
 Scope {

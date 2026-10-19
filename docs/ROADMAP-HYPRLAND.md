@@ -5,15 +5,15 @@
 
 > **Leitlinie (Bastian, 2026-10-19): Tastatur zuerst.** Die Shell (Fenster, Workspaces, Bar, Popouts, Panels) wird per Hotkeys aus dem Muscle Memory bedient. Maus nur im Browser und in Apps. Ein Feature ohne Kürzel und ohne Tastaturbedienung gilt als nicht fertig.
 
-Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Repo `~/Workspace/bastian-shell`, Branch `main`; Umzug aus den alten Ordnern: `docs/MIGRATE.md`). Verlauf/Details: `docs/FORTSCHRITT.md`.
+Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Repo `~/Workspace/bastian-shell`, Branch `main`; Umzug aus den alten Ordnern: `docs/setup/migrate.md`). Verlauf/Details: `docs/ROADMAP-HYPRLAND.md`.
 
 ## Noch offen (7 Punkte)
 
 | # | Paket | Stand | Nächster Schritt |
 |---|---|---|---|
-| 22 | **Tastatur zuerst** (siehe Paketdetails): jedes Bar-Popout per Taste, in Popouts Pfeile/Enter/Esc, Fenstergröße per Taste, Benachrichtigungen per Taste | 🟡 **gebaut, wartet auf Test**: (a) Bar-Modus Super+B (Buchstaben an den Chips, ←/→/Tab + Enter, Esc im Popout zurück zum Chip) + Direkttasten Super+Alt+S/L/Z (U Server), (b) `KeyNav` in allen Bar-Popouts (Glut-Rahmen, Regler erst nach Enter), Schließ-Regel für alle Popouts (Compositor schließt → sofort wieder auf), (c) Super+Alt+Pfeile, (d) Benachrichtigungs-Modus Super+Alt+Z + Super+Alt+X, (e) Workspace-Modus `Q`, (f) Tray-Liste + Tray-Menü per Taste, (g) `docs/HOTKEYS.md` mit Modi-Tabelle | 🧑 Testpunkte unter „Neu“ |
-| 23 | **PC-Beleuchtung beim Start**: alle RGBs fest in der Primärfarbe der Palette | 🟡 vorbereitet, wartet auf OpenRGB-Install: `scripts/rgb apply|off|color|status|plan`, Autostart-Zeile, nach Standby über hypridle `after_sleep_cmd`, `docs/RGB.md` (ohne openrgb mit Fake-Gerätescan getestet) | 🧑 `sudo dnf install openrgb openrgb-udev-rules` + udev neu laden, dann `scripts/rgb status` und `apply` |
-| 14 | Terminal-Rätsel (viele Terminals gingen auf) | 🟡 50× Super+Return am 18.10. 20:09 (Taste oder Gerät), Details `docs/FORTSCHRITT.md` | bei Wiederholung `debug:disable_logs = false`, dann Log zeigt das Gerät |
+| 22 | **Tastatur zuerst** (siehe Paketdetails): jedes Bar-Popout per Taste, in Popouts Pfeile/Enter/Esc, Fenstergröße per Taste, Benachrichtigungen per Taste | 🟡 **gebaut, wartet auf Test**: (a) Bar-Modus Super+B (Buchstaben an den Chips, ←/→/Tab + Enter, Esc im Popout zurück zum Chip) + Direkttasten Super+Alt+S/L/Z (U Server), (b) `KeyNav` in allen Bar-Popouts (Glut-Rahmen, Regler erst nach Enter), Schließ-Regel für alle Popouts (Compositor schließt → sofort wieder auf), (c) Super+Alt+Pfeile, (d) Benachrichtigungs-Modus Super+Alt+Z + Super+Alt+X, (e) Workspace-Modus `Q`, (f) Tray-Liste + Tray-Menü per Taste, (g) `docs/knowledge/hotkeys.md` mit Modi-Tabelle | 🧑 Testpunkte unter „Neu“ |
+| 23 | **PC-Beleuchtung beim Start**: alle RGBs fest in der Primärfarbe der Palette | 🟡 vorbereitet, wartet auf OpenRGB-Install: `scripts/rgb apply|off|color|status|plan`, Autostart-Zeile, nach Standby über hypridle `after_sleep_cmd`, `docs/knowledge/hardware.md` (ohne openrgb mit Fake-Gerätescan getestet) | 🧑 `sudo dnf install openrgb openrgb-udev-rules` + udev neu laden, dann `scripts/rgb status` und `apply` |
+| 14 | Terminal-Rätsel (viele Terminals gingen auf) | 🟡 50× Super+Return am 18.10. 20:09 (Taste oder Gerät), Details `docs/ROADMAP-HYPRLAND.md` | bei Wiederholung `debug:disable_logs = false`, dann Log zeigt das Gerät |
 | 13 | Repo-Umbau: `hyprland` → `main`, Repo/Ordner `shell`, `kwin`-Branch bleibt | ⚪ | nur auf Bastians Wort |
 | 15 | PC neu aufsetzen: `system/bootstrap` für Fedora + Hyprland | 🟡 vorbereitet (dry-run ok, Hyprland Standard, KWin mit `--kwin`) | nach 13: echter Lauf |
 | – | Login-Bildschirm im eigenen Look | 🟡 installiert, **ausgeschaltet** | 🧑 `scripts/loginscreen install` + `on` (sudo) |
@@ -31,9 +31,9 @@ Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Repo `~/Workspace/basti
 5. OCR im Snip: `sudo dnf install tesseract tesseract-langpack-deu tesseract-langpack-eng`
 6. Klicken: Helium `helium://extensions` bei beiden ↻ · VS Code „Developer: Reload Window“ · Hue-App: Szene „Game“ anlegen (Spiele-Modus)
 7. Thunderbird: Datenumzug Flatpak → RPM (`scripts/flatpak-to-native`), danach `python3 -I theme/gen/thunderbird.py apply`
-8. PC-Beleuchtung (AP 23): `sudo dnf install openrgb openrgb-udev-rules`, dann `sudo udevadm control --reload-rules && sudo udevadm trigger` (oder Neustart); danach `scripts/rgb status` + `scripts/rgb apply`; hypridle neu starten (`pkill hypridle; uwsm app -- hypridle &`), dann Standby testen – Farbe kommt nach dem Aufwachen zurück (Details `docs/RGB.md`)
+8. PC-Beleuchtung (AP 23): `sudo dnf install openrgb openrgb-udev-rules`, dann `sudo udevadm control --reload-rules && sudo udevadm trigger` (oder Neustart); danach `scripts/rgb status` + `scripts/rgb apply`; hypridle neu starten (`pkill hypridle; uwsm app -- hypridle &`), dann Standby testen – Farbe kommt nach dem Aufwachen zurück (Details `docs/knowledge/hardware.md`)
 
-**Testen (fertig gebaut) – zum Abhaken: [docs/TESTLISTE.md](TESTLISTE.md):** Sound-Popout (Lautsprecher-Chip) · Netz-Popout (Netz-Chip) · Privatsphäre-Punkte in der Bar · Super (Dashboard) · Super+K · Super+P · Super+N (Gedanken) · Super+Return (Kitty) · Super+Shift+Return (Dropdown) · Super+Alt+K (Layouts) · Super+Alt+G/B/N (Spiele-Modus, Feierabend, Abendwärme) · Alt antippen / Alt+Esc (Workspace-Modus) · Alt+1…9 · Super+Shift+Pfeile (Fokus folgt) · Launcher-Präfixe (`?`) · Snip (T, C, P) · Ressourcen-Chip · Passwort-Panel (Super+O) · `pkexec true` · Super+L (GoXLR) · Session-Restore (`docs/SESSION.md`) · Quicklinks/Git an den Workspace-Kacheln · Benachrichtigungen (Snooze, Hover-Pause) · Morgen-Übersicht (`morning open`) · Kamin-Idle (`scripts/idle show force`)
+**Testen (fertig gebaut) – zum Abhaken: [Offene Tests](#offene-tests) und „Neu“:** Sound-Popout (Lautsprecher-Chip) · Netz-Popout (Netz-Chip) · Privatsphäre-Punkte in der Bar · Super (Dashboard) · Super+K · Super+P · Super+N (Gedanken) · Super+Return (Kitty) · Super+Shift+Return (Dropdown) · Super+Alt+K (Layouts) · Super+Alt+G/B/N (Spiele-Modus, Feierabend, Abendwärme) · Alt antippen / Alt+Esc (Workspace-Modus) · Alt+1…9 · Super+Shift+Pfeile (Fokus folgt) · Launcher-Präfixe (`?`) · Snip (T, C, P) · Ressourcen-Chip · Passwort-Panel (Super+O) · `pkexec true` · Super+L (GoXLR) · Session-Restore (`docs/knowledge/hyprland.md`) · Quicklinks/Git an den Workspace-Kacheln · Benachrichtigungen (Snooze, Hover-Pause) · Morgen-Übersicht (`morning open`) · Kamin-Idle (`scripts/idle show force`)
 
 ## Neu (2026-10-18 spät, gebaut, wartet auf Test nach dem Stream)
 
@@ -45,21 +45,21 @@ Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Repo `~/Workspace/basti
 - [ ] **AP 22 Schließ-Regel**: Spotify-Popout offen, Spotify holen (oder ein Fenster geht auf) → Popout bleibt; zu nur durch Weghovern (nachdem die Maus drin war), Esc, Chip-Klick oder anderes Popout
 - [ ] **Licht-Chip** in der Bar (Birne neben dem Lautsprecher): Key Light, Hue-Szenen, Kamera – `$Q light open`
 - [ ] **Workspace-Modus** jetzt per Alt antippen oder Alt+Esc, Entf löscht, Alt+←/→ markiert im Modus
-- [ ] **Server im Dev-Popout** (`docs/SSHS.md`): eigener Server-Chip aufgelöst, Reiter **Server** im Dev-Popout = Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare aus `config/consoles.json`, Klick öffnet Helium) + sshs-Server mit Upload / Files / Terminal; Suche filtert mit; Dev-Chip immer da (Zahl nur, wenn etwas läuft) – Super+Alt+U, `$Q servers open`. Offen: Dokploy-URL in `~/.config/desktop/consoles.json`
+- [ ] **Server im Dev-Popout** (`docs/knowledge/shell-features.md`): eigener Server-Chip aufgelöst, Reiter **Server** im Dev-Popout = Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare aus `config/consoles.json`, Klick öffnet Helium) + sshs-Server mit Upload / Files / Terminal; Suche filtert mit; Dev-Chip immer da (Zahl nur, wenn etwas läuft) – Super+Alt+U, `$Q servers open`. Offen: Dokploy-URL in `~/.config/desktop/consoles.json`
 
 Testen: `Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"`
 
 - [x] ~~Launcher `?<text>` = FMHY-Suche~~ wieder entfernt (Bastian, 2026-10-19); Snippets bleiben raus
-- [ ] Launcher `?<text>` = Websuche (Standard-Kürzel), neu `c <text>` = Claude fragen (`docs/LAUNCHER.md`) – Super, `?wetter`, `c hallo`
-- [ ] Sound-Popout: oben Routing, dann Kanäle, unten Apps (`docs/MIXER.md`)
-- [ ] Netz schlichter (`docs/NET.md`): Chip nur Symbol; Popout = Status-Zeile, Erreichbarkeit (Internet/Router/GitHub/Discord), Ø-Durchsatz letzte Stunde als Diagramm, Speedtest-Knopf, kein VPN-Bereich mehr; IP/Router unter „Details“ – `$Q net open`
-- [ ] Hyperfokus-Wecker nach 90 min (`docs/BREAKS.md`) – `$Q breaks test` / `breaks hide`
-- [ ] Projektzeit + Tagesrückblick (`docs/PROJECTTIME.md`) – Super+Alt+T, Super+Alt+R; Platz im Dashboard danach entscheiden
-- [ ] Update-Chip (`docs/UPDATES.md`) – `$Q updates fake 5`
-- [ ] Downloads-Popout (`docs/DOWNLOADS.md`) – `$Q downloads open`
-- [ ] Dev-Dienste-Popout (`docs/DEVSERVICES.md`) – Test-Server starten, Chip erscheint, `$Q devservices toggle`
+- [ ] Launcher `?<text>` = Websuche (Standard-Kürzel), neu `c <text>` = Claude fragen (`docs/knowledge/shell-features.md`) – Super, `?wetter`, `c hallo`
+- [ ] Sound-Popout: oben Routing, dann Kanäle, unten Apps (`docs/knowledge/shell-features.md`)
+- [ ] Netz schlichter (`docs/knowledge/shell-features.md`): Chip nur Symbol; Popout = Status-Zeile, Erreichbarkeit (Internet/Router/GitHub/Discord), Ø-Durchsatz letzte Stunde als Diagramm, Speedtest-Knopf, kein VPN-Bereich mehr; IP/Router unter „Details“ – `$Q net open`
+- [ ] Hyperfokus-Wecker nach 90 min (`docs/knowledge/shell-features.md`) – `$Q breaks test` / `breaks hide`
+- [ ] Projektzeit + Tagesrückblick (`docs/knowledge/shell-features.md`) – Super+Alt+T, Super+Alt+R; Platz im Dashboard danach entscheiden
+- [ ] Update-Chip (`docs/knowledge/shell-features.md`) – `$Q updates fake 5`
+- [ ] Downloads-Popout (`docs/knowledge/shell-features.md`) – `$Q downloads open`
+- [ ] Dev-Dienste-Popout (`docs/knowledge/shell-features.md`) – Test-Server starten, Chip erscheint, `$Q devservices toggle`
 - [ ] Einheitlichkeits-Check (~35 Stilbrüche angeglichen: Processes-Suche/Reiter, Switcher ohne Glow, Snooze-Chips …)
-- [ ] Eigener Share-Picker (`docs/SHARING.md`) – **aktiv seit 18.10. 23:50** (install + Portal-Neustart erledigt): in Discord „Share Screen“ → unsere Karte (Screens · Windows · Region). Rückweg `scripts/share-picker off` + Portal-Neustart
+- [ ] Eigener Share-Picker (`docs/knowledge/shell-features.md`) – **aktiv seit 18.10. 23:50** (install + Portal-Neustart erledigt): in Discord „Share Screen“ → unsere Karte (Screens · Windows · Region). Rückweg `scripts/share-picker off` + Portal-Neustart
 - [ ] Sound-Popout: „Other channels“ startet bei jedem Öffnen zugeklappt
 - [ ] Spotify-Popout bleibt offen, solange die Maus drin ist (schloss sich z. B., wenn jemand Discord verlässt); schließt nach Weghovern wie die anderen Popouts
 - [ ] Popout-Ecken schärfer: ein harter Schatten statt zwei verschmierter Ringe (`Glass.qml`, gilt für alle Flächen)
@@ -70,9 +70,40 @@ Testen: `Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"`
 - [ ] Super+Q räumt Discord/Spotify weg (Alt+F4 beendet), ohne Rutsch-Animation, rendern weiter im Versteck
 - [ ] Privatsphäre-Punkte links neben der Uhr, Hover zeigt die Apps
 - [ ] Helium-Menüs: Vergleich `scripts/helium-theme-compare` (Theme-Erweiterung vs. GTK), dann entscheiden
-- [ ] Menüs im Desktop-Look (`docs/THEMING.md` „Menüs und Dialoge“): Helium-Farben aktiv ab nächstem Start (`scripts/helium-colors`; „Desktop Theme“ in Helium nicht laden) · GTK-Menüs neu (Rechtsklick in einer GTK-App) · Qt-Menüs: 🧑 `sudo dnf install kvantum` → `scripts/kvantum-theme on`
+- [ ] Menüs im Desktop-Look (`docs/knowledge/theming.md` „Menüs und Dialoge“): Helium-Farben aktiv ab nächstem Start (`scripts/helium-colors`; „Desktop Theme“ in Helium nicht laden) · GTK-Menüs neu (Rechtsklick in einer GTK-App) · Qt-Menüs: 🧑 `sudo dnf install kvantum` → `scripts/kvantum-theme on`
 - [ ] Ordner öffnen in Kitty statt Dolphin: `xdg-mime default org.kde.dolphin.desktop inode/directory` (Bastian)
-- [ ] Absturz-Karte statt DrKonqi (`docs/CRASHES.md`) – `$Q crash test` / `crash testRenderer` / `crash hide`; DrKonqi unter Hyprland aus, Rückweg `scripts/hypr drkonqi on`
+- [ ] Absturz-Karte statt DrKonqi (`docs/knowledge/shell-features.md`) – `$Q crash test` / `crash testRenderer` / `crash hide`; DrKonqi unter Hyprland aus, Rückweg `scripts/hypr drkonqi on`
+
+## Offene Tests
+
+Aus der früheren Testliste und dem Fortschritts-Log (2026-10-18/19): gebaut, nur per Befehl/Screenshot geprüft – echte Tasten und Klicks fehlen.
+
+- [ ] Super+Return Kitty · Super+Shift+Return Dropdown (nochmal = weg, Inhalt bleibt; auch auf anderem Monitor)
+- [ ] Super+Pfeile Fokus · Super+Shift+→ Fenster auf den nächsten Monitor, Fokus und Maus gehen mit
+- [ ] Super+Alt+Pfeile Fenstergröße (gekachelt = Teilung, schwebend = Größe, halten wiederholt)
+- [ ] Alt+1…9 und Alt+←/→ wählen den Workspace, Leiste zeigt kurz, wo man ist
+- [ ] Workspace-Leiste mit der Maus: Klick wählt, Fenster-Kachel holt das Fenster, Ziehen auf eine andere Kachel verschiebt es
+- [ ] Workspace-Kacheln zeigen `xwaylandvideobridge` und den DrKonqi-Dialog als Fenster – ausblenden
+- [ ] Projekt-Workspace: Link-Knopf + Tooltip (Branch/Änderungen/CI); Workspace-Modus `Q` per Taste
+- [ ] Super+Alt+K: Desktop als Layout speichern, auf leerem Desktop wiederherstellen
+- [ ] Spotify-Chip: wegräumen, holen → Spotify rechts 800 px, Chat links
+- [ ] Super+K Kürzel-Übersicht · Super+P Paketmanager: Klick ins Leere schließt
+- [ ] Super+N: direkt tippen, Enter speichert, `t …` wird zusätzlich To-do
+- [ ] Super+O Passwörter: Logos, keine WLAN-Einträge, „Show“ blendet sie ein
+- [ ] Ressourcen-Chip: Popout, Sortierung nach Memory, Zeile aufklappen, Icons in jeder Zeile
+- [ ] `pkexec true` → eigener Passwort-Dialog, Esc bricht ab
+- [ ] Snip (Druck/Super+Shift+S): Enter kopiert, S speichert, C Farbe, P anpinnen (ziehen, Mausrad, Rechtsklick), T Text (nach tesseract) · Super+Shift+C direkt · Strg+Druck alle Monitore
+- [ ] Benachrichtigung tagsüber (`notify-send -a Test Hallo Text`): Maus drauf → alle bleiben stehen; Uhr per Klick → „10 min“ → kommt wieder; Snooze-Chips im Panel per Klick
+- [ ] Morgen-Übersicht: Esc/Enter schließt (mit Tastaturfokus); echter Morgen-Login
+- [ ] Super+Alt+G Spiele-Modus · Super+Alt+B Feierabend an/aus, live (Chat wegräumen und Musik-Pause noch nie live probiert)
+- [ ] Fokus-Block (Super+Alt+F) → Büro-Licht warm/gedimmt, danach wie vorher
+- [ ] Super+Alt+N Abendwärme (nach hyprsunset) · Kamin-Idle: `scripts/idle show force`, Maus bewegen beendet
+- [ ] Super+L sperren, Fader verstellen, entsperren → Fader wie vorher, Routing aus
+- [ ] Dolphin, Systemeinstellungen, Datei-Dialog im Schema „Desktop Hearth“ ansehen
+- [ ] GTK-Dialog `zenity --question --text=Test`: warmbraun, kein Blau
+- [ ] GoXLR im Launcher öffnet die GoXLR-Oberfläche in Helium
+- [ ] Session-Restore, erster Test (`docs/knowledge/hyprland.md`: 2–3 Fenster, `scripts/session save`, schließen, `scripts/session restore`)
+- [ ] `qs log`-Befunde aus AP 21 Runde 2 klären: `ProjectTime.qml` Z. 104 „Value is null“, `DevTile.qml` Z. 202 undefined → double, `SnipPin.qml` Z. 19 „Duplicate signal name“ (evtl. schon weg), Polkit „agent already exists“
 
 ## Fertig (39 von 44)
 
@@ -150,7 +181,7 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 
 - Kein `sudo`, kein Push, kein Repo-Umbau, kein Löschen von Apps/Daten (Discord/Chrome-Pakete), keine Passwörter/Tokens loggen.
 - **Eine Spur = ein Agent = eigene Dateien.** Gemeinsame Dateien (`shell/shell.qml`, `hypr/binds.conf`, `hypr/rules.conf`, `hypr/autostart.conf`, `Theme.qml`, `Glass.qml`) nur kleine Edits nach frischem Lesen; Design-Basis (AP 1) läuft allein auf `Theme.qml`/`Glass.qml`/`palette.json`.
-- Jedes Paket: bauen → Shell lädt ohne Fehler (`qs log`) → Screenshot geprüft → `hyprctl configerrors` leer → **ein Commit** `AP n: Titel` mit Co-Authored-By-Zeile → Eintrag in `docs/FORTSCHRITT.md`.
+- Jedes Paket: bauen → Shell lädt ohne Fehler (`qs log`) → Screenshot geprüft → `hyprctl configerrors` leer → **ein Commit** `AP n: Titel` mit Co-Authored-By-Zeile → Eintrag in `docs/ROADMAP-HYPRLAND.md`.
 - Schlägt ein Paket fehl: nicht committen, Befund in `FORTSCHRITT.md`, weiter mit dem nächsten.
 - **Wartbar ohne KI** (Bastian): Features sind dateibasiert (`projects.json`, `config/*`, `theme/palette.json`), kurz dokumentiert in `docs/` und per Hand oder kleinem Dialog änderbar. Agenten sind zum Bauen da, nicht zum Betreiben.
 - Neue Kürzel nur mit Titel `# …` in `binds.conf` (Super+K zeigt sie), danach `scripts/hotkeys-md`.
@@ -159,11 +190,11 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 
 ## Anhang: Erledigtes (Verlauf)
 
-- ✅ Blur-Fehler · Kacheln als Standard · Kürzel (Super = Fenster/Monitore, Alt = Workspaces, `docs/HOTKEYS.md`, Super+K)
+- ✅ Blur-Fehler · Kacheln als Standard · Kürzel (Super = Fenster/Monitore, Alt = Workspaces, `docs/knowledge/hotkeys.md`, Super+K)
 - ✅ Workspace-Leiste größer („Workspaces“, Namen nach Platz) · Bar reserviert Platz, im echten Vollbild ganz weg
 - ✅ Discord/Spotify gekachelt und folgen allen Workspaces · Equibop-Grundumstellung (`Chat.qml`, Bridge erkennt „unsupported“)
 - ✅ Medien-OSD · Keybind-Viewer (Super+K) · Paketmanager (Super+P) · Helium (Lesezeichen, Theme, Standardbrowser)
-- ✅ Vorbereitet: Session-Restore (`scripts/session`), Login-Look (`scripts/loginscreen`), Kamera-Recherche (`docs/DISCORD-CAMS.md`)
+- ✅ Vorbereitet: Session-Restore (`scripts/session`), Login-Look (`scripts/loginscreen`), Kamera-Recherche (`docs/knowledge/discord.md`)
 
 ## Anhang: Paketdetails (inkl. Erledigtes)
 
@@ -171,8 +202,8 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 
 | AP | Paket | Fertig, wenn … | Dateien |
 |---|---|---|---|
-| 1 | **Design-Basis deckend + freundlich** (alleine auf den Kern-Dateien) | neue Palette (wärmere, hellere, freundlichere Töne, klare aktiv/inaktiv-Zustände), `Glass.qml` liefert deckende Flächen, Blur über ein Theme-Flag aus, alle Module laden ohne Fehler; Vorher/Nachher-Screenshots von Bar, Dashboard, Launcher, OSD; `CLAUDE.md` Stilregel + `docs/THEMING.md` angepasst | `theme/palette.json`, `theme/gen/*`, `shell/config/Theme.qml`, `shell/components/Glass.qml` |
-| 10 | **Chrome-Reste aufräumen** | GoXLR-Helium-Starter mit Icon (`helium --app=http://localhost:14564`), alte `chrome-*.desktop` gesichert unter `~/.local/state/desktop/` und entfernt, keine Fehler-Benachrichtigung mehr | `~/.local/share/applications/chrome-*`, `docs/THEMING.md` |
+| 1 | **Design-Basis deckend + freundlich** (alleine auf den Kern-Dateien) | neue Palette (wärmere, hellere, freundlichere Töne, klare aktiv/inaktiv-Zustände), `Glass.qml` liefert deckende Flächen, Blur über ein Theme-Flag aus, alle Module laden ohne Fehler; Vorher/Nachher-Screenshots von Bar, Dashboard, Launcher, OSD; `CLAUDE.md` Stilregel + `docs/knowledge/theming.md` angepasst | `theme/palette.json`, `theme/gen/*`, `shell/config/Theme.qml`, `shell/components/Glass.qml` |
+| 10 | **Chrome-Reste aufräumen** | GoXLR-Helium-Starter mit Icon (`helium --app=http://localhost:14564`), alte `chrome-*.desktop` gesichert unter `~/.local/state/desktop/` und entfernt, keine Fehler-Benachrichtigung mehr | `~/.local/share/applications/chrome-*`, `docs/knowledge/theming.md` |
 | 9 | **Session-Restore** (braucht `cargo`) | `scripts/session install/build/dry-run` laufen, Autosave-Timer aktiv, ein Test-Restore mit 2–3 Fenstern (nach Absprache auf einem freien Workspace) | `scripts/session*`, `config/hyprflow/*`, `systemd/desktop-session-*` |
 
 ### Phase 2 – Sichtbares (nach AP 1, parallel)
@@ -191,11 +222,11 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 
 | AP | Paket | Fertig, wenn … | Dateien |
 |---|---|---|---|
-| 6 | **Alle Fenster im Desktop-Design** (Unter-Agenten je App-Familie) | (a) Qt/KDE (Dolphin, Kate, Systemeinstellungen …): Farbschema/Stil; (b) GTK/libadwaita (inkl. Flatpak): `gtk.css`/Theme; (c) **Kitty** (`theme/gen/kitty.py`, Kürzel, Super+Return); (d) Electron: **Equibop als finaler Discord-Client**: Equicord-Theme/CSS dezent im PC-Look (Flächen, Schrift, Farben aus der Palette), aber **als Discord erkennbar** (Layout, Icons, Server-/Kanal-Struktur, ein gedämpfter Discord-Akzent bleiben, damit man sich zurechtfindet und nichts zu stark vertauscht ist), Spotify (Spicetify, falls machbar), VS Code, Claude Desktop; (e) Steam, Thunderbird (da), Helium (da); (f) Dialoge/Portale, Cursor, Schriften, Icons; (g) Login-Look an Palette angeglichen. Liste „noch nicht im Look“ am Ende in `docs/THEMING.md` | `theme/gen/*`, `docs/THEMING.md`, App-Konfigurationen |
-| 8 | **Equibop-Plugin `desktopBridge`** | pnpm user-lokal, Equicord geklont + gebaut, Plugin liefert Call-Status/Mic/Taub/Köpfe + Kamera-Frames (gepinnte, 360p, 10 fps) über 0600-Socket an die Shell; Bar zeigt Köpfe, Klick pinnt Kamera (max. 3 unter der Bar auf DP-2); Equibop auf eigenen `dist`-Ordner umgestellt; Rückweg dokumentiert | `docs/DISCORD-CAMS.md`, `scripts/discord-bridge`, `shell/modules/bar/Discord*.qml`, neue Cam-Kacheln |
+| 6 | **Alle Fenster im Desktop-Design** (Unter-Agenten je App-Familie) | (a) Qt/KDE (Dolphin, Kate, Systemeinstellungen …): Farbschema/Stil; (b) GTK/libadwaita (inkl. Flatpak): `gtk.css`/Theme; (c) **Kitty** (`theme/gen/kitty.py`, Kürzel, Super+Return); (d) Electron: **Equibop als finaler Discord-Client**: Equicord-Theme/CSS dezent im PC-Look (Flächen, Schrift, Farben aus der Palette), aber **als Discord erkennbar** (Layout, Icons, Server-/Kanal-Struktur, ein gedämpfter Discord-Akzent bleiben, damit man sich zurechtfindet und nichts zu stark vertauscht ist), Spotify (Spicetify, falls machbar), VS Code, Claude Desktop; (e) Steam, Thunderbird (da), Helium (da); (f) Dialoge/Portale, Cursor, Schriften, Icons; (g) Login-Look an Palette angeglichen. Liste „noch nicht im Look“ am Ende in `docs/knowledge/theming.md` | `theme/gen/*`, `docs/knowledge/theming.md`, App-Konfigurationen |
+| 8 | **Equibop-Plugin `desktopBridge`** | pnpm user-lokal, Equicord geklont + gebaut, Plugin liefert Call-Status/Mic/Taub/Köpfe + Kamera-Frames (gepinnte, 360p, 10 fps) über 0600-Socket an die Shell; Bar zeigt Köpfe, Klick pinnt Kamera (max. 3 unter der Bar auf DP-2); Equibop auf eigenen `dist`-Ordner umgestellt; Rückweg dokumentiert | `docs/knowledge/discord.md`, `scripts/discord-bridge`, `shell/modules/bar/Discord*.qml`, neue Cam-Kacheln |
 | 11 | **Fenster-Feinschliff** | Chat-Fenster (Equibop) + Spotify nach „Holen“ wieder 62/38, Chips getestet | `WorkBar.qml`/`Parked.qml` (nur Aufteilung) |
-| 18 | **Mail-/Kalender-Client im Theme** | Bewertung (nur Recherche, keine Umstellung): Thunderbird (heute, schon im Look), Betterbird, Geary, Evolution, KMail, Mailspring, Terminal-Clients. Kriterien: iCloud-Konten (IMAP/CalDAV/CardDAV), Kalender, Push, Mail-Wächter (Codes kopieren) weiter nutzbar, Theme-Fähigkeit (Palette/CSS), Pflege, Wayland. Ergebnis: Tabelle + Empfehlung in `docs/MAIL.md`; Bastian entscheidet, dann Umzug als eigenes Paket | `docs/MAIL.md` (neu) | nur Recherche (Phase 3) |
-| 16 | **Bildschirm-teilen-Auswahl im Desktop-Design** (Discord/Equibop, Browser, OBS) | Statt des schlichten Standard-Pickers erscheint beim Teilen eine eigene Auswahl mit Vorschauen von Monitoren und Fenstern, im Look der Shell. Basis: [hyprland-preview-share-picker](https://github.com/WhySoBad/hyprland-preview-share-picker) (Rust, GTK4 + layer-shell, MIT, 102 Sterne, noch kein Release; Einbindung über `xdph.conf` → `screencopy { custom_picker_binary = … }`; Styling über eigene CSS-Dateien in `config.yaml`). Schritte: Quellcode prüfen (Fremdcode), mit Rust bauen (README nennt nightly; mit `cargo` aus Fedora oder `RUSTC_BOOTSTRAP` prüfen, sonst Alternative: eigener Picker als Quickshell-Overlay), CSS aus der Palette erzeugen (`theme/gen/share_picker.py`), `~/.config/hypr/xdph.conf` + Config im Repo, Fensterregel für den neuen Picker in `rules.conf` (bisher `hyprland-share-picker`), Test mit Equibop/Helium/OBS (Vesktop-Familie bringt evtl. eine eigene Auswahl mit – prüfen) | `theme/gen/share_picker.py` (neu), `config/xdph/*`, `config/share-picker/*`, eine Regel in `hypr/rules.conf`, `docs/SHARING.md` | **Planung** (nach AP 1, braucht `cargo`) |
+| 18 | **Mail-/Kalender-Client im Theme** | Bewertung (nur Recherche, keine Umstellung): Thunderbird (heute, schon im Look), Betterbird, Geary, Evolution, KMail, Mailspring, Terminal-Clients. Kriterien: iCloud-Konten (IMAP/CalDAV/CardDAV), Kalender, Push, Mail-Wächter (Codes kopieren) weiter nutzbar, Theme-Fähigkeit (Palette/CSS), Pflege, Wayland. Ergebnis: Tabelle + Empfehlung in `docs/DECISIONS.md`; Bastian entscheidet, dann Umzug als eigenes Paket | `docs/DECISIONS.md` (neu) | nur Recherche (Phase 3) |
+| 16 | **Bildschirm-teilen-Auswahl im Desktop-Design** (Discord/Equibop, Browser, OBS) | Statt des schlichten Standard-Pickers erscheint beim Teilen eine eigene Auswahl mit Vorschauen von Monitoren und Fenstern, im Look der Shell. Basis: [hyprland-preview-share-picker](https://github.com/WhySoBad/hyprland-preview-share-picker) (Rust, GTK4 + layer-shell, MIT, 102 Sterne, noch kein Release; Einbindung über `xdph.conf` → `screencopy { custom_picker_binary = … }`; Styling über eigene CSS-Dateien in `config.yaml`). Schritte: Quellcode prüfen (Fremdcode), mit Rust bauen (README nennt nightly; mit `cargo` aus Fedora oder `RUSTC_BOOTSTRAP` prüfen, sonst Alternative: eigener Picker als Quickshell-Overlay), CSS aus der Palette erzeugen (`theme/gen/share_picker.py`), `~/.config/hypr/xdph.conf` + Config im Repo, Fensterregel für den neuen Picker in `rules.conf` (bisher `hyprland-share-picker`), Test mit Equibop/Helium/OBS (Vesktop-Familie bringt evtl. eine eigene Auswahl mit – prüfen) | `theme/gen/share_picker.py` (neu), `config/xdph/*`, `config/share-picker/*`, eine Regel in `hypr/rules.conf`, `docs/knowledge/shell-features.md` | **Planung** (nach AP 1, braucht `cargo`) |
 | 14 | **Terminal-Rätsel** | Ursache gefunden, falls es wieder passiert (Journal + `hyprctl clients` sofort prüfen) | — |
 
 ### Phase 4 – Ideen (von Claude vorgeschlagen, Bastian streicht, was er nicht will)
@@ -227,18 +258,18 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 
 | AP | Paket | Fertig, wenn … | Dateien |
 |---|---|---|---|
-| 22 | **Tastatur zuerst** | (a) jedes Bar-Popout per Taste erreichbar (Schema wählt Bastian), (b) in allen Popouts/Panels Pfeile/Tab, Enter, Esc und sichtbarer Fokus, (c) Fenstergröße per Taste (z. B. Super+Alt+Pfeile), (d) Benachrichtigungen: neueste öffnen/Aktion/Wegklicken/Snooze per Taste, (e) Workspace-Modus: Quicklinks und Git der Kachel per Taste, (f) Tray-Menü per Taste, (g) Super+K zeigt alles, `docs/HOTKEYS.md` neu | `hypr/binds.conf`, `shell/modules/bar/*Popout.qml`, `shell/modules/notifications/*`, `shell/modules/workbar/*` |
-| 23 | **PC-Beleuchtung beim Start** | OpenRGB (headless, `--noautoconnect`) setzt beim Login alle Zonen (Mainboard, NZXT, RAM) statisch auf `accent` aus `theme/palette.json`; `scripts/rgb apply|off`, Autostart-Zeile, Doku `docs/RGB.md` | `scripts/rgb`, `hypr/autostart.conf` (eine Zeile), `docs/RGB.md` |
+| 22 | **Tastatur zuerst** | (a) jedes Bar-Popout per Taste erreichbar (Schema wählt Bastian), (b) in allen Popouts/Panels Pfeile/Tab, Enter, Esc und sichtbarer Fokus, (c) Fenstergröße per Taste (z. B. Super+Alt+Pfeile), (d) Benachrichtigungen: neueste öffnen/Aktion/Wegklicken/Snooze per Taste, (e) Workspace-Modus: Quicklinks und Git der Kachel per Taste, (f) Tray-Menü per Taste, (g) Super+K zeigt alles, `docs/knowledge/hotkeys.md` neu | `hypr/binds.conf`, `shell/modules/bar/*Popout.qml`, `shell/modules/notifications/*`, `shell/modules/workbar/*` |
+| 23 | **PC-Beleuchtung beim Start** | OpenRGB (headless, `--noautoconnect`) setzt beim Login alle Zonen (Mainboard, NZXT, RAM) statisch auf `accent` aus `theme/palette.json`; `scripts/rgb apply|off`, Autostart-Zeile, Doku `docs/knowledge/hardware.md` | `scripts/rgb`, `hypr/autostart.conf` (eine Zeile), `docs/knowledge/hardware.md` |
 
 ### Phase 5 – Abschluss (nur auf Bastians Wort)
 
 | AP | Paket | Hinweis |
 |---|---|---|
-| 13 | **Repo-Umbau** `hyprland` → `main`, KWin-Stand als Branch `kwin`, Ordner/Repo `shell`, Pfade (systemd, Hyprland, Starship, bootstrap), `CLAUDE.md` + `SPEC.md` für Hyprland | allein, alle anderen pausieren; Backup vorher |
+| 13 | **Repo-Umbau** `hyprland` → `main`, KWin-Stand als Branch `kwin`, Ordner/Repo `shell`, Pfade (systemd, Hyprland, Starship, bootstrap), `CLAUDE.md` + `docs/PRD.md` für Hyprland | allein, alle anderen pausieren; Backup vorher |
 | 15 | **PC neu aufsetzen**: `system/bootstrap` für Fedora + Hyprland (Pakete, Dotfiles, Session-Restore, Helium, Equibop, Kitty) | nach 13 |
 | – | **Discord entfernen** (Flatpak/RPM), wenn Equibop-Plugin funktioniert | nur auf Bastians „funktioniert“; RPM-Entfernen = sudo durch Bastian |
 
 ## Abschlussprüfung (nach Phase 4)
 
 - Ein Prüf-Agent geht alle Module durch (Screenshot je Modul auf DP-2, zusätzlich HDMI-A-2/DP-1, wo sinnvoll), meldet Stilbrüche und Fehler im `qs log`.
-- `docs/HOTKEYS.md` neu erzeugt, `docs/FORTSCHRITT.md` vollständig, offene Punkte als Liste.
+- `docs/knowledge/hotkeys.md` neu erzeugt, `docs/ROADMAP-HYPRLAND.md` vollständig, offene Punkte als Liste.

@@ -9,7 +9,7 @@ import Quickshell.Io
 //     sonst lädt dnf sie nur, wenn sie abgelaufen sind.
 //   - hat sich die RPM-Datenbank oder Flatpak geändert (installiert/aktualisiert), nach 1 min erneut.
 // Letztes Ergebnis liegt in ~/.local/state/desktop/updates.json: nach einem Shell-Neustart steht die Zahl sofort da.
-// Doku: docs/UPDATES.md
+// Doku: docs/knowledge/shell-features.md
 Singleton {
     id: root
 

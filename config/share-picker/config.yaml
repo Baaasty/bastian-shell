@@ -1,4 +1,4 @@
-# Bildschirm-teilen-Auswahl (hyprland-preview-share-picker, AP 16) – Doku: docs/SHARING.md
+# Bildschirm-teilen-Auswahl (hyprland-preview-share-picker, AP 16) – Doku: docs/knowledge/shell-features.md
 # Wird von scripts/share-picker install nach ~/.config/hyprland-preview-share-picker/config.yaml verlinkt.
 # Das Stylesheet style.css wird aus der Palette erzeugt (theme/gen/share_picker.py) und liegt daneben als Link.
 # Pfade relativ zu dieser Datei. Schlüssel & Standardwerte: ~/.local/src/hyprland-preview-share-picker/README.md

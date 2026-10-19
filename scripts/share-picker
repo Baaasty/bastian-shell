@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bildschirm-teilen-Auswahl im Desktop-Look für xdg-desktop-portal-hyprland (xdph). Doku: docs/SHARING.md
+# Bildschirm-teilen-Auswahl im Desktop-Look für xdg-desktop-portal-hyprland (xdph). Doku: docs/knowledge/shell-features.md
 #
 # Zwei Picker, eingetragen als screencopy:custom_picker_binary in ~/.config/hypr/xdph.conf:
 #   shell (Standard)  Quickshell-Overlay shell/modules/sharepicker, Brücke scripts/share-pick – ohne sudo, ohne Bauen
@@ -31,7 +31,7 @@ SHELL_DIR="$REPO/shell"
 PICKER_CONF="$CONF/hyprland-preview-share-picker"
 XDPH="$CONF/hypr/xdph.conf"
 CREATED="$STATE/xdph.conf.created-by-share-picker"
-# Geprüfter Stand (v0.3.0, Quellcode-Prüfung 18.10.2026, docs/SHARING.md). Neuer Stand erst nach neuer Prüfung eintragen.
+# Geprüfter Stand (v0.3.0, Quellcode-Prüfung 18.10.2026, docs/knowledge/shell-features.md). Neuer Stand erst nach neuer Prüfung eintragen.
 PIN=7e11349d3f6ecae75b42be73d6a258503656cc8f
 BEGIN="# >>> desktop share-picker (scripts/share-picker) >>>"
 END="# <<< desktop share-picker <<<"

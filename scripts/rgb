@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -I
-"""PC-Beleuchtung: alle RGB-Geräte (Mainboard, NZXT, RAM …) fest auf eine Farbe. Doku: docs/RGB.md
+"""PC-Beleuchtung: alle RGB-Geräte (Mainboard, NZXT, RAM …) fest auf eine Farbe. Doku: docs/knowledge/hardware.md
 
   rgb apply [--boot] [--delay S]   Primärfarbe der aktiven Palette-Variante (accent in theme/palette.json), statisch
   rgb color <hex>      einmalig eine andere Farbe (z. B. rgb color ff8800), bis zum nächsten apply
@@ -31,7 +31,7 @@ CONFIG = Path.home() / ".config" / "desktop" / "rgb.json"
 RUN = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
 LOCK = RUN / "desktop-rgb.lock"
 TIMEOUT = 90  # Sekunden je OpenRGB-Aufruf (Scan von USB + SMBus)
-INSTALL_HINT = "openrgb fehlt. Installieren: sudo dnf install openrgb openrgb-udev-rules (Doku: docs/RGB.md)"
+INSTALL_HINT = "openrgb fehlt. Installieren: sudo dnf install openrgb openrgb-udev-rules (Doku: docs/knowledge/hardware.md)"
 
 # Reihenfolge der Modi: statisch zuerst (bleibt in der Hardware), Direct nur als Rückfall
 COLOR_MODES = ("static", "fixed", "direct")
@@ -163,7 +163,7 @@ def show_plan(plan):
 def apply(color, off=False, dry=False):
     devices = scan()
     if not devices:
-        say("keine Geräte gefunden (Rechte? docs/RGB.md „Keine Geräte“)")
+        say("keine Geräte gefunden (Rechte? docs/knowledge/hardware.md „Keine Geräte“)")
         return 1
     plan = build_plan(devices, color, off)
     show_plan(plan)
@@ -237,7 +237,7 @@ def main(argv):
                 print(f"Farbe für apply: #{color} ({source})")
                 devices = scan()
                 if not devices:
-                    print("  keine Geräte gefunden (Rechte? docs/RGB.md „Keine Geräte“)")
+                    print("  keine Geräte gefunden (Rechte? docs/knowledge/hardware.md „Keine Geräte“)")
                 for d in devices:
                     print(f"  {d['index']}: {d['name']} [{d['type'] or '?'}]  Modi: {', '.join(d['modes']) or '–'}")
                 return 0

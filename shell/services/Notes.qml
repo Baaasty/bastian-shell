@@ -5,7 +5,7 @@ import Quickshell.Io
 
 // Gedanken parken (Super+N): Notizen landen als Markdown-Zeilen in einer Inbox-Datei (Standard ~/Notes/inbox.md).
 //   - [ ] 2026-10-18 20:15 Text #projekt        (weitere Zeilen eingerückt; "t "/"!" am Anfang = zusätzlich To-do)
-// Einstellungen von Hand in ~/.config/desktop/notes.json (path, todoPrefixes, todoList, savedMs) – siehe docs/NOTES.md.
+// Einstellungen von Hand in ~/.config/desktop/notes.json (path, todoPrefixes, todoList, savedMs) – siehe docs/knowledge/shell-features.md.
 // Kein Netz, keine KI. Entwurf bleibt in ~/.local/state/desktop/notes-draft.txt, bis er gespeichert wird.
 Singleton {
     id: root

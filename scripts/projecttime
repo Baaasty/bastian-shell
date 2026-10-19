@@ -1,5 +1,5 @@
 #!/usr/bin/env -S python3 -I
-"""Zeit pro Projekt (Doku: docs/PROJECTTIME.md). Gemessen von der Shell (shell/services/ProjectTime.qml),
+"""Zeit pro Projekt (Doku: docs/knowledge/shell-features.md). Gemessen von der Shell (shell/services/ProjectTime.qml),
 hier nur lesen und zusammenzählen. Läuft auch ohne Shell.
 
   projecttime today [--json]                    heute je Projekt

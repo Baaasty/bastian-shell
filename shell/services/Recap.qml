@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.config
 
-// Tagesrückblick (Doku docs/PROJECTTIME.md): ruhige Karte „das hast du heute geschafft“
+// Tagesrückblick (Doku docs/knowledge/shell-features.md): ruhige Karte „das hast du heute geschafft“
 // (shell/modules/recap/RecapCard.qml) mit Commits (scripts/recap), Projektzeit (ProjectTime), Fokuszeit (Focus),
 // abgehakten To-dos und fertigen Claude-Aufgaben. Kommt von selbst, wenn die Feierabend-Szene „evening“
 // angeht (Super+Alt+B), sonst per Kürzel/IPC. Einstellungen (optional, live):

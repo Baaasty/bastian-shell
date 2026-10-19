@@ -1,7 +1,7 @@
 # Projekte auf dem Desktop (Shell-Feature)
 
 Jedes Projekt kann in der **Projekt-Registry** der Shell stehen (`projects/projects.json`, Schema und Port-Schema:
-[`projects/README.md`](../projects/README.md)): Farbe, VS-Code-Tönung, Dev-Befehl, Ports/Port-Block, was der
+[`projects/README.md`](../../projects/README.md)): Farbe, VS-Code-Tönung, Dev-Befehl, Ports/Port-Block, was der
 Projekt-Desktop öffnet, Links. Das Projekt-Repo selbst bleibt dabei unverändert. Geschrieben wird **nur** über
 `scripts/project` (`scripts/project hilfe`) – nie von Hand, nie aus QML.
 

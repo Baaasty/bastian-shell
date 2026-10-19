@@ -10,7 +10,7 @@ Gestylt (Abschnitte wie in Vimium C: /* #ui */ Hinweise + HUD, /* #omni */ Vomni
 Hint-Marker als deckende Holz-Kappen mit Glut-Rand, HUD unten rechts als Kachel, Vomnibar als Desktop-Panel.
 Größen der Vomnibar bleiben Vimium-Standard (sonst müsste vomnibarOptions.sizes mitwandern).
 Tasten: Vimium-Standard, die üblichen ausdrücklich gemappt (f, F, j/k, H/L, J/K, o/O, /) – nichts Exotisches.
-Wird nicht installiert (Vimium C speichert im Browser-Profil): Import per Klick, siehe docs/THEMING.md „Vimium C“.
+Wird nicht installiert (Vimium C speichert im Browser-Profil): Import per Klick, siehe docs/knowledge/theming.md „Vimium C“.
 Aufruf aus dem Repo-Root: python3 -I theme/gen/vimium.py [variante]
 """
 import json

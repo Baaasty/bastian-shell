@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sperren unter Hyprland. Sperrbildschirm = Quickshell (shell/modules/lock), Notfall = hyprlock.
-# Ablauf, Absturz-Verhalten und Notfall aus dem TTY: docs/LOCKSCREEN.md
+# Ablauf, Absturz-Verhalten und Notfall aus dem TTY: docs/knowledge/hyprland.md
 #
 #   lock now              sperren (Super+L, Power-Menü, hypridle lock_cmd): Shell, sonst hyprlock
 #   lock dim [force]      Leerlauf: abdunkeln (im Fokus-Block nur mit force)

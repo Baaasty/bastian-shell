@@ -9,7 +9,7 @@ import Quickshell.Io
 // ihre Größe wird nur bei offenem Popout alle 1,5 s nachgelesen.
 // Aufräumen: Einträge älter als N Tage per `gio trash` in den Papierkorb (nie löschen), nur nach Bestätigung im Popout.
 // Einstellungen (optional): ~/.config/desktop/downloads.json  { "dir": "~/Downloads", "count": 12, "cleanupDays": 30 }
-// Doku: docs/DOWNLOADS.md
+// Doku: docs/knowledge/shell-features.md
 Singleton {
     id: root
 

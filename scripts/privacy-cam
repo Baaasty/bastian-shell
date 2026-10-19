@@ -9,7 +9,7 @@ Kameras, die nur über PipeWire/das Portal laufen, sieht die Shell selbst (Priva
 
   privacy-cam          Dauerlauf (Shell)
   privacy-cam once     einmal prüfen, JSON ausgeben (zum Testen)
-Doku: docs/PRIVACY.md
+Doku: docs/knowledge/shell-features.md
 """
 import glob
 import json

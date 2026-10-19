@@ -13,9 +13,9 @@ import qs.services
 // Auslösen: scripts/lock now (Super+L, hypridle, Power-Menü) → qs ipc call lock lock.
 // Sicherheit: Entsperren nur per PAM (assets/pam.d/desktop-lock), bewusst kein IPC-„unlock“.
 // Ausnahme nur lokal: ~/.config/desktop/lock.json { "requirePassword": false } → Leertaste/Enter entsperrt ohne Passwort
-// (sinnvoll nur mit verschlüsselter Platte + Autologin; Standard bleibt Passwort, docs/LOCKSCREEN.md).
+// (sinnvoll nur mit verschlüsselter Platte + Autologin; Standard bleibt Passwort, docs/knowledge/hyprland.md).
 // Absturz: Hyprland bleibt gesperrt; die neu gestartete Shell sperrt dank Zustandsdatei wieder,
-// sonst übernimmt scripts/lock guard mit hyprlock (Ablauf: docs/LOCKSCREEN.md).
+// sonst übernimmt scripts/lock guard mit hyprlock (Ablauf: docs/knowledge/hyprland.md).
 // Leerlauf (hypridle → scripts/lock): IPC „idle“ dimmt und sperrt, beachtet den Fokus-Block.
 Scope {
     id: root

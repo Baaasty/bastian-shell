@@ -6,7 +6,7 @@ import Quickshell.Io
 // Zuordnung Workspace -> Projekt (für Quicklinks, Idee n) und Git-/CI-Status je Projekt-Workspace (Idee o).
 // Ein Workspace gehört zu einem Projekt, wenn sein (eigener) Name der Projekt-ID oder dem Anzeigenamen
 // aus projects/projects.json entspricht (Groß-/Kleinschreibung egal). Ohne eigenen Namen: kein Projekt.
-// Registry nur lesen – schreiben nur über scripts/project (docs/QUICKLINKS.md).
+// Registry nur lesen – schreiben nur über scripts/project (docs/knowledge/shell-features.md).
 //
 // Git-/CI-Status (Idee o): nur für Projekte, die gerade einen Workspace haben, und nur solange die Leiste
 // sichtbar ist (WorkBar setzt `active`). Git alle 30 s über `scripts/gitinfo <ordner>…` (ein Aufruf, nur lesen),

@@ -411,7 +411,7 @@ Tile {
                         case "offline":
                             return Chat.title + " isn’t running.";
                         case "unsupported":
-                            return Chat.title + " has no call API. Call info needs the Desktop plugin (docs/DISCORD-CAMS.md).";
+                            return Chat.title + " has no call API. Call info needs the Desktop plugin (docs/knowledge/discord.md).";
                         case "authorizing":
                             return "Click “Authorize” in Discord to pair the desktop.";
                         case "denied":

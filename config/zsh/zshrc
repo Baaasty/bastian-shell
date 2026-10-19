@@ -1,6 +1,6 @@
 # ~/.zshrc – zsh im Desktop-Look (Symlink aus dem Repo, gesetzt/entfernt von scripts/zsh-setup install|off).
 # Farben: theme/out/zsh/colors.zsh (erzeugt: theme/gen/zsh.py). Prompt: Starship (wie in bash).
-# Übersicht aller Extras und Kürzel: docs/THEMING.md "zsh".
+# Übersicht aller Extras und Kürzel: docs/knowledge/theming.md "zsh".
 
 DESKTOP_ROOT=${${(%):-%x}:A:h:h:h}   # Repo-Root (Datei liegt in config/zsh/)
 

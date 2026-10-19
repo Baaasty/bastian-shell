@@ -6,7 +6,7 @@ import Quickshell.Io
 // Dev-Dienste fürs Bar-Popout (DevPopout.qml): lauschende Ports eigener Prozesse, Container (podman/docker), eigene
 // devserver-*-Units – alles aus scripts/devservices (eine JSON-Messung). Prüft alle 5 s, solange das Popout offen ist
 // (`active`), sonst alle 30 s (der Chip braucht nur die Zahl); im Vollbild/Spiel (Windows.bare) gar nicht.
-// Aktionen gehen ebenfalls über das Skript (Eigentümer/Startzeit geprüft, Dev-Befehl als eigene User-Unit). Doku: docs/DEVSERVICES.md
+// Aktionen gehen ebenfalls über das Skript (Eigentümer/Startzeit geprüft, Dev-Befehl als eigene User-Unit). Doku: docs/knowledge/shell-features.md
 Singleton {
     id: root
 

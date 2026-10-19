@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kamin-Idle (ruhiger Kamin-Bildschirm nach Leerlauf). Doku: docs/IDLE.md
+# Kamin-Idle (ruhiger Kamin-Bildschirm nach Leerlauf). Doku: docs/knowledge/shell-features.md
 #
 #   idle show [force]   Kamin einblenden (hypridle; im Fokus-Block nur mit force)
 #   idle hide           ausblenden (hypridle bei Resume)

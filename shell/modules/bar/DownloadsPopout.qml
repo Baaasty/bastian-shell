@@ -9,7 +9,7 @@ import qs.components
 // Die letzten Downloads (Downloads.count, Standard 12) nach Zeit; Suchfeld durchsucht den ganzen Ordner.
 // Zeile klicken = öffnen (xdg-open über Launch), Ordner-Knopf = im Dateimanager zeigen, ziehen = Datei in eine App legen
 // (text/uri-list). „Clean up“ legt Einträge älter als N Tage nach Rückfrage in den Papierkorb (gio trash).
-// Doku: docs/DOWNLOADS.md
+// Doku: docs/knowledge/shell-features.md
 PopupWindow {
     id: pop
 

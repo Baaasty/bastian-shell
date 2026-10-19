@@ -6,7 +6,7 @@ import "timewin.js" as TW
 
 // Regeln für Benachrichtigungen: Ruhezeiten, Ausnahmen, App-Regeln, Snooze-Auswahl.
 // Standard: config/notifications.json im Repo; eigene Werte in ~/.config/desktop/notifications.json
-// (dort ersetzt jeder Schlüssel den aus dem Repo). Beide Dateien werden live gelesen. Format: docs/NOTIFICATIONS.md.
+// (dort ersetzt jeder Schlüssel den aus dem Repo). Beide Dateien werden live gelesen. Format: docs/knowledge/shell-features.md.
 // Die Zeit-/Regex-Logik steht in timewin.js (Test: scripts/tests/timewin-test.js).
 Singleton {
     id: root

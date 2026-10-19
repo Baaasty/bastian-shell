@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""Kamera (Elgato Facecam MK.1) per V4L2-ioctl, nur stdlib. Details: docs/facecam.md
+"""Kamera (Elgato Facecam MK.1) per V4L2-ioctl, nur stdlib. Details: docs/knowledge/hardware.md
 
 Die Facecam nimmt Einstellungen nur an, solange sie streamt (z. B. im Discord-Call), sonst
 "Broken pipe". Brightness/Power-Line blendet uvcvideo als "disabled" aus (v4l2-ctl sieht sie nicht),
