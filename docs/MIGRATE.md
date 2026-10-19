@@ -1,8 +1,11 @@
 # Umzug auf ein Theme: `~/Workspace/bastian-shell`
 
 Vorher gab es zwei Ordner: `~/Workspace/desktop` (Branch `kwin`, KWin-Stand) und `~/Workspace/desktop-hyprland` (Branch `hyprland` = `main`).
-Danach gibt es nur noch einen Klon von `bastian-shell` in **`~/Workspace/bastian-shell`**. Hyprland und die Shell sind das einzige Theme,
-Plasma und KWin kommen runter. Das Skript dafür ist **`system/migrate`**. Ohne Schalter macht es nur einen Probelauf und ändert nichts.
+Danach gibt es nur noch einen Klon von `bastian-shell` in **`~/Workspace/bastian-shell`**. Der PC startet nach dem LUKS-Passwort
+per Autologin direkt in Hyprland mit der Shell, ohne Login-Bildschirm und ohne Sitzungsauswahl; gesperrt wird mit dem Sperrbildschirm
+der Shell (`docs/LOCKSCREEN.md`, optional nur Leertaste). Die KWin-Variante kommt weg. **Plasma bleibt installiert, aber unsichtbar**
+(Bluetooth/WLAN-Dienste, Dolphin, Dateidialog und Qt-Theme hängen teils daran); ganz runter nur mit `--remove-plasma` (dann greetd als
+Login-Ersatz, siehe unten). Das Skript dafür ist **`system/migrate`**. Ohne Schalter macht es nur einen Probelauf und ändert nichts.
 Andere Inhalte in `~/Workspace` (Projekte, `*.code-workspace`) fasst es nicht an.
 
 ## Reihenfolge
@@ -16,14 +19,16 @@ haben (der Klon kommt von GitHub). Claude/VS Code möglichst nicht aus den alten
 cd ~/Workspace/bastian-shell
 system/migrate --apply                                      # 3. Schritte 1–6 (bricht bei Fehlern ab)
 system/migrate --only 6                                     # 4. Prüfung: alles „ok“?
-system/migrate --apply --only 7                             # 5. alte Teile weg, greetd einrichten (sudo)
-#   abmelden → Strg+Alt+F3 → im TTY anmelden:
-#   sudo systemctl stop plasmalogin && sudo systemctl start greetd   → anmelden, Hyprland prüfen
-system/migrate --apply --only 7 --login-switch              # 6. Anmeldung auf greetd umstellen → Neustart
-system/migrate --apply --only 7                             # 7. Plasma-/KWin-Pakete entfernen (dnf fragt selbst)
-system/migrate --apply --only 8 --delete-old                # 8. alte Ordner löschen (vorher Bundle)
-system/migrate                                              # 9. Kontrolle, zweiter Lauf schadet nicht
+system/migrate --apply --only 7                             # 5. alte KWin-Teile weg + Autologin in Hyprland (sudo)
+#   Claude/VS Code in den alten Ordnern schließen
+system/migrate --apply --only 8 --delete-old                # 6. alte Ordner löschen (vorher Bundle)
+system/migrate                                              # 7. Kontrolle, zweiter Lauf schadet nicht
+# Neustart: LUKS-Passwort → direkt Hyprland
 ```
+
+Nur wenn Plasma doch ganz runter soll (nicht nötig): `system/migrate --apply --only 7 --remove-plasma` richtet greetd ein;
+nach dem Test im TTY (`sudo systemctl stop plasmalogin && sudo systemctl start greetd`) mit `--remove-plasma --login-switch`
+umstellen, neu starten und `--remove-plasma` noch einmal für die Pakete.
 
 Die Rückfragen in 7 und 8 brauchen ein Terminal oder `--confirm "plasma weg"`, `--confirm greetd` bzw. `--confirm löschen`.
 

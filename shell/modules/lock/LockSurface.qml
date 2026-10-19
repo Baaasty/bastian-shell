@@ -158,10 +158,22 @@ WlSessionLockSurface {
                         spacing: 5
 
                         LockPassword {
+                            visible: surface.ctx.requirePassword
                             anchors.horizontalCenter: parent.horizontalCenter
                             width: surface.ctx.codeLength > 0 ? implicitWidth : parent.width
                             ctx: surface.ctx
                             focused: stage.activeFocus
+                        }
+                        // ohne Passwort (lock.json): nur ein ruhiger Hinweis statt der Kästchen
+                        Txt {
+                            visible: !surface.ctx.requirePassword
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            height: 50
+                            verticalAlignment: Text.AlignVCenter
+                            text: "Press Space to unlock"
+                            color: Theme.textMuted
+                            font.pixelSize: 15
+                            font.weight: Font.Normal
                         }
                         LockMedia {
                             width: parent.width

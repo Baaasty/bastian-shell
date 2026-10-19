@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Umzug auf EIN Theme: ~/Workspace/desktop (Worktree, Branch kwin) + ~/Workspace/desktop-hyprland (Branch hyprland)
-# → Klon von bastian-shell in ~/Workspace/bastian-shell. Danach nur noch Hyprland + Shell, Plasma/KWin kommt runter.
+# → Klon von bastian-shell in ~/Workspace/bastian-shell. Danach startet der PC direkt in Hyprland + Shell (Autologin nach dem
+# LUKS-Passwort), die KWin-Variante ist weg. Plasma bleibt installiert, aber unsichtbar (nur mit --remove-plasma runter).
 # Anleitung, Reihenfolge, Rückweg, Notfall aus dem TTY: docs/MIGRATE.md
 #
 #   system/migrate                    Probelauf (Standard): zeigt jeden Schritt, ändert NICHTS, kein sudo
 #   system/migrate --apply            Schritte 1–6 wirklich ausführen (7 und 8 brauchen eigene Schalter, s. u.)
 #   system/migrate --only 2,3         nur diese Schritte (mit und ohne --apply)
 #   system/migrate --list             Schritte auflisten
-#   --apply --only 7                  KWin-Reste + Login-Ersatz (greetd) + Plasma-Pakete (sudo, fragt nach)
-#   --apply --only 7 --login-switch   Anmeldung von plasmalogin auf greetd umstellen (nach dem TTY-Test)
+#   --apply --only 7                  KWin-Reste weg + Autologin in Hyprland (sudo für /etc/plasmalogin.conf, fragt nach)
+#   --apply --only 7 --remove-plasma  zusätzlich Plasma-Pakete runter (braucht Login-Ersatz greetd, siehe --login-switch)
+#   --apply --only 7 --remove-plasma --login-switch   Anmeldung von plasmalogin auf greetd umstellen (nach dem TTY-Test)
 #   --apply --only 8 --delete-old     alte Ordner löschen (vorher Bundle-Sicherung nach ~/Backups)
 #   --with-refs                       Schritt 2 nimmt auch refs/ mit (Referenz-Klone, ~200 MB; sonst nur Liste)
 #   --confirm "<wort>"                Rückfrage in 7/8 ohne Terminal beantworten (gleiches Wort wie die Frage verlangt)
@@ -61,11 +63,11 @@ STEPS=(
     "4|Repo prüfen: keine festen Pfade auf die alten Ordner"
     "5|Claude Code: Projekt-Gedächtnis zusammenführen, Skills neu verlinken"
     "6|Dienste neu laden, Shell vom neuen Pfad starten, Prüfung (muss grün sein)"
-    "7|[sudo] KWin-Variante + Plasma entfernen (Login-Ersatz zuerst) – nur --apply --only 7"
+    "7|[sudo] KWin-Variante weg + Autologin in Hyprland (Plasma bleibt; runter nur mit --remove-plasma) – nur --apply --only 7"
     "8|Alte Ordner löschen (Bundle-Sicherung) – nur --apply --only 8 --delete-old"
 )
 
-APPLY=0; ONLY=""; DELETE_OLD=0; WITH_REFS=0; LOGIN_SWITCH=0; CONFIRM=""
+APPLY=0; ONLY=""; DELETE_OLD=0; WITH_REFS=0; LOGIN_SWITCH=0; REMOVE_PLASMA=0; CONFIRM=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --apply) APPLY=1 ;;
@@ -74,6 +76,7 @@ while [ $# -gt 0 ]; do
         --delete-old) DELETE_OLD=1 ;;
         --with-refs) WITH_REFS=1 ;;
         --login-switch) LOGIN_SWITCH=1 ;;
+        --remove-plasma) REMOVE_PLASMA=1 ;;
         --confirm) CONFIRM="${2:-}"; shift ;;
         --list) for s in "${STEPS[@]}"; do printf '  %s  %s\n' "${s%%|*}" "${s#*|}"; done; exit 0 ;;
         -h|--help) sed -n '2,19p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -497,7 +500,7 @@ if want 7; then
 
     if (( green )); then
     dm="$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)"; dm="${dm##*/}"
-    if (( APPLY )) && ! confirm "KWin-Variante entfernen, Login-Ersatz einrichten und Plasma-Pakete entfernen (Pakete erst nach Login-Wechsel)?" "plasma weg"; then
+    if (( APPLY )) && ! confirm "KWin-Variante entfernen und Autologin in Hyprland einrichten?" "plasma weg"; then
         bad "nicht bestätigt – Schritt 7 übersprungen"; FAILS+=("Schritt 7 nicht bestätigt")
     else
     # a) Alte Teile im Home: KWin-Variante (aus scripts/rice, shellpkg, screenrec, winrules abgeleitet), ungenutzte
@@ -567,7 +570,27 @@ if want 7; then
     command -v kbuildsycoca6 >/dev/null 2>&1 && run "kbuildsycoca6 >/dev/null 2>&1 || true"
     info "bleiben (Hyprland nutzt sie): DesktopHearth.colors + kdeglobals, Cursor Desktop, Desktop-Icons, Konsole-Profil, kscreenlockerrc (Wallpaper-Pfad), theme-backup-2026-10-18 (gtk.py)"
 
-    # b) Login: plasmalogin braucht kwin → Ersatz greetd + tuigreet ZUERST (nie ohne funktionierenden Login)
+    # b) Autologin: nach dem LUKS-Passwort direkt in Hyprland (uwsm), ohne Greeter und ohne Sitzungsauswahl.
+    #    plasmalogin bleibt der Login-Manager (erscheint nur noch nach dem Abmelden). Sperrbildschirm = Shell.
+    echo "  -- b) Autologin in Hyprland"
+    if [ "$dm" = plasmalogin.service ]; then
+        if grep -q "^User=$USER\$" /etc/plasmalogin.conf 2>/dev/null && grep -q '^Session=hyprland-uwsm.desktop$' /etc/plasmalogin.conf 2>/dev/null; then
+            ok "Autologin: $USER → hyprland-uwsm.desktop"
+        elif [ ! -f /usr/share/wayland-sessions/hyprland-uwsm.desktop ]; then
+            bad "/usr/share/wayland-sessions/hyprland-uwsm.desktop fehlt – kein Autologin"; FAILS+=("Autologin: Sitzung fehlt")
+        else
+            run "sudo cp -an /etc/plasmalogin.conf /etc/plasmalogin.conf.vor-migrate && sudo sed -i -e '/^\[Autologin\]/,/^\[/{s/^#\?Session=.*/Session=hyprland-uwsm.desktop/;s/^#\?User=.*/User=$USER/}' /etc/plasmalogin.conf"
+            info "gilt ab dem nächsten Start · Rückweg: sudo cp /etc/plasmalogin.conf.vor-migrate /etc/plasmalogin.conf"
+        fi
+    else info "Anmeldung ist ${dm:-unbekannt} (nicht plasmalogin) – Autologin dort von Hand"; fi
+    if [ ! -f "$HOME/.config/desktop/lock.json" ]; then
+        info "Sperrbildschirm fragt weiter nach dem Passwort · nur Leertaste: printf '{ \"requirePassword\": false }\n' > ~/.config/desktop/lock.json"
+    else ok "Sperrbildschirm-Einstellung: ~/.config/desktop/lock.json"; fi
+
+    if (( ! REMOVE_PLASMA )); then
+        ok "Plasma bleibt installiert (unsichtbar: Autologin startet nur Hyprland) · runter: --remove-plasma"
+    else
+    # b2) Login-Ersatz: plasmalogin braucht kwin → greetd + tuigreet ZUERST (nie ohne funktionierenden Login)
     echo "  -- b) Anmeldung (heute: ${dm:-?})"
     if [ "$dm" = plasmalogin.service ]; then
         if ! rpm -q greetd tuigreet >/dev/null 2>&1; then run "sudo dnf install -y greetd greetd-selinux tuigreet"; else ok "greetd + tuigreet installiert"; fi
@@ -626,6 +649,7 @@ if want 7; then
             info "danach: ~/.local/state/desktop/loginscreen-backup + loginscreen-theme.sha256 löschbar (Restore für plasmalogin), sudo rm -rf /var/lib/plasmalogin"
         fi
     fi
+    fi   # REMOVE_PLASMA
     fi
     fi
 fi

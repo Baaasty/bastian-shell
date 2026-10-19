@@ -12,6 +12,8 @@ import qs.services
 // Herkunft: Ablauf/Maße nach KDE Plasma Workspace (lockscreen), GPL-2.0-or-later – siehe THIRD_PARTY.md.
 // Auslösen: scripts/lock now (Super+L, hypridle, Power-Menü) → qs ipc call lock lock.
 // Sicherheit: Entsperren nur per PAM (assets/pam.d/desktop-lock), bewusst kein IPC-„unlock“.
+// Ausnahme nur lokal: ~/.config/desktop/lock.json { "requirePassword": false } → Leertaste/Enter entsperrt ohne Passwort
+// (sinnvoll nur mit verschlüsselter Platte + Autologin; Standard bleibt Passwort, docs/LOCKSCREEN.md).
 // Absturz: Hyprland bleibt gesperrt; die neu gestartete Shell sperrt dank Zustandsdatei wieder,
 // sonst übernimmt scripts/lock guard mit hyprlock (Ablauf: docs/LOCKSCREEN.md).
 // Leerlauf (hypridle → scripts/lock): IPC „idle“ dimmt und sperrt, beachtet den Fokus-Block.
@@ -30,6 +32,8 @@ Scope {
     property bool unlocking: false       // Auffächern läuft, danach erst wirklich entsperren
     // wie die Plasma-Einstellung desktopAutoSubmitLength: 6 Kästchen, beim 6. Zeichen prüfen (0 = freies Feld)
     readonly property int codeLength: 6
+    // aus ~/.config/desktop/lock.json; fehlt die Datei oder ist sie kaputt: Passwort nötig
+    property bool requirePassword: true
     readonly property bool graceLocked: graceTimer.running
     readonly property bool checking: pam.active
     // Felder bleiben offen, solange etwas getippt ist oder geprüft wird
@@ -108,6 +112,14 @@ Scope {
             return;
         }
         show();
+        // ohne Passwort: Leertaste oder Enter entsperrt (gleiche Animation wie nach erfolgreichem PAM)
+        if (!requirePassword) {
+            if (k === Qt.Key_Space || k === Qt.Key_Return || k === Qt.Key_Enter) {
+                unlocking = true;
+                unlockTimer.restart();
+            }
+            return;
+        }
         if (k === Qt.Key_CapsLock) {
             capsLock = !capsLock;
             return;
@@ -188,6 +200,23 @@ Scope {
             }
         }
         onError: err => root.fail("Unlocking failed (" + PamError.toString(err) + ")")
+    }
+
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/desktop/lock.json"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                root.requirePassword = JSON.parse(text()).requirePassword !== false;
+            } catch (e) {
+                console.warn("lock: ~/.config/desktop/lock.json is not valid JSON, password stays required");
+                root.requirePassword = true;
+            }
+        }
+        onLoadFailed: root.requirePassword = true
     }
 
     // nach dem Auffächern (LockSurface: 140 + 560 ms) wirklich entsperren

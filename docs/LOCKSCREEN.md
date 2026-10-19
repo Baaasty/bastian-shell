@@ -7,6 +7,9 @@ Unter Plasma sperrt weiter kscreenlocker mit dem Shell-Paket (`plasma/`). Unter 
 
 - **Sperren:** Super+L, Power-Menü, `loginctl lock-session` und hypridle rufen `scripts/lock now` → IPC `lock lock`.
   Antwortet die Shell nicht, übernimmt sofort **hyprlock** (Notfall, Farben aus `theme/palette.json`).
+- **Ohne Passwort (nur lokal):** `~/.config/desktop/lock.json` mit `{ "requirePassword": false }` → Leertaste oder Enter
+  entsperrt sofort, statt der Kästchen steht „Press Space to unlock“. Nur sinnvoll mit verschlüsselter Platte und Autologin
+  (das Passwort kommt dann beim Booten). Datei löschen = wieder Passwort. Der Notfall-hyprlock fragt immer nach dem Passwort.
 - **Entsperren:** nur per Passwort über PAM (`shell/assets/pam.d/desktop-lock`: pam_unix, 2 s Wartezeit nach
   Fehlversuch, kein leeres Passwort). Es gibt bewusst kein IPC-„unlock“.
 - **Leerlauf** (`hypr/hypridle.conf`): 5:00 dimmen (Bewegung = weiter ohne Passwort), 5:05 sperren,
