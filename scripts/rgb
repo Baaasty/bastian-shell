@@ -12,6 +12,7 @@ Technik: OpenRGB ohne Server (--noautoconnect). Erst ein Scan (-l), dann pro Ger
 --boot (Autostart): fehlt openrgb oder klemmt etwas, kurze Meldung und Exit 0 – der Login wird nie blockiert.
 --delay S: erst S Sekunden warten (nach Standby, USB braucht kurz; hypridle after_sleep_cmd nutzt 3 s).
 Geräte auslassen: ~/.config/desktop/rgb.json  {"skip": ["G502"]}  (Teil des Gerätenamens, Groß/klein egal)
+Hängt ein Gerät, setzt apply die übrigen einzeln; es landet in ~/.local/state/desktop/rgb-slow.json und kommt künftig einzeln zuletzt.
 Installieren (einmalig, sudo): sudo dnf install openrgb openrgb-udev-rules
 """
 import fcntl
@@ -31,6 +32,10 @@ CONFIG = Path.home() / ".config" / "desktop" / "rgb.json"
 RUN = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
 LOCK = RUN / "desktop-rgb.lock"
 TIMEOUT = 90  # Sekunden je OpenRGB-Aufruf (Scan von USB + SMBus)
+ONE_TIMEOUT = 45  # Sekunden für ein einzelnes Gerät (Scan ~12 s + Setzen)
+# Geräte, die OpenRGB beim Setzen aufhängen (z. B. G915 über Lightspeed): werden einzeln und zuletzt gesetzt,
+# damit sie den Rest nie mehr blockieren. Wird selbst gepflegt (hängt → rein, klappt wieder → raus).
+SLOW = Path.home() / ".local" / "state" / "desktop" / "rgb-slow.json"
 INSTALL_HINT = "openrgb fehlt. Installieren: sudo dnf install openrgb openrgb-udev-rules (Doku: docs/knowledge/hardware.md)"
 
 # Reihenfolge der Modi: statisch zuerst (bleibt in der Hardware), Direct nur als Rückfall
@@ -77,9 +82,24 @@ def openrgb_bin():
     return shutil.which("openrgb")
 
 
-def run_openrgb(args):
+def run_openrgb(args, timeout=TIMEOUT):
     cmd = [openrgb_bin(), "--noautoconnect", *args]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def load_slow():
+    try:
+        return set(json.loads(SLOW.read_text()))
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def save_slow(names):
+    try:
+        SLOW.parent.mkdir(parents=True, exist_ok=True)
+        SLOW.write_text(json.dumps(sorted(names)))
+    except OSError:
+        pass
 
 
 def parse_list(text):
@@ -160,6 +180,31 @@ def show_plan(plan):
         print(f"  {d['index']}: {d['name']} [{d['type'] or '?'}] → {what}")
 
 
+def report(r):
+    """Fehlerzeilen von OpenRGB weitergeben; True = Aufruf ok."""
+    errs = [l for l in (r.stdout + r.stderr).splitlines() if "error" in l.lower() or "not available" in l.lower()]
+    for l in errs[:10]:
+        say(l.strip())
+    if r.returncode != 0:
+        say(f"openrgb endete mit {r.returncode}")
+    return r.returncode == 0
+
+
+def set_each(items, slow):
+    """Jedes Gerät mit eigenem Aufruf und Zeitlimit: ein hängendes Gerät hält die anderen nicht auf. -> Anzahl ok"""
+    ok = 0
+    for p in items:
+        name = p[0]["name"]
+        try:
+            if report(run_openrgb(plan_args([p]), timeout=ONE_TIMEOUT)):
+                ok += 1
+                slow.discard(name)
+        except subprocess.TimeoutExpired:
+            say(f"{name}: antwortet nicht (>{ONE_TIMEOUT} s), übersprungen – wird künftig einzeln gesetzt")
+            slow.add(name)
+    return ok
+
+
 def apply(color, off=False, dry=False):
     devices = scan()
     if not devices:
@@ -167,22 +212,28 @@ def apply(color, off=False, dry=False):
         return 1
     plan = build_plan(devices, color, off)
     show_plan(plan)
-    args = plan_args(plan)
+    todo = [p for p in plan if p[1]]
     if dry:
         return 0
-    if not args:
+    if not todo:
         say("kein Gerät mit passendem Modus")
         return 1
-    r = run_openrgb(args)
-    errs = [l for l in (r.stdout + r.stderr).splitlines() if "error" in l.lower() or "not available" in l.lower()]
-    for l in errs[:10]:
-        say(l.strip())
-    if r.returncode != 0:
-        say(f"openrgb endete mit {r.returncode}")
-        return 1
-    n = sum(1 for p in plan if p[1])
-    say(("aus" if off else f"#{color}") + f" auf {n} Gerät(en) gesetzt")
-    return 0
+    slow = load_slow()
+    fast = [p for p in todo if p[0]["name"] not in slow]
+    late = [p for p in todo if p[0]["name"] in slow]
+    ok = 0
+    if fast:
+        # ein Aufruf für alle (ein Scan statt vieler); hängt er, jedes Gerät einzeln
+        try:
+            if report(run_openrgb(plan_args(fast))):
+                ok += len(fast)
+        except subprocess.TimeoutExpired:
+            say(f"openrgb antwortet nicht (>{TIMEOUT} s) – setze die Geräte einzeln")
+            ok += set_each(fast, slow)
+    ok += set_each(late, slow)
+    save_slow(slow)
+    say(("aus" if off else f"#{color}") + f" auf {ok} von {len(todo)} Gerät(en) gesetzt")
+    return 0 if ok == len(todo) else 1
 
 
 # ---------- Ablauf ----------

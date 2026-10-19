@@ -38,6 +38,8 @@ Hardware: MSI MPG B550 Gaming Plus (Mystic Light, `1462:7c56`), NZXT Smart Devic
   `--delay 3`, bis USB wieder da ist). Nach `scripts/rice variant` einmal `scripts/rgb apply`, sonst erst beim nächsten Login.
 - Rechte: `openrgb-udev-rules` (sudo, zusammen mit `openrgb`) gibt dem Login per `uaccess` Zugriff auf alle `/dev/i2c-*`
   und die USB-Geräte; keine Gruppe nötig. Geräte auslassen: `~/.config/desktop/rgb.json` → `{"skip": ["G502"]}`.
+- Ein gemeinsamer OpenRGB-Aufruf für alle Geräte; hängt er (> 90 s, z. B. G915 über Lightspeed), setzt `apply` jedes Gerät
+  einzeln (je 45 s). Hängende Geräte merkt `~/.local/state/desktop/rgb-slow.json` und setzt sie künftig einzeln zuletzt.
 
 Stolperfallen:
 
