@@ -27,7 +27,9 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
 
 ## RGB (OpenRGB)
 
-`scripts/rgb` setzt alle RGBs im PC **statisch** auf `accent` der aktiven Palette-Variante (hearth `#DB6B4C`), kein Effekt.
+`scripts/rgb` setzt alle RGBs im PC **statisch** auf `accent` der aktiven Palette-Variante, für LEDs kräftiger abgeleitet
+(gleicher Farbton, Sättigung 0.92, volle Helligkeit: hearth `#DB6B4C` → `#FF4714` – LEDs mischen Gedecktes sonst weißlich;
+anpassbar in `rgb.json` `saturation`/`brightness`), kein Effekt.
 Hardware: MSI MPG B550 Gaming Plus (Mystic Light, `1462:7c56`), NZXT Smart Device V2 (`1e71:200f`), RAM über SMBus
 (`/dev/i2c-0…2`, PIIX4), GPU (Gigabyte RTX 3070 Ti, nur `Direct`), Maus G502 X PLUS (Lightspeed-Empfänger `046d:c547`).
 Nicht steuerbar: Drop ALT (`04d8:eed3`) – Stock-Firmware ohne Raw-HID, ginge nur mit eigener QMK-Firmware (bewusst gelassen).
