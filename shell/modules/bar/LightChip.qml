@@ -7,14 +7,12 @@ import qs.components
 
 // Licht-Chip in der Bar (links neben dem Lautsprecher). Klick öffnet das Licht-Popout (LightPopout.qml):
 // Key Light, Hue-Szenen + Farbwähler, Kamera-Belichtung – derselbe Licht-Teil wie in der Dashboard-Kachel.
-// Brennt ein Licht (Key Light oder irgendeine Hue-Lampe), steht die Birne leise im Glut-Ton. Dafür sieht der Chip
-// alle 60 s einmal nach (nur solange die Bar da ist); bei offenem Popout/Dashboard pollen die Dienste ohnehin öfter.
+// Die Birne ist immer grau wie die anderen Bar-Symbole (kein Glut-Ton mehr, wenn ein Licht brennt – darum auch kein Nachsehen).
 // IPC (zum Testen ohne Maus): qs ipc call light open|close|toggle|status|picker
 Chip {
     id: chip
 
     property var barWindow: QsWindow.window
-    readonly property bool lit: KeyLight.on || Hue.anyOn
 
     padding: 8
     hintKey: BarKeys.keyFor("light")
@@ -25,19 +23,7 @@ Chip {
         anchors.verticalCenter: parent.verticalCenter
         name: "lightbulb"
         size: 18
-        color: chip.lit ? Theme.accentText : Theme.textMuted
-        Behavior on color { ColorAnimation { duration: Theme.fade } }
-    }
-
-    Timer {
-        interval: 60000
-        repeat: true
-        running: chip.visible && !Windows.bare && !KeyLight.active
-        triggeredOnStart: true
-        onTriggered: {
-            KeyLight.refresh();
-            Hue.refresh();
-        }
+        color: Theme.textMuted
     }
 
     LightPopout {

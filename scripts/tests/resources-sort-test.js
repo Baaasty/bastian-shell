@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const src = fs.readFileSync(path.join(__dirname, "../../shell/modules/bar/resources-sort.js"), "utf8").replace(/^\.pragma library\s*$/m, "");
-const L = new Function(src + "; return { compare, sorted, sync };")();
+const L = new Function(src + "; return { compare, sorted, stable, sync };")();
 const assert = require("assert");
 
 const GB = 1073741824, MB = 1048576;
@@ -53,4 +53,8 @@ for (let round = 0; round < 300; round++) {
     assert.deepStrictEqual(cur, arr.map(r => r.key));
     assert.deepStrictEqual(model.items, arr);   // Werte stimmen mit der Sortierung überein
 }
+// Eingefroren: bekannte Zeilen behalten ihren Platz trotz neuer Werte, Neue hinten (sortiert), Weggefallene fehlen
+const fr = L.stable([{ key: "b", name: "b", pid: 2, cpu: 90 }, { key: "x", name: "x", pid: 7, cpu: 5 }, { key: "y", name: "y", pid: 8, cpu: 50 },
+    { key: "a", name: "a", pid: 1, cpu: 1 }], ["a", "gone", "b"], "cpu", false, r => r.key);
+assert.strictEqual(fr.map(r => r.key).join(), "a,b,y,x");
 console.log("ok");

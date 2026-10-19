@@ -34,6 +34,14 @@ function sorted(list, key, asc) {
     return list.slice().sort((a, b) => compare(a, b, key, asc));
 }
 
+// Reihenfolge einfrieren (aufgeklappte Zeile in Processes): Bekannte bleiben in der Reihenfolge von `order`
+// (Schlüssel aus idOf), Neue kommen danach – unter sich normal sortiert. Werte dürfen sich ändern, Plätze nicht.
+function stable(list, order, key, asc, idOf) {
+    const rank = new Map(order.map((k, i) => [k, i]));
+    const known = list.filter(r => rank.has(idOf(r))).sort((a, b) => rank.get(idOf(a)) - rank.get(idOf(b)));
+    return known.concat(sorted(list.filter(r => !rank.has(idOf(r))), key, asc));
+}
+
 // Liste `arr` (schon sortiert) im ListModel abgleichen, ohne es neu aufzubauen (Scrollstand bleibt).
 // cur = Spiegel der Schlüssel im Modell (wird mitgeführt); roleOf(zeile) -> Objekt fürs Modell.
 function sync(model, cur, arr, roleOf) {

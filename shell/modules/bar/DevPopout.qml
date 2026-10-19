@@ -281,44 +281,6 @@ PopupWindow {
     }
 
     // ---------- Bausteine ----------
-    component Tab: Rectangle {
-        id: tb
-        property string text
-        property int count: -1
-        property bool current: false
-        signal picked()
-        width: tbRow.implicitWidth + 28
-        height: 32
-        radius: height / 2
-        color: current ? Theme.accentFill : tbArea.containsMouse ? Theme.surfaceSunken : "transparent"
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Row {
-            id: tbRow
-            anchors.centerIn: parent
-            spacing: 6
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: tb.text
-                color: tb.current ? Theme.accentText : Theme.textMuted
-                font.weight: tb.current ? Font.DemiBold : Font.Normal
-            }
-            MonoTxt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: tb.count > 0
-                text: tb.count
-                color: tb.current ? Theme.accentText : Theme.textFaint
-                font.pixelSize: 11
-            }
-        }
-        MouseArea {
-            id: tbArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: tb.picked()
-        }
-    }
-
     // Textknopf (Start / Stop / Cancel)
     component Btn: Rectangle {
         id: bt
@@ -958,7 +920,7 @@ PopupWindow {
                 anchors.leftMargin: 18
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
-                Tab { text: "Services"; count: DevServices.count; current: pop.tab === "services"; onPicked: { pop.tab = "services"; pop.confirm = null; } }
+                Tab { text: "Services"; count: DevServices.count > 0 ? DevServices.count : -1; current: pop.tab === "services"; onPicked: { pop.tab = "services"; pop.confirm = null; } }
                 Tab { text: "Containers"; current: pop.tab === "containers"; onPicked: { pop.tab = "containers"; pop.confirm = null; } }
                 Tab { text: "Ports"; current: pop.tab === "ports"; onPicked: { pop.tab = "ports"; pop.confirm = null; } }
                 Tab { text: "Server"; current: pop.tab === "server"; onPicked: pop.tab = "server" }

@@ -11,11 +11,16 @@ Ohne eigenen Namen („Workspace 2“) gibt es kein Projekt. Umbenennen: Doppelk
 
 ## Bedienung
 
-- Maus über die Kachel: rechts oben im Kopf erscheint ein kleiner **Link-Knopf**. Klick öffnet das Popup.
+- Rechts oben im Kopf jeder Projekt-Kachel sitzt immer ein kleiner **Link-Knopf** (Git/CI-Punkte links daneben). Klick öffnet das Popup.
 - Alternativ: Rechtsklick auf die Kachel → **Quick links**.
-- Popup: **Local** (Ports aus `dev.ports`, Punkt grün = läuft, Ring = läuft nicht; geprüft per `ss -ltn`, nur solange
-  das Popup offen ist) und **Links**. Klick auf eine Zeile öffnet die Adresse in Helium (`http://localhost:<port>`).
-- Unter **Local** auch die **Container** des Projekts (Punkt grün = läuft), mit ihren Ports. Zuordnung kommt aus
+- Popup, immer gleich sortiert: **Local** (Ports aus `dev.ports` nach Nummer, Punkt grün = läuft, Ring = läuft nicht; geprüft per `ss -ltn`, nur solange
+  das Popup offen ist), **Containers**, **Repos** (Links auf GitHub/GitLab oder mit Icon `code`, dazu die Seite aus `git remote`), **Links** (der Rest), ganz unten **Add link**. Ein Icon je Kategorie (das `icon` aus `projects.json` zählt
+  im Popup nicht); lange Namen haben Vorrang, Host/Pfad dahinter wird gekürzt. Klick auf eine Zeile öffnet die Adresse in Helium (`http://localhost:<port>`).
+- **Mehrere Repos in einem Workspace:** Hat das Projekt eine `.code-workspace` (`workspace` in `projects.json`) und
+  gehört einer ihrer Ordner zu einem anderen Projekt (z. B. soulwick → soulwick-platform), stehen dessen Ports,
+  Container und Repo-Links mit im Popup (Ports mit „· <Projekt>“, Repo-Link unter dem Projektnamen). Entfernen geht
+  nur bei Links des eigenen Projekts.
+- Unter **Containers** die Container des Projekts (Punkt grün = läuft), mit ihren Ports. Zuordnung kommt aus
   `DevServices` (dieselbe wie im Dev-Popout, keine zweite Erkennung). Klick: Port mit Weboberfläche (Rolle in
   `dev.infra` mit console/web/ui/admin/dashboard, z. B. `minio-console`) öffnet in Helium, sonst (postgres …) wird
   `localhost:<port>` kopiert.
@@ -24,7 +29,7 @@ Ohne eigenen Namen („Workspace 2“) gibt es kein Projekt. Umbenennen: Doppelk
 - **Tastatur**: Workspace-Modus (Alt antippen oder Alt+Esc), Kachel mit ←/→ markieren – bei Projekt-Workspaces steht
   Branch/Änderungen/CI über der Leiste und der Hinweis `Q links`. **Q** öffnet das Popup: ↑/↓ (oder J/K) wählen,
   Enter öffnet, 1–9 öffnet die Zeile direkt, A = Link ergänzen, Entf zweimal = Link entfernen, Esc = zurück in den Modus.
-  Im Popup stehen auch **Repository** (aus `git remote`, falls nicht schon als Link eingetragen) und **Last CI run**.
+  Im Popup steht auch **Repository** (aus `git remote`, falls nicht schon als Link eingetragen).
 - Per Befehl: `qs ipc -p ~/Workspace/bastian-shell/shell call workbar quickLinks <n>` (n = Platz in der Leiste, 0 = aktueller);
   im Modus `workbar modeLinks` (wie Q).
 
@@ -71,9 +76,8 @@ lassen) und im Quicklinks-Popup. Gleiche Zuordnung wie oben (Workspace-Name = Pr
 
 | Wo | Was |
 |---|---|
-| Kachel, rechts im Kopf | **amber** = ungespeicherte Änderungen (geänderte + neue Dateien) · rechts **grün** = letzter CI-Lauf ok, **rot** = fehlgeschlagen, **Ring** = läuft, **grau** = abgebrochen/übersprungen. Repo ohne CI oder ohne `gh`: kein CI-Punkt. Bei Hover deckt der Link-Knopf die Punkte zu |
+| Kachel, rechts im Kopf | **amber** = ungespeicherte Änderungen (geänderte + neue Dateien) · rechts **grün** = letzter CI-Lauf ok, **rot** = fehlgeschlagen, **Ring** = läuft, **grau** = abgebrochen/übersprungen. Repo ohne CI oder ohne `gh`: kein CI-Punkt. Die Punkte sitzen links neben dem Link-Knopf |
 | Tooltip + Popup | `Branch · 3 changes · ↑1 ↓2 · CI passing` (↑ = noch nicht gepusht, ↓ = noch nicht geholt) |
-| Popup | zusätzlich **Last CI run** (Klick öffnet den Lauf auf GitHub in Helium) |
 
 ## Woher kommen die Daten?
 

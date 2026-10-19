@@ -9,6 +9,9 @@ import qs.components
 // Quicklinks eines Projekt-Workspaces (Idee n): localhost-Ports aus dev.ports (mit „läuft“-Punkt), Container des
 // Projekts (Zuordnung aus DevServices, dieselbe wie im Dev-Popout) und Links aus projects.json (links). Klick öffnet in Helium. „Add link“ und das X an einem Link gehen über scripts/project
 // (link add / link rm) – die Datei wird nie von Hand oder aus QML geschrieben. Doku: docs/QUICKLINKS.md
+// Reihenfolge fest: Local (Ports nach Nummer) · Containers · Repos · übrige Links · Add link; ein Icon je Kategorie
+// (icon aus projects.json zählt hier nicht). Mit-Projekte aus der
+// .code-workspace (soulwick → soulwick-platform) liefern Ports, Container und Repo-Links dazu.
 // Tastatur (Workspace-Modus, Q): ↑↓ wählen, Enter öffnet, 1–9 direkt, A Link ergänzen, Entf zweimal entfernt, Esc zurück.
 // Dann ohne eigenen Fokus-Grab: die Tasten liefert die Leiste (WorkBar.modeKey → key()), sie behält die Tastatur.
 PopupWindow {
@@ -17,19 +20,87 @@ PopupWindow {
     required property var host          // die Leiste (PanelWindow): Anker, openMenus, stick()
     property string deskId: ""          // Workspace-ID, für den das Popup offen ist
     readonly property var proj: GitInfo.projectForId(deskId)
+    // Mit-Projekte: andere Projekte, deren Ordner im .code-workspace dieses Projekts stecken (soulwick → soulwick-platform).
+    // Ihre Ports, Container und Repo-Links stehen mit im Popup (nur öffnen, entfernen geht nur am eigenen Projekt).
+    property var wsFolders: []
+    readonly property var related: {
+        if (!proj)
+            return [];
+        const out = [], seen = {};
+        seen[proj.id] = true;
+        for (const f of wsFolders) {
+            const s = Projects.settingsFor(f);
+            if (s && !seen[s.id]) {
+                seen[s.id] = true;
+                out.push(s);
+            }
+        }
+        return out;
+    }
+    readonly property var family: proj ? [proj].concat(related) : []
     readonly property var ports: {
-        const p = (proj && proj.dev && proj.dev.ports) || {};
-        return Object.keys(p).map(k => ({ role: k, port: Number(p[k]) }));
+        const out = [];
+        for (const e of family) {
+            const p = (e.dev && e.dev.ports) || {};
+            for (const k of Object.keys(p))
+                out.push({ role: k, port: Number(p[k]), from: e.id === proj.id ? "" : (e.name || e.id) });
+        }
+        return out.sort((a, b) => a.port - b.port);
     }
     readonly property var links: (proj && proj.links) || []
+    // feste Reihenfolge: Local (Ports) · Containers · Repos · übrige Links · Add link
+    function isRepo(l: var): bool {
+        return l.icon === "code" || /^https?:\/\/(www\.)?(github\.com|gitlab\.com|codeberg\.org|bitbucket\.org)\//i.test(String(l.url || ""));
+    }
+    // Repo-Links der Mit-Projekte heißen nach ihrem Projekt und haben `from` (nicht entfernbar)
+    readonly property var repoLinks: {
+        const out = links.filter(l => isRepo(l));
+        const norm = u => String(u || "").replace(/\/+$/, "").toLowerCase();
+        const have = out.map(l => norm(l.url));
+        for (const e of related)
+            for (const l of (e.links || []).filter(l => isRepo(l) && !have.includes(norm(l.url)))) {
+                have.push(norm(l.url));
+                out.push({ name: e.name || e.id, url: l.url, from: e.id });
+            }
+        return out;
+    }
+    readonly property var otherLinks: links.filter(l => !isRepo(l))
+    readonly property int nLocal: ports.length + containers.length
+
+    FileView {
+        path: pop.proj && pop.proj.workspace ? GitInfo.home(pop.proj.workspace) : ""
+        printErrors: false
+        watchChanges: true
+        onPathChanged: pop.wsFolders = []
+        onFileChanged: reload()
+        onLoadFailed: pop.wsFolders = []
+        onLoaded: pop.wsFolders = pop.foldersOf(text(), path)
+    }
+    // Ordner einer .code-workspace (JSONC: Kommentare außerhalb von Strings und Kommas vor } ] weg), absolut
+    function foldersOf(text: string, file: string): var {
+        const clean = String(text).replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m, str) => str || "").replace(/,(\s*[}\]])/g, "$1");
+        try {
+            const dir = String(file).replace(/\/[^/]*$/, "");
+            return (JSON.parse(clean).folders || []).map(f => {
+                const p = GitInfo.home(String(f.path || ""));
+                const out = [];
+                for (const seg of (p.startsWith("/") ? p : dir + "/" + p).split("/"))
+                    seg === ".." ? out.pop() : seg !== "." && out.push(seg);
+                return out.join("/");
+            });
+        } catch (e) {
+            return [];
+        }
+    }
     // Container des Projekts: [{ name, running, ports: [int], web: int }] – web = Port mit Weboberfläche (Rolle in
     // dev.infra wie „minio-console“), Klick öffnet ihn; ohne (postgres …) kopiert der Klick localhost:<port>
     readonly property var containers: {
         if (!proj)
             return [];
-        const infra = (proj.dev && proj.dev.infra) || {};
+        const infra = Object.assign({}, ...family.map(e => (e.dev && e.dev.infra) || {}));
+        const ids = family.map(e => e.id);
         const roleOf = port => Object.keys(infra).find(k => Number(infra[k]) === port) || "";
-        return DevServices.containers.filter(c => c.project === proj.id).map(c => {
+        return DevServices.containers.filter(c => ids.includes(c.project)).map(c => {
             const ports = [...new Set((c.ports || []).filter(p => p.proto === "tcp").map(p => p.host))].sort((a, b) => a - b);
             const web = ports.find(p => /console|web|ui|admin|dashboard/i.test(roleOf(p))) || 0;
             return { name: c.name, running: !!c.running, ports: ports, web: web };
@@ -37,32 +108,30 @@ PopupWindow {
     }
     property var listening: ({})        // Port -> true, nur solange das Popup offen ist (ss -ltn)
     readonly property var git: proj ? GitInfo.git[proj.id] : undefined
-    readonly property var ci: proj ? GitInfo.ci[proj.id] : undefined
     // Repo-Seite (aus git remote), nur wenn sie nicht schon als Link drinsteht
     readonly property string repoUrl: {
         const u = git && git.repoUrl ? String(git.repoUrl) : "";
         return u && !links.some(l => String(l.url || "").replace(/\/+$/, "") === u.replace(/\/+$/, "")) ? u : "";
     }
-    readonly property string ciUrl: ci && ci.url ? String(ci.url) : ""
 
     // ---------- Tastatur ----------
     property bool kb: false             // per Taste geöffnet (Workspace-Modus)
     property bool kbBack: false         // mit Esc zu: zurück in den Workspace-Modus (sonst endet er)
     property int sel: 0
     property int armed: -1              // Zeile, deren Link nach dem ersten Entf auf „Remove?“ steht
-    // Zeilen in Bildschirm-Reihenfolge: Ports, Links, Repo, CI, Add link
+    // Zeilen in Bildschirm-Reihenfolge: Ports, Container, Repo-Links, Repo (git remote), übrige Links, Add link
     readonly property var items: {
         const out = [];
         for (const p of ports)
             out.push({ kind: "url", url: url(p.port) });
         for (const c of containers)
             out.push(containerItem(c));
-        for (const l of links)
-            out.push({ kind: "link", url: l.url, name: l.name });
+        for (const l of repoLinks)
+            out.push(l.from ? { kind: "url", url: l.url } : { kind: "link", url: l.url, name: l.name });
         if (repoUrl)
             out.push({ kind: "url", url: repoUrl });
-        if (ciUrl)
-            out.push({ kind: "url", url: ciUrl });
+        for (const l of otherLinks)
+            out.push({ kind: "link", url: l.url, name: l.name });
         out.push({ kind: "add" });
         return out;
     }
@@ -77,7 +146,7 @@ PopupWindow {
             askLink();
         else if (it.kind === "copy")
             copyAddr(it.text);
-        else if (it.kind === "url")
+        else if (it.kind === "url" || it.kind === "link")
             openUrl(it.url);
     }
     function containerItem(c: var): var {
@@ -181,6 +250,10 @@ PopupWindow {
     }
     function hostOf(u: string): string {
         return String(u).replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split("/")[0];
+    }
+    // Pfad dazu, damit zwei Repos auf demselben Host unterscheidbar sind (github.com/org/repo)
+    function pathOf(u: string): string {
+        return String(u).replace(/^[a-z][a-z0-9+.-]*:\/\/[^/]*/i, "").replace(/\/+$/, "");
     }
     function openUrl(u: string): void {
         visible = false;
@@ -299,7 +372,7 @@ PopupWindow {
                     width: col.width
                     icon: "language"
                     title: modelData.role
-                    sub: "localhost:" + modelData.port
+                    sub: "localhost:" + modelData.port + (modelData.from ? "  ·  " + modelData.from : "")
                     showDot: true
                     dotOn: !!pop.listening[modelData.port]
                     dotColor: Theme.success
@@ -307,13 +380,13 @@ PopupWindow {
                 }
             }
 
-            // Container des Projekts (unter Local, ohne eigene Überschrift)
+            // Container des Projekts (eigene Kategorie unter Local)
             Label {
-                visible: pop.ports.length === 0 && pop.containers.length > 0
+                visible: pop.containers.length > 0
                 leftPadding: 10
-                topPadding: 4
+                topPadding: pop.ports.length > 0 ? 8 : 4
                 bottomPadding: 4
-                text: "Local"
+                text: "Containers"
             }
             Repeater {
                 model: pop.containers
@@ -334,25 +407,66 @@ PopupWindow {
                 }
             }
 
-            // Links
+            // Repos: eingetragene Repo-Links, dann die Repo-Seite aus git remote
             Label {
-                visible: pop.links.length > 0
+                visible: pop.repoLinks.length > 0 || pop.repoUrl !== ""
+                leftPadding: 10
+                topPadding: 8
+                bottomPadding: 4
+                text: "Repos"
+            }
+            Repeater {
+                model: pop.repoLinks
+                QuickLinksRow {
+                    required property var modelData
+                    required property int index
+                    readonly property int idx: pop.nLocal + index
+                    kbMark: pop.kb && pop.sel === idx
+                    kbConfirm: pop.armed === idx
+                    hint: pop.hintFor(idx)
+                    width: col.width
+                    icon: "code"
+                    title: modelData.name
+                    sub: pop.hostOf(modelData.url) + pop.pathOf(modelData.url)
+                    removable: !modelData.from
+                    onActivated: pop.openUrl(modelData.url)
+                    onRemoved: pop.removeLink(modelData.name)
+                }
+            }
+
+            // Repo-Seite (git remote), falls nicht schon als Link eingetragen
+            QuickLinksRow {
+                readonly property int idx: pop.nLocal + pop.repoLinks.length
+                visible: pop.repoUrl !== ""
+                height: visible ? 36 : 0
+                width: col.width
+                kbMark: visible && pop.kb && pop.sel === idx
+                hint: visible ? pop.hintFor(idx) : ""
+                icon: "code"
+                title: "Repository"
+                sub: pop.hostOf(pop.repoUrl) + pop.pathOf(pop.repoUrl)
+                onActivated: pop.openUrl(pop.repoUrl)
+            }
+
+            // übrige Links (Website, Board, Doku …)
+            Label {
+                visible: pop.otherLinks.length > 0
                 leftPadding: 10
                 topPadding: 8
                 bottomPadding: 4
                 text: "Links"
             }
             Repeater {
-                model: pop.links
+                model: pop.otherLinks
                 QuickLinksRow {
                     required property var modelData
                     required property int index
-                    readonly property int idx: pop.ports.length + pop.containers.length + index
+                    readonly property int idx: pop.nLocal + pop.repoLinks.length + (pop.repoUrl !== "" ? 1 : 0) + index
                     kbMark: pop.kb && pop.sel === idx
                     kbConfirm: pop.armed === idx
                     hint: pop.hintFor(idx)
                     width: col.width
-                    icon: modelData.icon || "link"
+                    icon: "link"
                     title: modelData.name
                     sub: pop.hostOf(modelData.url)
                     removable: true
@@ -361,37 +475,8 @@ PopupWindow {
                 }
             }
 
-            // Repo-Seite (git remote), falls nicht schon als Link eingetragen
-            QuickLinksRow {
-                readonly property int idx: pop.ports.length + pop.containers.length + pop.links.length
-                visible: pop.repoUrl !== ""
-                height: visible ? 36 : 0
-                width: col.width
-                kbMark: visible && pop.kb && pop.sel === idx
-                hint: visible ? pop.hintFor(idx) : ""
-                icon: "code"
-                title: "Repository"
-                sub: pop.hostOf(pop.repoUrl)
-                onActivated: pop.openUrl(pop.repoUrl)
-            }
-
-            // letzter CI-Lauf (nur wenn gh ihn kennt): Klick öffnet ihn auf GitHub
-            QuickLinksRow {
-                readonly property var c: pop.ci
-                readonly property int idx: pop.ports.length + pop.containers.length + pop.links.length + (pop.repoUrl !== "" ? 1 : 0)
-                visible: pop.ciUrl !== ""
-                height: visible ? 36 : 0
-                width: col.width
-                kbMark: visible && pop.kb && pop.sel === idx
-                hint: visible ? pop.hintFor(idx) : ""
-                icon: "play_circle"
-                title: "Last CI run"
-                sub: c ? (c.workflow || c.state) : ""
-                onActivated: pop.openUrl(pop.ciUrl)
-            }
-
             Txt {
-                visible: pop.ports.length === 0 && pop.containers.length === 0 && pop.links.length === 0
+                visible: pop.nLocal === 0 && pop.repoLinks.length === 0 && pop.otherLinks.length === 0 && pop.repoUrl === ""
                 leftPadding: 10
                 topPadding: 4
                 bottomPadding: 8

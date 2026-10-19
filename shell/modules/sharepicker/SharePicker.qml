@@ -281,52 +281,6 @@ Scope {
     }
 
     // ---------- Bausteine (Kacheln, Reiter, Knöpfe) ----------
-    component Tab: Rectangle {
-        id: tb
-        property string text
-        property string icon
-        property int count: -1
-        property bool current: false
-        signal picked()
-        width: tbRow.implicitWidth + 28
-        height: 34
-        radius: Theme.radiusSm
-        color: current ? Theme.accentFill : tbArea.containsMouse ? Theme.surfaceSunken : "transparent"
-        Behavior on color { ColorAnimation { duration: Theme.fade; easing.type: Easing.OutCubic } }
-        Row {
-            id: tbRow
-            anchors.centerIn: parent
-            spacing: root.sp("2", 8) - 2
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: tb.icon
-                size: 17
-                color: tb.current ? Theme.accentText : Theme.textFaint
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: tb.text
-                color: tb.current ? Theme.accentText : Theme.textMuted
-                font.weight: tb.current ? Font.DemiBold : Font.Normal
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: tb.count >= 0
-                text: String(tb.count)
-                color: tb.current ? Theme.accentText : Theme.textFaint
-                font.pixelSize: 12
-                font.weight: Font.Normal
-            }
-        }
-        MouseArea {
-            id: tbArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: tb.picked()
-        }
-    }
-
     // Kachel-Grund: Auswahl = Akzentfläche + Akzentrand, Hover = etwas heller
     component TileBg: Rectangle {
         property bool current: false

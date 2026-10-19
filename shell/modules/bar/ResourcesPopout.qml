@@ -65,6 +65,7 @@ PopupWindow {
             return;
         placeUnderBar();
         search.input.text = "";
+        tab = "all";                // jedes Öffnen beginnt beim ersten Tab
         expandedKey = "";
         confirm = null;
         note = "";
@@ -114,7 +115,7 @@ PopupWindow {
     }
     Connections {
         target: Procs
-        function onSampled() { pop.rebuild(); }
+        function onSampled() { pop.rebuild(false); }
         function onKilled(text, ok) {
             pop.note = text;
             noteTimer.restart();
@@ -157,21 +158,37 @@ PopupWindow {
             key: r.key, name: r.name, user: r.user, own: r.own, pid: r.pid, ppid: r.ppid, n: r.n, cpu: r.cpu, rss: r.rss,
             threads: r.threads, pstate: r.state, start: r.start, st: r.st, cmd: r.cmd || "",
             // Einzelprozesse der Gruppe nur für die aufgeklappte Zeile, gleich sortiert wie die Liste
-            kidsJson: r.kids && r.key === expandedKey ? JSON.stringify(RS.sorted(r.kids, sortKey, sortAsc)) : ""
+            kidsJson: r.kids && r.key === expandedKey ? JSON.stringify(pop.kidsOf(r)) : ""
         };
     }
-    function rebuild(): void {
+    // Solange eine Zeile aufgeklappt ist, bleibt die Reihenfolge stehen (Liste und Einzelprozesse der Gruppe): nur die
+    // Werte laufen weiter, sonst springt die Zeile beim Beenden weg. Neue Prozesse kommen ans Ende. Zuklappen,
+    // Tab, Sortierung oder Suche ändern = wieder normal sortiert.
+    readonly property bool frozen: expandedKey !== ""
+    property var kidOrder: []                           // PIDs der aufgeklappten Gruppe in eingefrorener Reihenfolge
+    function kidsOf(r: var): var {
+        const list = frozen && kidOrder.length ? RS.stable(r.kids, kidOrder, sortKey, sortAsc, k => k.pid) : RS.sorted(r.kids, sortKey, sortAsc);
+        kidOrder = list.map(k => k.pid);
+        return list;
+    }
+    function rebuild(resort: bool): void {
         const q = search.input.text.trim().toLowerCase();
         const arr = Procs.rows.filter(r => (tab === "all" || (tab === "user") === r.own) && (q === "" || matches(r, q)));
-        RS.sync(rows, curKeys, RS.sorted(arr, sortKey, sortAsc), roleOf);
+        if (resort)
+            kidOrder = [];
+        RS.sync(rows, curKeys, frozen && !resort ? RS.stable(arr, curKeys, sortKey, sortAsc, r => r.key) : RS.sorted(arr, sortKey, sortAsc), roleOf);
     }
     ListModel {
         id: rows
     }
-    onTabChanged: rebuild()
-    onSortKeyChanged: rebuild()
-    onSortAscChanged: rebuild()
-    onExpandedKeyChanged: rebuild()
+    onTabChanged: rebuild(true)
+    onSortKeyChanged: rebuild(true)
+    onSortAscChanged: rebuild(true)
+    // Aufklappen friert den jetzigen Stand ein (kein Sprung beim Klick), Zuklappen sortiert wieder
+    onExpandedKeyChanged: {
+        kidOrder = [];
+        rebuild(expandedKey === "");
+    }
 
     function setSearch(t: string): void {
         search.input.text = t;
@@ -330,32 +347,6 @@ PopupWindow {
     }
 
     // ---------- Bausteine ----------
-    component Tab: Rectangle {
-        id: tb
-        property string text
-        property bool current: false
-        signal picked()
-        width: tbTxt.implicitWidth + 28
-        height: 32
-        radius: Theme.radiusSm
-        color: current ? Theme.accentFill : tbArea.containsMouse ? Theme.surfaceSunken : "transparent"
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Txt {
-            id: tbTxt
-            anchors.centerIn: parent
-            text: tb.text
-            color: tb.current ? Theme.accentText : Theme.textMuted
-            font.weight: tb.current ? Font.DemiBold : Font.Normal
-        }
-        MouseArea {
-            id: tbArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: tb.picked()
-        }
-    }
-
     // Textknopf (End / Force / Cancel / Copy)
     component Btn: Rectangle {
         id: bt
@@ -562,7 +553,7 @@ PopupWindow {
                     font.family: Theme.fontUi
                     font.pixelSize: 14
                     clip: true
-                    onTextChanged: pop.rebuild()
+                    onTextChanged: pop.rebuild(true)
                     Keys.onEscapePressed: {
                         if (pop.confirm)
                             pop.confirm = null;
@@ -611,7 +602,8 @@ PopupWindow {
             x: 24
             y: titleRow.y + titleRow.height + 16
             width: parent.width - 48
-            height: 116
+            // Höhe aus dem Inhalt (Ringe + Beschriftung), oben und unten gleich viel Luft
+            height: Math.max(rings.height, avatar.height) + 40
             radius: Theme.radiusLg
             color: Theme.surfaceSunken
 

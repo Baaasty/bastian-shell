@@ -815,7 +815,7 @@ Scope {
                                         Txt {
                                             id: nameO
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: Math.min(implicitWidth, win.deskPw - 24 - 8 - (desk.proj ? 30 : 0))
+                                            width: Math.min(implicitWidth, win.deskPw - 24 - 8 - (desk.proj ? 32 : 0) - (deskDots.visible ? 30 : 0))
                                             text: desk.name
                                             color: desk.isCurrent ? Theme.onAccent : Theme.text
                                             font.pixelSize: 16
@@ -945,18 +945,19 @@ Scope {
                                     }
                                 }
 
-                                // Git/CI-Punkte (nur Projekt-Workspaces) rechts im Kopf; der Link-Knopf deckt sie bei Hover zu
+                                // Git/CI-Punkte (nur Projekt-Workspaces) rechts im Kopf, links neben dem Link-Knopf
                                 QuickLinksDots {
+                                    id: deskDots
                                     visible: !!desk.proj && (dirty || hasCi)
                                     proj: desk.proj
                                     z: 14
-                                    x: desk.width - width - win.tilePad - 1
+                                    x: desk.width - width - win.tilePad - 28 - 4
                                     y: tileCol.y
                                 }
 
-                                // Quicklinks (nur Projekt-Workspaces): kleiner Knopf rechts im Kopf, nur bei Hover
+                                // Quicklinks (nur Projekt-Workspaces): kleiner Knopf rechts im Kopf, immer sichtbar
                                 Rectangle {
-                                    visible: !!desk.proj && desk.hovered && !desk.dragging && !win.wdActive
+                                    visible: !!desk.proj && !desk.dragging && !win.wdActive
                                     z: 15
                                     x: desk.width - width - win.tilePad
                                     y: tileCol.y

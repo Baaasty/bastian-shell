@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.config
 import qs.services
 
@@ -40,7 +41,17 @@ Rectangle {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         cursorShape: Qt.PointingHandCursor
-        onClicked: mouse => chip.clicked(mouse)
+        onClicked: mouse => {
+            // schon von PopoutGuard ausgelöst (Hyprland hatte den Klick geschluckt) – nicht doppelt
+            if (Popouts.synthChip === chip && Date.now() - Popouts.synthAt < 700)
+                return;
+            chip.clicked(mouse);
+        }
         onDoubleClicked: mouse => chip.doubleClicked(mouse)
     }
+
+    // Fenster, in dem der Chip liegt (PopoutGuard: nur Chips der Bar zählen)
+    readonly property var hostWindow: QsWindow.window
+    Component.onCompleted: Popouts.addChip(chip)
+    Component.onDestruction: Popouts.removeChip(chip)
 }

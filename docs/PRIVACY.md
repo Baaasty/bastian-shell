@@ -32,4 +32,6 @@ qs ipc ... call privacy clear                         # Test-Einträge weg
 ```
 
 Grenzen: Eine Mikrofon-Aufnahme, die nur „idle“ im Hintergrund offen gehalten wird (manche Apps halten den Stream), zeigt trotzdem den Punkt.
+Ausnahme Discord/Equibop: hält das Mikro nach einem Call oder Mikrotest offen, ohne zu senden – gemeldet wird es nur im Sprachkanal
+(`Discord.inVoice`); ist der Discord-Status unbekannt, wird es gemeldet.
 Kamera-Zugriffe ohne PipeWire und ohne offenes `/dev/video` (z. B. Fremdnutzer) sieht die Shell nicht.

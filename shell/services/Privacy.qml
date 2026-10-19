@@ -54,6 +54,11 @@ Singleton {
                 // nimmt die Wiedergabe eines Ausgangs auf (Monitor) -> kein Mikrofon
                 if (tp["stream.capture.sink"] === "true" || src.isSink)
                     continue;
+                // Discord/Equibop hält das Mikro nach einem Call (oder Mikrotest) offen, ohne etwas zu senden: nur im
+                // Sprachkanal melden. Ist der Discord-Status unbekannt (state ≠ ok), lieber melden.
+                const app = pretty(AudioOut.appName(t));
+                if ((app === "Discord" || app === "Equibop") && Discord.state === "ok" && !Discord.inVoice)
+                    continue;
                 add(m, AudioOut.appName(t));
             } else if (cls === "Stream/Input/Video") {
                 const sp = src.properties || {};
@@ -97,6 +102,16 @@ Singleton {
         id: soon
         interval: 150
         onTriggered: root.recompute()
+    }
+    // Discord betritt/verlässt einen Sprachkanal: Mikro-Anzeige neu (siehe recompute)
+    Connections {
+        target: Discord
+        function onInVoiceChanged(): void {
+            soon.restart();
+        }
+        function onStateChanged(): void {
+            soon.restart();
+        }
     }
     Connections {
         target: Pipewire.linkGroups

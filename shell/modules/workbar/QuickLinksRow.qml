@@ -78,17 +78,20 @@ Rectangle {
             size: 18
             color: Theme.textMuted
         }
+        // Platz für Titel + Nebentext: links 10 + Ziffer 22 + Punkt 20 + Symbol 28 + rechts (Entfernen 36 oder 14).
+        // Der Titel bekommt zuerst Platz, der Nebentext (Host/Pfad) wird gekürzt
         Txt {
             id: titleTxt
+            readonly property real room: rowItem.width - 10 - (rowItem.hint !== "" ? 22 : 0) - (rowItem.showDot ? 20 : 0) - 28 - (rowItem.removable ? 36 : 14)
             anchors.verticalCenter: parent.verticalCenter
-            // Rest der Zeile: links 10 + Ziffer 22 + Punkt 20 + Symbol 28 + Nebentext + Abstand 10 + rechts (Entfernen 36 oder 14)
-            width: Math.min(implicitWidth, Math.max(60, rowItem.width - 10 - (rowItem.hint !== "" ? 22 : 0) - (rowItem.showDot ? 20 : 0) - 28 - subTxt.width - 10 - (rowItem.removable ? 36 : 14)))
+            width: Math.min(implicitWidth, room)
             text: rowItem.title
         }
         Txt {
             id: subTxt
+            visible: width > 24
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, 150)
+            width: Math.max(0, Math.min(implicitWidth, titleTxt.room - titleTxt.width - 10))
             text: rowItem.sub
             color: Theme.textFaint
             font.pixelSize: 13

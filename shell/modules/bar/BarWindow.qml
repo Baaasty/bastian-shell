@@ -68,6 +68,10 @@ PanelWindow {
             x: bar.x + rightZone.x; y: bar.y + rightZone.y
             width: win.shown ? rightZone.width : 0; height: rightZone.height
         }
+        // ganze Bar + Streifen bis zum Popout, solange eins offen ist (Lücken zwischen den Chips eingeschlossen)
+        Region {
+            width: win.openMenus > 0 && win.shown ? bridge.width : 0; height: bridge.height
+        }
     }
 
     BackgroundEffect.blurRegion: Region {
@@ -197,6 +201,30 @@ PanelWindow {
         HoverHandler {
             id: zoneHover
         }
+    }
+
+    // Brücke: ganzer Streifen von oben bis zur Oberkante der Popouts (Rand, Bar mit Lücken zwischen den Chips, windowGap).
+    // Gehört sonst nicht zur Klickfläche – die Maus wäre dort „nirgends“ und das Popout ginge zu (PopoutGuard).
+    // Über den Chips meldet bridgeHover nichts (die Chips nehmen das Hover), dort zählt das Hover der Bar.
+    Item {
+        id: bridge
+        width: win.width
+        height: Theme.barMargin + Theme.barHeight + Theme.windowGap + 2
+        HoverHandler {
+            id: bridgeHover
+        }
+    }
+    Binding {
+        target: Popouts
+        property: "bridge"
+        value: bridgeHover.hovered || hover.hovered
+        when: win.openMenus > 0
+    }
+    Binding {
+        target: Popouts
+        property: "overBar"
+        value: hover.hovered
+        when: win.openMenus > 0
     }
 
     Timer {
