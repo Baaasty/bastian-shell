@@ -20,7 +20,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from _pal import MARK, OUT, ROOT, load, mix, tilde, write  # noqa: E402
+from _pal import MARK, OUT, ROOT, load, mix, write  # noqa: E402
 
 src, variant, t = load()
 
@@ -55,8 +55,9 @@ cfg = {
     "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
     "_": f"{MARK} ({variant}) – nicht von Hand ändern. Neu erzeugen: python3 -I theme/gen/fastfetch.py",
     "logo": {
-        "type": "file",
-        "source": tilde(ROOT / "config/fastfetch/cat.txt"),  # fastfetch löst ~ selbst auf
+        # Katze direkt in der Datei (type data) statt Pfad aufs Repo: die Ausgabe hängt nicht am Checkout-Ort
+        "type": "data",
+        "source": (ROOT / "config/fastfetch/cat.txt").read_text().rstrip("\n"),
         "color": logo_colors,
         "padding": {"top": 0, "left": 2, "right": 3},  # top: unten, Katze mittig zum Textblock
     },

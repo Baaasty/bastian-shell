@@ -23,7 +23,7 @@ hypridle liest die Datei nur beim Start: `pkill hypridle; uwsm app -- hypridle &
 
 ```sh
 scripts/idle show [force] | hide | toggle | status
-qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call fireplace on true|false   # on(force)
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call fireplace on true|false   # on(force)
 qs ipc ... call fireplace off | toggle | status
 ```
 

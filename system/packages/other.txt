@@ -106,7 +106,7 @@ Schalter der Shell (von Hand pflegbar, optional): ~/.config/desktop/{goxlr,audio
 Nicht mehr nötig: Chrome-Repo/Brave-Repo (siehe repos.txt), KWin-Shell-Paket (~/.local/share/plasma/shells/de.bastian.desktop, nur --kwin)
 
 ## Ordner, die vorausgesetzt werden
-<Workspace>/<repo>   dieses Repo (heute ~/Workspace/desktop und der Worktree ~/Workspace/desktop-hyprland; bleibt nach AP 13 ~/Workspace/shell –
+<Workspace>/<repo>   dieses Repo (~/Workspace/bastian-shell; Umzug aus den alten Ordnern desktop/desktop-hyprland: docs/MIGRATE.md –
                      bootstrap leitet den Pfad aus seinem eigenen Ort ab), ~/Workspace/<org> (eigene Projekt-Repos, per gh geklont; Pfade: projects/projects.json),
 ~/Data (zweite Platte/Partition: iCloud/, Games/SteamLibrary, .cache/rclone), ~/Apps/icp
 (~/Notes/inbox.md für „Gedanken parken“, Super+N, legt die Shell bei der ersten Notiz selbst an)

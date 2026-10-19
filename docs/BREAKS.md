@@ -39,7 +39,7 @@ Beispiel `~/.config/desktop/breaks.json`: `{ "afterMin": 75, "snoozeMin": 15 }`
 ## Befehle
 
 ```sh
-IPC="qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call breaks"
+IPC="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call breaks"
 $IPC status        # JSON: activeMin, leftMin, due, shown, silent (warum still), snoozedMin, offToday, idle
 $IPC test          # Karte sofort zeigen (ohne Bedingungen) · $IPC hide schließt die Test-Karte
 $IPC snooze        # wie „10 more min“ · snoozeFor 30 = eigene Minuten

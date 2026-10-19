@@ -4,7 +4,7 @@
 # passt sie zur Fader-Position und man muss den Fader nicht erst "abholen".
 # Davor: Routing komplett aus (goxlr-reset-routing), damit das gespeicherte Profil schon „alles aus“ ist
 # (Schalter resetRoutingOnExit in ~/.config/desktop/goxlr.json). Doku: docs/setup/goxlr.md
-# Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/desktop.
+# Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/bastian-shell.
 [Unit]
 Description=Desktop: beim Herunterfahren GoXLR-Profil speichern, Key Light aus
 After=network-online.target goxlr.service
@@ -14,9 +14,9 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/true
 EnvironmentFile=-%h/.config/desktop/hyprland.env
-ExecStop=-/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/desktop}/scripts/goxlr-reset-routing" --if resetRoutingOnExit'
+ExecStop=-/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/bastian-shell}/scripts/goxlr-reset-routing" --if resetRoutingOnExit'
 ExecStop=-/usr/bin/goxlr-client profiles device save
-ExecStop=/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/desktop}/scripts/keylight" off'
+ExecStop=/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/bastian-shell}/scripts/keylight" off'
 TimeoutStopSec=15
 
 [Install]

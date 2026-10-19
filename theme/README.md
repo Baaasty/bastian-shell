@@ -7,7 +7,7 @@ Jede App behält ihren eigenen Kontrast: Editor (`editorSyntax`) ≠ Shell-Glas 
 ## Erzeugen
 
 ```sh
-cd ~/Workspace/desktop
+cd ~/Workspace/bastian-shell
 python3 -I theme/gen/all.py              # alles erzeugen + installieren (inkl. Cursor)
 python3 -I theme/gen/all.py --nur-out    # nur theme/out/ schreiben
 python3 -I theme/gen/all.py walnut       # andere Variante (Namen bleiben "Desktop")
@@ -62,7 +62,7 @@ Menü dann per Rechtsklick oder Strg+Shift+M.
 
 **Starship** – zwei Zeilen ans Ende von `~/.bashrc`:
 ```sh
-export STARSHIP_CONFIG="$HOME/Workspace/desktop/theme/out/starship.toml"
+export STARSHIP_CONFIG="$HOME/Workspace/bastian-shell/theme/out/starship.toml"
 eval "$(starship init bash)"
 ```
 Zurück: beide Zeilen löschen, `exec bash`. (Nach dem Umbenennen des Repos nach `~/Workspace/pc` den Pfad anpassen.)
@@ -75,7 +75,7 @@ Nach `rice variant` tönt `vscode.py` die Projekte automatisch neu (`vscode-colo
 Ganz entfernen: `scripts/vscode-colors off`, `… theme off`, dann `code --uninstall-extension desktop.desktop-theme` und `… desktop.desktop-projects`.
 
 **Chrome**
-`chrome://extensions` → Entwicklermodus an → „Entpackte Erweiterung laden“ → `~/Workspace/desktop/theme/out/chrome-desktop`.
+`chrome://extensions` → Entwicklermodus an → „Entpackte Erweiterung laden“ → `~/Workspace/bastian-shell/theme/out/chrome-desktop`.
 Zurück: `chrome://settings/appearance` → Design „Zurücksetzen“ (entfernt das Theme).
 
 **Thunderbird** (Theme + userChrome/userContent, Details `docs/THEMING.md`)

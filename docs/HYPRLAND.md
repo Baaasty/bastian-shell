@@ -1,6 +1,6 @@
 # Hyprland (zweite Sitzung neben Plasma)
 
-Stand 18.10.2026 · Branch `hyprland` (Worktree `~/Workspace/desktop-hyprland`) · Hyprland 0.56.2 aus COPR `sdegler/hyprland`.
+Stand 19.10.2026 · Repo `~/Workspace/bastian-shell` (Branch `main`) · Hyprland 0.56.2 aus COPR `sdegler/hyprland`.
 
 Dieselbe Shell (Quickshell 0.3.2) läuft statt auf KWin auf Hyprland – mehr Leistung (360 Hz, NVIDIA).
 **Plasma bleibt installiert und unverändert**: Beim Login wählt man die Sitzung, Plasma ist der Fallback.
@@ -13,7 +13,7 @@ Dieselbe Shell (Quickshell 0.3.2) läuft statt auf KWin auf Hyprland – mehr Le
    sudo dnf install -y hyprland hyprland-guiutils xdg-desktop-portal-hyprland uwsm hypridle hyprlock \
        grim wf-recorder xdg-terminal-exec
    ```
-2. Konfiguration (ohne sudo): `~/Workspace/desktop-hyprland/scripts/hypr install`, dann `scripts/hypr check`
+2. Konfiguration (ohne sudo): `~/Workspace/bastian-shell/scripts/hypr install`, dann `scripts/hypr check`
    (prüft mit `Hyprland --verify-config`, startet nichts).
 3. Abmelden → im Login **„Hyprland (uwsm-managed)“** wählen.
 

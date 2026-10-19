@@ -5,7 +5,7 @@
 
 > **Leitlinie (Bastian, 2026-10-19): Tastatur zuerst.** Die Shell (Fenster, Workspaces, Bar, Popouts, Panels) wird per Hotkeys aus dem Muscle Memory bedient. Maus nur im Browser und in Apps. Ein Feature ohne Kürzel und ohne Tastaturbedienung gilt als nicht fertig.
 
-Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Branch `hyprland`, Worktree `~/Workspace/desktop-hyprland`). Verlauf/Details: `docs/FORTSCHRITT.md`.
+Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Repo `~/Workspace/bastian-shell`, Branch `main`; Umzug aus den alten Ordnern: `docs/MIGRATE.md`). Verlauf/Details: `docs/FORTSCHRITT.md`.
 
 ## Noch offen (7 Punkte)
 
@@ -47,7 +47,7 @@ Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Branch `hyprland`, Work
 - [ ] **Workspace-Modus** jetzt per Alt antippen oder Alt+Esc, Entf löscht, Alt+←/→ markiert im Modus
 - [ ] **Server im Dev-Popout** (`docs/SSHS.md`): eigener Server-Chip aufgelöst, Reiter **Server** im Dev-Popout = Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare aus `config/consoles.json`, Klick öffnet Helium) + sshs-Server mit Upload / Files / Terminal; Suche filtert mit; Dev-Chip immer da (Zahl nur, wenn etwas läuft) – Super+Alt+U, `$Q servers open`. Offen: Dokploy-URL in `~/.config/desktop/consoles.json`
 
-Testen: `Q="qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call"`
+Testen: `Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"`
 
 - [x] ~~Launcher `?<text>` = FMHY-Suche~~ wieder entfernt (Bastian, 2026-10-19); Snippets bleiben raus
 - [ ] Launcher `?<text>` = Websuche (Standard-Kürzel), neu `c <text>` = Claude fragen (`docs/LAUNCHER.md`) – Super, `?wetter`, `c hallo`

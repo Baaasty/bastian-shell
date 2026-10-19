@@ -525,7 +525,7 @@ Singleton {
     }
 
     // ---------- IPC ----------
-    // qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call scene toggle game
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call scene toggle game
     IpcHandler {
         target: "scene"
 

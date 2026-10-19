@@ -49,14 +49,14 @@ wenn der Standard-Ausgang ein GoXLR ist (nicht z. B. beim HomePod). Wird live ge
 Die User-Units liegen im Repo (`systemd/`) und sind nach `~/.config/systemd/user` verlinkt:
 
 ```sh
-R=~/Workspace/desktop-hyprland/systemd; U=~/.config/systemd/user
+R=~/Workspace/bastian-shell/systemd; U=~/.config/systemd/user
 ln -sf $R/desktop-keylight-off.service $U/ ; ln -sf $R/desktop-keylight-off.service $U/default.target.wants/
 ln -sf $R/desktop-goxlr-unlock.service $U/ ; ln -sf $R/desktop-goxlr-unlock.path $U/
 systemctl --user daemon-reload && systemctl --user enable --now desktop-goxlr-unlock.path
 ```
 
 Zurück: `systemctl --user disable --now desktop-goxlr-unlock.path`, Links wieder auf
-`~/Workspace/desktop/systemd/desktop-keylight-off.service` setzen (Sicherung: `desktop-keylight-off.service.vor-goxlr`),
+`~/Workspace/bastian-shell/systemd/desktop-keylight-off.service` setzen (Sicherung: `desktop-keylight-off.service.vor-goxlr`),
 `goxlr-login` in `hypr/autostart.conf` und die Hook-Zeilen `goxlr_lock` in `scripts/lock` entfernen, Lautstärke-Tasten
 aus `git log -p hypr/binds.conf` zurückholen. Schneller Weg ohne Code: alle Schalter oben auf `false`.
 

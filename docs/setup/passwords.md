@@ -11,7 +11,7 @@ Login bei icp: `icp login`. Neue Einträge vom iPhone/Mac holen: `scripts/passwo
 1. Terminal: `scripts/chrome-ext install --browser helium` (baut die Erweiterung, Host-Manifest zeigt auf dieses Repo).
 2. `helium://extensions` → rechts oben **Developer mode** an.
    - „Desktop“ schon geladen → bei „Desktop“ auf **↻** (Neu laden).
-   - noch nicht → **Load unpacked** → Ordner `~/Workspace/desktop-hyprland/theme/out/chrome-desktop-ext`
+   - noch nicht → **Load unpacked** → Ordner `~/Workspace/bastian-shell/theme/out/chrome-desktop-ext`
      (für die Farben dasselbe mit `…/theme/out/chrome-desktop`).
 3. Falls „Apple Passwords“ (icp) dort steht: **Remove** – sonst erscheinen zwei Dropdowns.
 4. Puzzle-Symbol in der Toolbar → bei „Desktop“ die Nadel → Symbol (Holzkachel mit Glutpunkt) = Passwort-Popup.

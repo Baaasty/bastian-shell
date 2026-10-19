@@ -62,7 +62,7 @@ Solange die Dokploy-URL fehlt, ist die Zeile ausgegraut („no URL yet“).
 ## Testen
 
 ```sh
-Q="qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call"
+Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"
 $Q servers open      # Dev-Popout, Reiter Server, ohne Klick-Fang; zu mit: $Q servers close
 $Q servers status
 $Q filepicker demo multi   # Mehrfachauswahl ansehen (Ergebnis nur als Benachrichtigung)

@@ -26,7 +26,7 @@ Mit der Maus über dem Symbol steht im Tooltip, welche App („Camera in use: Eq
 ## Testen ohne Kamera/Mikro
 
 ```sh
-qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call privacy status          # Text: mic | camera | sharing
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call privacy status          # Text: mic | camera | sharing
 qs ipc ... call privacy simulate mic Discord          # zeigt einen Eintrag an (kind: mic | cam | share), aktiviert nichts
 qs ipc ... call privacy clear                         # Test-Einträge weg
 ```

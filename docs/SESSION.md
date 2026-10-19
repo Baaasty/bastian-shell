@@ -27,7 +27,7 @@ verlinkt, Autosave-Timer aktiv (alle 5 min), Login-Restore in `hypr/autostart.co
 Auf einem freien Workspace, damit nichts doppelt aufgeht:
 
 1. Wechsle auf einen leeren Workspace (z. B. `Super+3` auf dem Hauptmonitor, falls leer) und öffne dort 2–3 Fenster:
-   Konsole (in einem Projektordner, z. B. `cd ~/Workspace/desktop`), VS Code, evtl. Helium.
+   Konsole (in einem Projektordner, z. B. `cd ~/Workspace/bastian-shell`), VS Code, evtl. Helium.
 2. `scripts/session save` → meldet „Saved session 'latest' (N windows)“.
 3. `scripts/session dry-run` → Liste prüfen: Workspace-Nummer und Programm stimmen? Discord/Spotify dürfen **nicht** auftauchen.
 4. Die 2–3 Test-Fenster schließen (nur diese; ungespeicherte Arbeit vorher sichern).

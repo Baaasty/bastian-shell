@@ -18,7 +18,7 @@ Zeigt pro Projekt, was gerade lokal läuft: **Dev-Server** (lauschende Ports eig
 - Zeile anklicken / `open_in_new` = `http://localhost:<port>` in Helium. **Stop** fragt immer erst in der Zeile nach.
 - Suche (oben rechts) filtert nach Projekt, Port, Prozess, Befehl, Container, Image; im Reiter Server nach Konsole, Adresse, Server, Host.
   Esc: Rückfrage weg → Suche leeren → schließen.
-- IPC: `qs ipc -p ~/Workspace/desktop-hyprland/shell call devservices toggle|open|close|refresh|status`,
+- IPC: `qs ipc -p ~/Workspace/bastian-shell/shell call devservices toggle|open|close|refresh|status`,
   Reiter Server: `… call servers open|close|toggle|refresh|status`
 
 ## Zuordnung zum Projekt

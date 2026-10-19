@@ -4,7 +4,13 @@ const vscode = require("vscode");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const ROOT = path.join(os.homedir(), "Workspace/desktop-hyprland");
+const ROOT = (() => {
+  try {
+    const m = /^DESKTOP=(.+)$/m.exec(fs.readFileSync(path.join(os.homedir(), ".config/desktop/hyprland.env"), "utf8"));
+    if (m) return m[1].trim();
+  } catch (e) {}
+  return path.join(os.homedir(), "Workspace/bastian-shell");
+})();
 const PROJECTS = path.join(ROOT, "theme/projects.json");
 const PALETTE = path.join(ROOT, "theme/palette.json");
 const abs = (p) => (p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p);

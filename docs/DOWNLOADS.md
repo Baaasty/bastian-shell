@@ -46,7 +46,7 @@ Nur bei offenem Popout **und** laufendem Download alle 1,5 s (für die Größe).
 ## Testen ohne Maus
 
 ```sh
-S=~/Workspace/desktop-hyprland/shell
+S=~/Workspace/bastian-shell/shell
 qs ipc --any-display -p $S call downloads status            # Ordner, Anzahl, lädt/neu, die neuesten Namen
 qs ipc --any-display -p $S call downloads cleanupPreview 30 # nur anzeigen, was „Clean up“ in den Papierkorb legen würde
 qs ipc --any-display -p $S call downloads testDir /pfad     # anderen Ordner zeigen ("" = zurück), wird nicht gespeichert

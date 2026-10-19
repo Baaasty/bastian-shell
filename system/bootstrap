@@ -16,15 +16,16 @@
 # Kein pipefail: die Prüfungen nutzen `… | grep -q`, das sonst per SIGPIPE fälschlich "fehlt" meldet.
 set -u
 
-# ---------------------------------------------------------------- Pfade (AP 13 Repo-Umbau: NUR HIER ändern)
+# ---------------------------------------------------------------- Pfade (NUR HIER ändern)
 WORKSPACE="$HOME/Workspace"
-REPO_NAME="desktop"                    # AP 13: wird "shell"
-REPO_BRANCH="hyprland"                 # AP 13: wird "main" (Hyprland-Stand); KWin-Stand dann Branch "kwin"
-EXPECTED_REPO="$WORKSPACE/$REPO_NAME"  # Ort des Klons auf einem frischen PC (README Schritt 2)
-# Weitere Checkouts desselben Repos (Worktrees). Links/Pfade, die in einen davon zeigen, gelten als „unsere“
+REPO_NAME="bastian-shell"
+REPO_BRANCH="main"                     # Hyprland-Stand (der alte KWin-Stand liegt nur noch im Bundle, docs/MIGRATE.md)
+EXPECTED_REPO="$WORKSPACE/$REPO_NAME"  # Ort des Klons (README Schritt 2)
+# Weitere Checkouts desselben Repos. Links/Pfade, die in einen davon zeigen, gelten als „unsere“
 # und werden NICHT umgebogen (sonst springt das System zwischen den Checkouts hin und her).
 # Umbiegen auf einen Checkout = die Installer (scripts/hypr install, scripts/session install …) von dort aus aufrufen.
-CHECKOUTS=("$WORKSPACE/desktop" "$WORKSPACE/desktop-hyprland")   # AP 13: nur noch "$WORKSPACE/shell"
+# Die alten Ordner (desktop, desktop-hyprland) zählen nicht mehr – Umzug: system/migrate
+CHECKOUTS=("$WORKSPACE/$REPO_NAME")
 EQUICORD_DIR="$HOME/.local/src/equicord"                          # wie scripts/equicord (EQUICORD_DIR)
 # ----------------------------------------------------------------
 
@@ -170,7 +171,7 @@ if [ "$REPO" = "$EXPECTED_REPO" ]; then ok "Repo liegt in $EXPECTED_REPO"
 elif is_checkout "$REPO"; then
     others=(); for c in "${CHECKOUTS[@]}"; do [ "$c" != "$REPO" ] && [ -d "$c" ] && others+=("$c"); done
     info "läuft aus dem Checkout $REPO (Worktree) – Neues zeigt hierhin${others[*]:+, Links nach ${others[*]} bleiben}"
-else warn "Repo liegt in $REPO, erwartet $EXPECTED_REPO (Pfade oben im Skript, AP 13)"; fi
+else warn "Repo liegt in $REPO, erwartet $EXPECTED_REPO (Pfade oben im Skript; Umzug: system/migrate)"; fi
 branch="$(git -C "$REPO" branch --show-current 2>/dev/null)"
 if [ -f "$REPO/hypr/hyprland.conf" ]; then ok "Branch ${branch:-?} hat den Hyprland-Stand"
 elif (( HYPR )); then warn "kein hypr/ in $REPO (Branch ${branch:-?}) → erst: git -C $REPO checkout $REPO_BRANCH"; HYPR=0; fi
@@ -545,13 +546,13 @@ if want 9; then
         ok "Mail-/Termin-Dienste (rice feeds)"
     elif [ -f "$REPO/secrets.json" ]; then run "'$REPO/scripts/rice' feeds"
     else info "Mail/Termine: erst secrets.json anlegen (Schritt 11), dann scripts/rice feeds"; fi
-    # Units mit fest eingetragenem Repo-Pfad, der nicht zu diesem Checkout passt (AP 13 räumt das auf)
-    bad="$(grep -lE "Workspace/[A-Za-z0-9_-]+/" "$REPO"/systemd/*.service 2>/dev/null | while read -r f; do
-        grep -oE '%h/Workspace/[A-Za-z0-9_-]+' "$f" | sed "s|%h|$HOME|" | while read -r p; do [ "$p" = "$REPO" ] || echo "${f##*/}→${p##*/}"; done
-    done | sort -u | tr '\n' ' ')"
-    [ -n "$bad" ] && info "systemd/-Units mit festem Pfad auf einen anderen Checkout (AP 13 räumt auf): $bad"
-    for p in $(grep -ohE '%h/Workspace/[A-Za-z0-9_-]+' "$REPO"/systemd/*.service 2>/dev/null | sort -u | sed "s|%h|$HOME|"); do
-        [ -d "$p" ] || warn "Units brauchen $p – fehlt hier (Units schlagen fehl, bis AP 13 die Pfade vereinheitlicht oder der Ordner da ist)"
+    # Units finden das Repo über DESKTOP= in ~/.config/desktop/hyprland.env (scripts/hypr install, Schritt 10);
+    # ohne die Datei nehmen sie den Rückfall %h/Workspace/<REPO_NAME>
+    envrepo9="$(sed -n 's/^DESKTOP=//p' "$HOME/.config/desktop/hyprland.env" 2>/dev/null)"
+    if [ -n "$envrepo9" ]; then [ -d "$envrepo9" ] && ok "Units: Repo-Pfad aus hyprland.env ($envrepo9)" || warn "hyprland.env zeigt auf $envrepo9 – fehlt (scripts/hypr install neu)"
+    elif [ "$REPO" != "$EXPECTED_REPO" ]; then warn "keine hyprland.env und Repo nicht in $EXPECTED_REPO – Units finden das Repo erst nach Schritt 10"; fi
+    grep -lE '%h/Workspace/' "$REPO"/systemd/*.service 2>/dev/null | while read -r f; do
+        grep -qF "%h/Workspace/$REPO_NAME" "$f" || warn "${f##*/}: fester Pfad statt DESKTOP aus hyprland.env"
     done
 fi
 

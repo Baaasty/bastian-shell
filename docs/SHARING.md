@@ -10,7 +10,7 @@ Das Portal startet das Programm pro Teilen-Anfrage und liest die Antwort (`[SELE
 ## Aktivieren (einmalig, nur wenn kein Stream/Call läuft)
 
 ```bash
-cd ~/Workspace/desktop-hyprland
+cd ~/Workspace/bastian-shell
 scripts/share-picker status        # läuft die Shell? Standard-Picker als Rückfall da?
 scripts/share-picker test          # Karte mit echten Fenstern zeigen – nichts wird geteilt, Esc schließt
 scripts/share-picker install       # xdph.conf-Block eintragen (Backup nach ~/.local/state/desktop/)
@@ -87,7 +87,7 @@ Quelle: `src/shared/ScreencopyShared.cpp` (Tag v1.4.1, `promptForScreencopySelec
    Genauso Helium/Chrome (Teilen → Bildschirm) und OBS (Quelle „Bildschirmaufnahme (PipeWire)“).
 3. Je einmal Monitor, Fenster und Region teilen; einmal Esc (App meldet „abgebrochen“).
 4. Fehler: `~/.local/state/desktop/share-pick.log` (Rückfälle, Zeitlimit, ungültige Antworten – xdph selbst verwirft stderr des Pickers),
-   `qs log -p ~/Workspace/desktop-hyprland/shell`, `journalctl --user -u xdg-desktop-portal-hyprland` (Zeile `[sc] Selection: …`).
+   `qs log -p ~/Workspace/bastian-shell/shell`, `journalctl --user -u xdg-desktop-portal-hyprland` (Zeile `[sc] Selection: …`).
 
 ## Alternative: GTK-Picker (hyprland-preview-share-picker)
 

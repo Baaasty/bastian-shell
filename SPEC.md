@@ -169,7 +169,7 @@ Discord ist bewusst **nicht** auf allen Desktops. Die Call-Info steht in Bar und
 | Meta+L · Meta+R | sperren · Bereich als Video (Spectacle) |
 | Strg+Alt+Shift+Q | Not-Aus: `scripts/rice off` |
 
-- **Kürzel mit Taste:** `~/.local/share/applications/desktop-shortcuts.desktop` mit `X-KDE-Shortcuts` (+ `[Desktop Action …]`) → `qs ipc --any-display -p ~/Workspace/desktop/shell call <target> <fn>`.
+- **Kürzel mit Taste:** `~/.local/share/applications/desktop-shortcuts.desktop` mit `X-KDE-Shortcuts` (+ `[Desktop Action …]`) → `qs ipc --any-display -p ~/Workspace/bastian-shell/shell call <target> <fn>`.
   - kglobalaccel übernimmt neue Dateien automatisch (`kbuildsycoca6`). Löschen der Datei = Kürzel weg.
   - **Änderungen an der Datei greifen nicht live.** Zum Ändern: Datei löschen → `kbuildsycoca6` → neu anlegen → `kbuildsycoca6`.
   - In `Exec` relativ `qs` schreiben, nie `/usr/bin/qs`: Sonst kollidiert die Datei mit der Fensterlisten-Freigabe (§4).
@@ -181,7 +181,7 @@ Discord ist bewusst **nicht** auf allen Desktops. Die Call-Info steht in Bar und
 ## 4. Architektur
 
 ```
-shell/                       Quickshell-Config (Test: qs -p ~/Workspace/desktop/shell)
+shell/                       Quickshell-Config (Test: qs -p ~/Workspace/bastian-shell/shell)
   shell.qml                  ShellRoot; volle Shell nur auf Screen "DP-2"
   config/                    Theme.qml (aus theme/palette.json), Anim.qml, Settings
   services/                  je Datenquelle ein Singleton (System, Gpu, Weather, Spotify, Focus, Desktops, KeyLight, Hue, …)
@@ -203,7 +203,7 @@ secrets.json                 gitignored; secrets.example.json als Vorlage
 **Wichtige technische Regeln:**
 - **Quickshell 0.3.2** aus dem COPR `errornointernet/quickshell`. Fedoras 0.2.1-Snapshot kann keinen Blur.
   Bei Qt-Updates auf den COPR-Rebuild warten (eventuell `dnf versionlock`).
-- **Ein Pfad überall:** `~/Workspace/desktop/shell` (ausgeschrieben als absoluter Pfad), byte-gleich in Dev-Start, Kürzeln und systemd. Quickshell 0.3 unterscheidet Instanzen nach Pfad.
+- **Ein Pfad überall:** `~/Workspace/bastian-shell/shell` (ausgeschrieben als absoluter Pfad), byte-gleich in Dev-Start, Kürzeln und systemd. Quickshell 0.3 unterscheidet Instanzen nach Pfad.
 - **Apps starten** immer über `kstart --application <id>.desktop` oder `systemd-run --user --scope`, nie direkt (ab R2).
   Sonst sterben alle gestarteten Apps mit, wenn Quickshell abstürzt oder neu startet.
 - **Fensterliste/Desktops:**
@@ -292,7 +292,7 @@ Das Repo wird zum Repo für den **ganzen PC**: neu aufsetzen mit einem Befehl, d
 
 Bis R10 läuft das Plasma-Panel weiter mit. Plasma bleibt also voll nutzbar, während die Ersatzteile entstehen.
 
-Jede Runde: `qs -p ~/Workspace/desktop/shell` → du testest + Screenshot → Commit.
+Jede Runde: `qs -p ~/Workspace/bastian-shell/shell` → du testest + Screenshot → Commit.
 
 **Referenzen in `refs/`:**
 - caelestia-shell: Look und Drawer

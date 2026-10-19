@@ -140,7 +140,7 @@ Singleton {
         onTriggered: root.refresh()
     }
 
-    // qs ipc --any-display -p ~/Workspace/desktop/shell call claudegate status
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call claudegate status
     IpcHandler {
         target: "claudegate"
 

@@ -34,7 +34,7 @@ Gezählt wird nur, wenn du da bist:
 
 Die Shell schreibt alle 15 s; sofort verbuchen: `… call projecttime flush`.
 
-IPC (`qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call projecttime …`): `open | hide | toggle | status | today | week | flush`.
+IPC (`qs ipc --any-display -p ~/Workspace/bastian-shell/shell call projecttime …`): `open | hide | toggle | status | today | week | flush`.
 
 ## Tagesrückblick
 

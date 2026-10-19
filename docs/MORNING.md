@@ -26,14 +26,14 @@ Fehlt die Datei oder ein Feld, gelten diese Werte. `enabled: false` = nie. Datei
 ## Testen und Kürzel
 
 ```
-qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call morning open     # jetzt zeigen (Zustand bleibt)
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call morning open     # jetzt zeigen (Zustand bleibt)
 … call morning hide | toggle | status                                            # status = Zeitfenster, heute gezeigt?, Dienste geladen? (keine Inhalte)
 … call morning reset                                                             # „heute war noch keine“
 … call morning inWindowAt 2026-10-19T08:00                                       # Logik für eine Zeit
 node scripts/tests/timewin-test.js
 ```
 
-`morning show` kann `qs ipc` nicht aufrufen (die Kommandozeile hält „show“ für ihren eigenen Befehl), darum heißt die Funktion **`open`**. Für ein Kürzel in `hypr/binds.conf`: `qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call morning toggle`.
+`morning show` kann `qs ipc` nicht aufrufen (die Kommandozeile hält „show“ für ihren eigenen Befehl), darum heißt die Funktion **`open`**. Für ein Kürzel in `hypr/binds.conf`: `qs ipc --any-display -p ~/Workspace/bastian-shell/shell call morning toggle`.
 
 ## Technik
 

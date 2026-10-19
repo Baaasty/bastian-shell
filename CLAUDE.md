@@ -10,7 +10,7 @@ Plasma bleibt Fundament (Fenster, Einstellungen, Fallback). Was gebaut wird, ste
 - Secrets (Hue-Key, Tokens, Passwörter) nur in `secrets.json` (gitignored). Nie loggen, nie committen.
 - Nichts an Plasma ändern, was sich nicht mit einem Befehl rückgängig machen lässt (`scripts/rice off`).
   Plasma-Dateien vorher sichern. Nie `kded6` oder `plasmashell` killen. Farbschemata nur neu anlegen, nie überschreiben.
-- Eine Komponente pro Runde → Bastian testet mit `qs -p ~/Workspace/desktop/shell` und schickt Screenshot → erst dann committen.
+- Eine Komponente pro Runde → Bastian testet mit `qs -p ~/Workspace/bastian-shell/shell` und schickt Screenshot → erst dann committen.
 - `refs/` ist nur Referenz (Hyprland/niri). Hyprland-Spezifisches für KWin anpassen oder weglassen.
   Code aus caelestia/end-4 ist GPL-3.0: Herkunfts-Header beim Übernehmen behalten.
 - Apps aus der Shell nur per `kstart --application …` oder `systemd-run --user --scope` starten, nie direkt
@@ -51,7 +51,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - `bridge/` rice-bridge (Python, dbus_next) + `bridge/kwin/` KWin-Script · `plasma/` Plasma-Shell-Paket (ohne Panel)
 - `theme/` `palette.json` + Generatoren (KDE, Konsole, Starship, Cursor)
 - `design/` Inspos, Claude-Design-Ergebnisse, `preview.html`
-- `docs/` Doku: `ROADMAP.md`, `design-brief.md`, `HOTKEYS.md`, `HYPRLAND.md` (Branch hyprland: `hypr/`, `scripts/hypr`), `LOCKSCREEN.md` · `docs/setup/` Logins & Kopplungen
+- `docs/` Doku: `ROADMAP.md`, `design-brief.md`, `HOTKEYS.md`, `HYPRLAND.md` (`hypr/`, `scripts/hypr`), `LOCKSCREEN.md`, `MIGRATE.md` (Umzug aus den alten Ordnern, `system/migrate`) · `docs/setup/` Logins & Kopplungen
   (Spotify, Discord, Hue, Mail & Kalender; Übersicht in `docs/setup/README.md`). `SPEC.md` + `CLAUDE.md` bleiben im Hauptordner.
 - `projects/` Projekt-Einstellungen (`projects.json`: Farbe, Ports, Öffnen, Links – nur über `scripts/project`) · `profiles/` Desktop-Vorlagen · `scripts/` `rice on|off|status` · `systemd/` User-Dienst
 - `claude/skills/` Claude-Code-Skill `/desktop-project` (Projekt-Registry, Doku: `docs/PROJECTS.md`), verlinkt per `scripts/claude-skills install`.
@@ -61,9 +61,9 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 
 ## Befehle
 
-- Testen: `qs -p ~/Workspace/desktop/shell` (nicht `qs -p .`, sonst liest Quickshell `refs/` mit ein).
+- Testen: `qs -p ~/Workspace/bastian-shell/shell` (nicht `qs -p .`, sonst liest Quickshell `refs/` mit ein).
   Immer derselbe absolute Pfad wie in Kürzeln und systemd, sonst finden die Kürzel die Instanz nicht.
-- IPC: `qs ipc --any-display -p ~/Workspace/desktop/shell call <target> <function>`
+- IPC: `qs ipc --any-display -p ~/Workspace/bastian-shell/shell call <target> <function>`
 - An/Aus: `scripts/rice on|off|restart|status` (läuft als User-Unit `desktop-shell`, Log: `journalctl --user -u desktop-shell`)
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/rice off` (stellt Vanilla-Plasma wieder her)
 - Lockscreen-Paket: `scripts/shellpkg install|test|on|off` · Wallpaper: `scripts/wallpaper set|restore`

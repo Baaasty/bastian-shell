@@ -1,9 +1,11 @@
 # Wird von desktop-goxlr-unlock.path ausgelöst: „locked“ → Fader merken + Routing aus (idempotent),
 # „unlocked“ → Fader zurück (nur wenn vorher gemerkt). Routing bleibt aus.
+# Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/bastian-shell.
 [Unit]
 Description=Desktop: GoXLR-Fader abgleichen (Sperre geändert)
 
 [Service]
 Type=oneshot
-ExecStart=%h/Workspace/desktop-hyprland/scripts/goxlr-state sync
+EnvironmentFile=-%h/.config/desktop/hyprland.env
+ExecStart=/bin/sh -c 'exec "$${DESKTOP:-%h/Workspace/bastian-shell}/scripts/goxlr-state" sync'
 TimeoutStartSec=20

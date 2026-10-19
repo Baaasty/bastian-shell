@@ -9,7 +9,7 @@ import qs.services
 // Layout-Menü (Super+Alt+K): gespeicherte Fenster-Layouts anwenden, diesen Desktop speichern, löschen.
 // Die Logik bleibt in scripts/layout (list --json · restore · save [--force] · rm); hier nur Liste + Aufrufe.
 // Ohne laufende Shell fällt das Kürzel auf den kdialog-Dialog zurück (scripts/layout menu). Anleitung: docs/LAYOUTS.md
-// qs ipc --any-display -p ~/Workspace/desktop/shell call layouts toggle
+// qs ipc --any-display -p ~/Workspace/bastian-shell/shell call layouts toggle
 Scope {
     id: root
 

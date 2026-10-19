@@ -10,7 +10,7 @@ sudo dnf install hyprsunset      # liegt im COPR sdegler/hyprland (schon aktiv)
 ```
 
 Ohne das Paket passiert nichts (Daemon beendet sich still, Befehle melden den Installationshinweis).
-Danach: Abmelden/Anmelden oder `uwsm app -- ~/Workspace/desktop-hyprland/scripts/nightlight daemon &`.
+Danach: Abmelden/Anmelden oder `uwsm app -- ~/Workspace/bastian-shell/scripts/nightlight daemon &`.
 
 ## Befehle (`scripts/nightlight`)
 

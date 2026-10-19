@@ -34,8 +34,8 @@ location, projects) lives in local, git-ignored files with an `.example` next to
 ## Install
 
 ```sh
-git clone https://github.com/Baaasty/bastian-shell ~/Workspace/desktop-hyprland
-cd ~/Workspace/desktop-hyprland
+git clone https://github.com/Baaasty/bastian-shell ~/Workspace/bastian-shell
+cd ~/Workspace/bastian-shell
 cp secrets.example.json secrets.json      # fill in what you use; never committed
 scripts/hypr install                       # links config into ~/.config, nothing system-wide
 scripts/hypr check

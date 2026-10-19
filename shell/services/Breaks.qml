@@ -232,7 +232,7 @@ Singleton {
         stateFile.setText(JSON.stringify({ since: Math.round(since), lastSeen: Math.round(lastSeen), snoozeUntil: Math.round(snoozeUntil), offDay: offDay }));
     }
 
-    // qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call breaks status
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call breaks status
     IpcHandler {
         target: "breaks"
 

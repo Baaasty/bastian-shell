@@ -9,7 +9,7 @@ Heimnetz. Dafür braucht die Shell einmal einen **App-Key** von der Bridge. Daue
 2. Im Terminal:
 
    ```sh
-   ~/Workspace/desktop/scripts/hue-pair
+   ~/Workspace/bastian-shell/scripts/hue-pair
    ```
 
 3. Die runde Taste oben auf der Bridge drücken, dann Enter. Das Skript wartet bis zu 30 s auf die Taste.
@@ -22,14 +22,14 @@ Nur schauen, was passieren würde (sendet und schreibt nichts): `scripts/hue-pai
 Steht in der Kachel **Invalid Hue key: scripts/hue-pair --force** (Key wurde in der Hue-App gelöscht o. Ä.):
 
 ```sh
-~/Workspace/desktop/scripts/hue-pair --force
+~/Workspace/bastian-shell/scripts/hue-pair --force
 ```
 
 Ohne `--force` lässt das Skript einen vorhandenen Key stehen.
 
 ## Wo der Key liegt
 
-In `~/Workspace/desktop/secrets.json` (gitignored, Rechte 600) im Abschnitt `hue`:
+In `~/Workspace/bastian-shell/secrets.json` (gitignored, Rechte 600) im Abschnitt `hue`:
 `key`, `clientkey`, `bridge`, `bridgeId`. Andere Einträge bleiben erhalten. Das Skript gibt den Key nie aus,
 die Shell reicht ihn nur als Umgebungsvariable an `curl` weiter (nie in Befehlszeile oder Log).
 

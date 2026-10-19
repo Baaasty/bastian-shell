@@ -43,6 +43,6 @@ Wird beim nächsten Messen (alle 3 s bei offenem Popout) gelesen.
 ## Testen ohne Maus
 
 ```sh
-qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call net open      # ohne Klick-Fang: mit `net close` schließen
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call net open      # ohne Klick-Fang: mit `net close` schließen
 qs ipc ... call net status                                                    # Text: Verbindung, Pings
 ```

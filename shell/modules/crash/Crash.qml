@@ -8,7 +8,7 @@ import qs.components
 
 // Absturz-Meldungen (statt DrKonqi): Karten unten rechts auf dem Hauptmonitor, eine pro App (Crashes.items).
 // Eigene Anzeigeliste wie Attention: Karten blenden erst aus und werden danach entfernt.
-// Test: qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call crash test | testRenderer | hide
+// Test: qs ipc --any-display -p ~/Workspace/bastian-shell/shell call crash test | testRenderer | hide
 Scope {
     id: root
 

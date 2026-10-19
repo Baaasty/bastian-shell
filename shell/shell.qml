@@ -1,6 +1,6 @@
 //@ pragma UseQApplication
 //@ pragma Env QSG_RENDER_LOOP=threaded
-// Desktop – Quickshell über Hyprland (Branch hyprland). Start: qs -p ~/Workspace/desktop/shell
+// Desktop – Quickshell über Hyprland (Branch hyprland). Start: qs -p ~/Workspace/bastian-shell/shell
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -70,7 +70,7 @@ ShellRoot {
     // Szenen-Engine (Singleton) beim Start laden: IPC "scene" und Fokus-Kopplung
     Component.onCompleted: Scenes.init()
 
-    // qs ipc --any-display -p ~/Workspace/desktop/shell call shell status
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call shell status
     IpcHandler {
         target: "shell"
 

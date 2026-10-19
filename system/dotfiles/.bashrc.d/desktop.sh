@@ -1,4 +1,4 @@
-# ~/.bashrc.d/desktop.sh – eigene Bash-Teile (Symlink aus ~/Workspace/desktop/system/dotfiles).
+# ~/.bashrc.d/desktop.sh – eigene Bash-Teile (Symlink aus ~/Workspace/bastian-shell/system/dotfiles).
 # Fedoras ~/.bashrc lädt ~/.bashrc.d/* von selbst, die .bashrc bleibt Standard.
 # Der Starship-Prompt steht NICHT hier: den setzt/entfernt `scripts/rice theme on|off` als Block in ~/.bashrc.
 

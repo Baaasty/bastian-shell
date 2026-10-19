@@ -20,7 +20,7 @@ Februar 2026 nur, wenn der App-Besitzer (du) Premium hat. Abspielen per API geht
 
 ## 2. Client ID eintragen
 
-In `~/Workspace/desktop/secrets.json` (gitignored; andere Einträge wie `hue` bleiben stehen):
+In `~/Workspace/bastian-shell/secrets.json` (gitignored; andere Einträge wie `hue` bleiben stehen):
 
 ```json
 {
@@ -31,7 +31,7 @@ In `~/Workspace/desktop/secrets.json` (gitignored; andere Einträge wie `hue` bl
 ## 3. Koppeln
 
 ```sh
-~/Workspace/desktop/scripts/spotify-auth
+~/Workspace/bastian-shell/scripts/spotify-auth
 ```
 
 Der Browser öffnet sich. Bei Spotify zustimmen, dann zeigt der Tab „Gekoppelt“. Die Tokens landen in

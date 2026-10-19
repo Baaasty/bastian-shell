@@ -33,7 +33,7 @@ Es läuft nur über die offizielle lokale Schnittstelle von Discord (RPC). Nachr
 
 ## 4. In `secrets.json` eintragen
 
-Datei: `~/Workspace/desktop/secrets.json` (ist gitignored). Gibt es sie schon (z. B. mit `hue`),
+Datei: `~/Workspace/bastian-shell/secrets.json` (ist gitignored). Gibt es sie schon (z. B. mit `hue`),
 nur den Block `discord` dazuschreiben:
 
 ```json
@@ -48,7 +48,7 @@ nur den Block `discord` dazuschreiben:
 Danach die Rechte setzen:
 
 ```sh
-chmod 600 ~/Workspace/desktop/secrets.json
+chmod 600 ~/Workspace/bastian-shell/secrets.json
 ```
 
 ## 5. Koppeln bestätigen
@@ -68,7 +68,7 @@ Wer vor der Steuerung gekoppelt hat, hat nur Lese-Rechte (`rpc.voice.read`). Dan
 **Enable Controls** – einmal klicken und in Discord erneut **Autorisieren**. Alternativ:
 
 ```sh
-qs ipc --any-display -p ~/Workspace/desktop/shell call discord reauth
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call discord reauth
 ```
 
 ## 6. Bedienung
@@ -129,7 +129,7 @@ Klick auf einen Chat im Popout (Abschnitt **Chats**) öffnet ihn im Discord-Fens
 Test im Terminal (zeigt nur Zustände, nie Tokens):
 
 ```sh
-qs ipc --any-display -p ~/Workspace/desktop/shell call discord status
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call discord status
 ```
 
 **Entkoppeln:** Discord → Einstellungen → **Autorisierte Apps** → Desktop entfernen, dann `discord`-Block

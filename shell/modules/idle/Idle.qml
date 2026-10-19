@@ -104,7 +104,7 @@ Scope {
         }
     }
 
-    // qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call fireplace on false
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call fireplace on false
     IpcHandler {
         target: "fireplace"
 

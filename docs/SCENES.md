@@ -13,7 +13,7 @@ Engine: `shell/services/Scenes.qml`.
 | Fokus-Szene | automatisch mit dem Fokus-Timer (`Super+Alt+F`, Dashboard, Bar) |
 | Terminal | `scripts/scene list` · `scene on\|off\|toggle NAME` · `scene NAME` (= toggle) · `scene status` · `scene check` |
 | Trockenlauf | `scripts/scene on game --dry-run` – zeigt mit dem echten Gerätezustand, was passieren würde, ändert nichts |
-| IPC | `qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call scene toggle game` (auch `on`, `off`, `status`) |
+| IPC | `qs ipc --any-display -p ~/Workspace/bastian-shell/shell call scene toggle game` (auch `on`, `off`, `status`) |
 
 ## So arbeitet eine Szene
 

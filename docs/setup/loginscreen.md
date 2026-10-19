@@ -122,6 +122,6 @@ keine Inter-Schrift, Cursor/Farbschema aus `~/.local` fehlen dem Greeter.
 
 Anmelden geht trotzdem (PAM/Daemon werden nicht angefasst). Rückweg: Hyprland-Sitzung liegt auf tty2
 (Strg+Alt+F2), Login-Bildschirm auf tty1 (Strg+Alt+F1), freie Konsole Strg+Alt+F3. Notfalls Strg+Alt+F3 → auf der Konsole
-einloggen → `~/Workspace/desktop-hyprland/scripts/loginscreen theme off` (nur Layout) oder `… restore` (alles) →
+einloggen → `~/Workspace/bastian-shell/scripts/loginscreen theme off` (nur Layout) oder `… restore` (alles) →
 `sudo systemctl restart plasmalogin` (nur, wenn du grafisch nicht angemeldet bist) bzw. Strg+Alt+F1/F2
 zurück zum Login-Bildschirm.

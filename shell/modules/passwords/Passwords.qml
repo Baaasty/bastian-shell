@@ -346,7 +346,7 @@ Scope {
         }
     }
 
-    // qs ipc --any-display -p ~/Workspace/desktop/shell call passwords toggle
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call passwords toggle
     IpcHandler {
         target: "passwords"
 

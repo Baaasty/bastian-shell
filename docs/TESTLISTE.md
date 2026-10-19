@@ -48,7 +48,7 @@ Abhaken, was klappt; was nicht klappt, kurz notieren (Taste, was passiert, was e
 - [ ] **Super+Shift+C** Farbpipette direkt · **Strg+Druck** alle Monitore
 - [ ] `notify-send -a Test Hallo Text`: Maus drauf → bleibt stehen (auch die darunter), Uhr → „10 min“ → kommt wieder
   - (auto) Abends gerade Ruhezeit: Benachrichtigung landet nur im Panel („1 while you were away“). Tagsüber testen.
-- [x] Morgen-Übersicht: `qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call morning open` (auto)
+- [x] Morgen-Übersicht: `qs ipc --any-display -p ~/Workspace/bastian-shell/shell call morning open` (auto)
 
 ## Szenen, Licht, Ton
 

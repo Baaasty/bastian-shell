@@ -105,12 +105,17 @@ EOF
 
     # Shell-Dienst für Hyprland; der Plasma-Dienst bekommt eine Bedingung (unter Plasma ändert sich nichts)
     link "$REPO/systemd/$UNIT.service" "$CONF/systemd/user/$UNIT.service"
-    write "$DROPIN" <<'EOF'
+    # Sperre nur, solange es die KWin-Variante noch gibt (nach system/migrate Schritt 7 ist sie weg)
+    if [ -e "$CONF/systemd/user/$PLASMA_UNIT.service" ] || [ -L "$CONF/systemd/user/$PLASMA_UNIT.service" ]; then
+        write "$DROPIN" <<'EOF'
 # ERZEUGT von scripts/hypr install – die Plasma-Shell (KWin-Variante) nicht in der Hyprland-Sitzung starten.
 # Rückgängig: scripts/hypr uninstall
 [Service]
 ExecCondition=/bin/sh -c 'case ":$${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) exit 1 ;; esac; exit 0'
 EOF
+    elif [ -f "$DROPIN" ]; then
+        rm -f "$DROPIN"; rmdir "$(dirname "$DROPIN")" 2>/dev/null || true
+    fi
     drkonqi_off
     systemctl --user daemon-reload
     systemctl --user enable --quiet "$UNIT"
@@ -159,6 +164,8 @@ cmd_status() {
     local f
     for f in "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" \
         "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$ENVFILE"; do
+        # ohne KWin-Variante (desktop-shell.service) braucht es die Sperre nicht
+        [ "$f" = "$DROPIN" ] && [ ! -e "$CONF/systemd/user/$PLASMA_UNIT.service" ] && [ ! -L "$CONF/systemd/user/$PLASMA_UNIT.service" ] && continue
         if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
             say "ok      $f"
         elif [ -e "$f" ]; then

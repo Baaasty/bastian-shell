@@ -2,7 +2,7 @@
 """theme/palette.json -> Starship-Prompt (theme/out/starship.toml).
 
 Ruhig, zwei Zeilen (Luft davor per add_newline):
-  ~/Workspace/desktop  main !2 ?1  󰔟 4s  ✘ 1                          17:42:08
+  ~/Workspace/bastian-shell  main !2 ?1  󰔟 4s  ✘ 1                          17:42:08
   ❯
 Pfad Creme (Repo-Name fett), Git gedämpft, Dauer/Fehlercode nur wenn nötig, ❯ im Akzent (Amber nach Fehler).
 Die Uhrzeit steht per $fill rechts in Zeile 1: right_format kann bash ohne ble.sh nicht.

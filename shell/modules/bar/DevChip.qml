@@ -9,8 +9,8 @@ import qs.components
 // solange etwas läuft (Dev-Server oder Container). Läuft ein sshs-Upload: Symbol im Glut-Ton.
 // Klick öffnet das Dev-Dienste-Popout (DevPopout.qml). Daten: DevServices.qml (30 s, bei offenem Popout 5 s), Servers.qml.
 // Kürzel: Super+Alt+U = Reiter Server (barmode popout servers, Alias in BarKeys.qml)
-// IPC: qs ipc -p ~/Workspace/desktop-hyprland/shell call devservices open|close|toggle|refresh|status
-//      qs ipc -p ~/Workspace/desktop-hyprland/shell call servers open|close|toggle|refresh|status (Reiter Server)
+// IPC: qs ipc -p ~/Workspace/bastian-shell/shell call devservices open|close|toggle|refresh|status
+//      qs ipc -p ~/Workspace/bastian-shell/shell call servers open|close|toggle|refresh|status (Reiter Server)
 Chip {
     id: chip
     hintKey: BarKeys.keyFor("devservices")   // Bar-Modus (Super+B)

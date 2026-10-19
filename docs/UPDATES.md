@@ -27,7 +27,7 @@ Letztes Ergebnis: `~/.local/state/desktop/updates.json` (Zahl steht nach einem S
 ## Testen ohne Maus
 
 ```sh
-S=~/Workspace/desktop-hyprland/shell
+S=~/Workspace/bastian-shell/shell
 qs ipc --any-display -p $S call updates status    # Zahl, letzte Prüfung, nächste in min, Fehler
 qs ipc --any-display -p $S call updates check     # jetzt prüfen (refresh = mit erzwungenem dnf-Refresh)
 qs ipc --any-display -p $S call updates fake 5    # Chip mit 5 erfundenen Updates zeigen (nächste Prüfung überschreibt)

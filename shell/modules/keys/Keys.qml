@@ -45,7 +45,7 @@ Scope {
             show();
     }
 
-    // qs ipc --any-display -p ~/Workspace/desktop/shell call keys toggle|open|close
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call keys toggle|open|close
     IpcHandler {
         target: "keys"
 

@@ -1,0 +1,680 @@
+#!/usr/bin/env bash
+# Umzug auf EIN Theme: ~/Workspace/desktop (Worktree, Branch kwin) + ~/Workspace/desktop-hyprland (Branch hyprland)
+# → Klon von bastian-shell in ~/Workspace/bastian-shell. Danach nur noch Hyprland + Shell, Plasma/KWin kommt runter.
+# Anleitung, Reihenfolge, Rückweg, Notfall aus dem TTY: docs/MIGRATE.md
+#
+#   system/migrate                    Probelauf (Standard): zeigt jeden Schritt, ändert NICHTS, kein sudo
+#   system/migrate --apply            Schritte 1–6 wirklich ausführen (7 und 8 brauchen eigene Schalter, s. u.)
+#   system/migrate --only 2,3         nur diese Schritte (mit und ohne --apply)
+#   system/migrate --list             Schritte auflisten
+#   --apply --only 7                  KWin-Reste + Login-Ersatz (greetd) + Plasma-Pakete (sudo, fragt nach)
+#   --apply --only 7 --login-switch   Anmeldung von plasmalogin auf greetd umstellen (nach dem TTY-Test)
+#   --apply --only 8 --delete-old     alte Ordner löschen (vorher Bundle-Sicherung nach ~/Backups)
+#   --with-refs                       Schritt 2 nimmt auch refs/ mit (Referenz-Klone, ~200 MB; sonst nur Liste)
+#   --confirm "<wort>"                Rückfrage in 7/8 ohne Terminal beantworten (gleiches Wort wie die Frage verlangt)
+#
+# Schritt 7 und 8 laufen nur, wenn die Prüfung aus Schritt 6 grün ist. Nichts wird überschrieben, was im Ziel
+# schon liegt; geänderte Textdateien bekommen eine Sicherung <datei>.vor-migrate. Keine privaten Daten in diesem Skript.
+set -euo pipefail
+
+# ---------------------------------------------------------------- Pfade (nur hier)
+WS="$HOME/Workspace"
+NEW="$WS/bastian-shell"
+OLD_H="$WS/desktop-hyprland"          # Worktree, Branch hyprland (= main)
+OLD_D="$WS/desktop"                   # Haupt-Checkout mit .git, Branch kwin
+OLDS=("$OLD_H" "$OLD_D")
+URL="git@github.com:Baaasty/bastian-shell.git"
+URL_RE='github\.com[:/]Baaasty/bastian-shell(\.git)?$'
+STATE="$HOME/.local/state/desktop"
+MIG="$STATE/migrate"                  # Sicherungen dieses Umzugs (Zweitfassungen, KWin-Reste)
+BACKUPS="$HOME/Backups"
+CLAUDE_NEW="$HOME/.claude/projects/-home-${USER}-Workspace-bastian-shell"
+CLAUDE_OLD=("$HOME/.claude/projects/-home-${USER}-Workspace-desktop" "$HOME/.claude/projects/-home-${USER}-Workspace-desktop-hyprland")
+SHELL_UNIT="desktop-shell-hyprland"
+# ----------------------------------------------------------------
+
+SELF="$(readlink -f "$0")"
+# py_sub <datei> <count|write>: alte Pfade zählen bzw. ersetzen (desktop-hyprland und desktop → bastian-shell;
+# ~, $HOME, /home/… gleich; Wortgrenze, damit z. B. desktop-xyz nicht trifft). Gibt die Anzahl aus.
+py_sub() {
+    python3 -I - "$1" "$2" <<'PY2'
+import re, sys, os
+path, mode = sys.argv[1], sys.argv[2]
+s = open(path, encoding="utf-8", errors="surrogateescape").read()
+new, n = re.subn(r"Workspace/desktop(-hyprland)?(?![A-Za-z0-9_.-])", "Workspace/bastian-shell", s)
+if mode == "write" and n:
+    tmp = path + ".tmp-migrate"
+    with open(tmp, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(new)
+    os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+    os.replace(tmp, path)
+print(n)
+PY2
+}
+[ "${1:-}" = --_sub ] && { py_sub "$3" "$2" >/dev/null; exit 0; }   # intern: system/migrate --_sub write <datei>
+HERE="$(dirname "$(dirname "$SELF")")"     # Checkout, aus dem das Skript läuft
+
+STEPS=(
+    "1|Klonen nach ~/Workspace/bastian-shell (oder vorhandenen Klon prüfen + pull --ff-only)"
+    "2|Lokale, gitignorte Dateien mitnehmen (secrets.json, projects.json, Dotfiles, Wallpaper …)"
+    "3|Pfade außerhalb des Repos umstellen (Symlinks, Installer, Textdateien mit .vor-migrate)"
+    "4|Repo prüfen: keine festen Pfade auf die alten Ordner"
+    "5|Claude Code: Projekt-Gedächtnis zusammenführen, Skills neu verlinken"
+    "6|Dienste neu laden, Shell vom neuen Pfad starten, Prüfung (muss grün sein)"
+    "7|[sudo] KWin-Variante + Plasma entfernen (Login-Ersatz zuerst) – nur --apply --only 7"
+    "8|Alte Ordner löschen (Bundle-Sicherung) – nur --apply --only 8 --delete-old"
+)
+
+APPLY=0; ONLY=""; DELETE_OLD=0; WITH_REFS=0; LOGIN_SWITCH=0; CONFIRM=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --apply) APPLY=1 ;;
+        --dry-run) APPLY=0 ;;
+        --only) ONLY=",${2:-},"; shift ;;
+        --delete-old) DELETE_OLD=1 ;;
+        --with-refs) WITH_REFS=1 ;;
+        --login-switch) LOGIN_SWITCH=1 ;;
+        --confirm) CONFIRM="${2:-}"; shift ;;
+        --list) for s in "${STEPS[@]}"; do printf '  %s  %s\n' "${s%%|*}" "${s#*|}"; done; exit 0 ;;
+        -h|--help) sed -n '2,19p' "$SELF" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "Unbekannt: $1 (--help)" >&2; exit 1 ;;
+    esac
+    shift
+done
+[ "$(id -u)" = 0 ] && { echo "Nicht als root starten – sudo kommt im Skript." >&2; exit 1; }
+
+TODO=0; SUDO_TODO=0; FAILS=(); RUN_RC=0
+head_() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
+ok()    { printf '  \033[32mok\033[0m  %s\n' "$1"; }
+info()  { printf '  ..  %s\n' "$1"; }
+warn()  { printf '  \033[33m!!\033[0m  %s\n' "$1"; }
+bad()   { printf '  \033[31mXX\033[0m  %s\n' "$1"; }
+# run "<Befehl>" – Probelauf: nur zeigen · --apply: ausführen, Fehler sammeln, weiter
+run() {
+    local tag=""
+    TODO=$((TODO + 1))
+    if [[ "$1" == *sudo\ * ]]; then tag=$'\033[33m[sudo]\033[0m '; SUDO_TODO=$((SUDO_TODO + 1)); fi
+    if (( APPLY )); then
+        printf '  \033[36m+\033[0m   %s%s\n' "$tag" "$1"
+        RUN_RC=0
+        bash -c "$1" || { RUN_RC=$?; warn "fehlgeschlagen: $1"; FAILS+=("$1"); }
+    else
+        printf '  \033[36m→\033[0m   %s%s\n' "$tag" "$1"
+    fi
+}
+# Steps 1–6 laufen ohne --only; 7/8 nur ausdrücklich
+want() {
+    if [ -z "$ONLY" ]; then [ "$1" -le 6 ]; else [[ "$ONLY" == *",$1,"* ]]; fi
+}
+step_title() { local s; for s in "${STEPS[@]}"; do [ "${s%%|*}" = "$1" ] && head_ "$1 · ${s#*|}"; done; return 0; }
+q() { printf '%q' "$1"; }
+tilde() { printf '%s' "${1/#$HOME/\~}"; }
+confirm() {   # confirm "<Frage>" "<Antwort>": Eingabe am Terminal oder --confirm "<Antwort>"
+    local a
+    if [ -n "$CONFIRM" ]; then echo "  $1 → --confirm"; [ "$CONFIRM" = "$2" ]; return; fi
+    [ -t 0 ] || { warn "keine Rückfrage möglich (kein Terminal, kein --confirm) – abgebrochen"; return 1; }
+    read -r -p "  $1 Zum Bestätigen „$2“ tippen: " a
+    [ "$a" = "$2" ]
+}
+# gate <schritt>: mit --apply nach Fehlern sofort stoppen (bevor spätere Schritte auf halbem Stand weiterbauen)
+gate() {
+    (( APPLY )) || return 0
+    (( ${#FAILS[@]} )) || return 0
+    bad "Schritt $1 hatte Fehler – Abbruch vor dem nächsten Schritt:"; printf '      %s\n' "${FAILS[@]}"; exit 1
+}
+
+GREP_RE='Workspace/desktop(-hyprland)?([^A-Za-z0-9_.-]|$)'
+
+# Welcher alte Checkout, welcher Pfad darin? old_rel <ziel> → "checkout<TAB>rel" (sonst Rückgabe 1)
+old_rel() {
+    local t="$1" c
+    for c in "${OLDS[@]}"; do
+        if [ "$t" = "$c" ]; then printf '%s\t\n' "$c"; return 0; fi
+        if [[ "$t" == "$c"/* ]]; then printf '%s\t%s\n' "$c" "${t#"$c"/}"; return 0; fi
+    done
+    return 1
+}
+
+# Alle Symlinks im Home, die in einen alten Checkout zeigen (Workspace/Data/Caches/Container ausgenommen)
+scan_links() {
+    find "$HOME" -xdev \( -path "$WS" -o -path "$HOME/Data" -o -path "$HOME/.cache" -o -path "$HOME/.var" \
+        -o -path "$HOME/.local/share/containers" -o -path "$HOME/.local/share/Steam" -o -path "$HOME/.steam" \
+        -o -path "$HOME/.local/share/Trash" -o -name node_modules -o -path "$BACKUPS" \) -prune \
+        -o -type l \( -lname "$OLD_D" -o -lname "$OLD_D/*" -o -lname "$OLD_H" -o -lname "$OLD_H/*" \) -print 2>/dev/null | sort || true
+}
+
+# Textdateien außerhalb des Repos, die Pfade auf die alten Ordner enthalten können (gezielte Liste, keine Logs/Verläufe)
+text_candidates() {
+    local f
+    for f in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.zshrc" "$HOME/.zshenv" "$HOME/.zprofile" \
+        "$HOME/.claude/settings.json" "$HOME/.config/Claude/claude_desktop_config.json" "$HOME/.config/QtProject.conf" \
+        "$HOME/.config/starship.toml" "$HOME/.config/uwsm/env" "$HOME/.config/uwsm/env-hyprland" \
+        "$HOME/.config/google-chrome/NativeMessagingHosts/de.bastian.desktop.json" \
+        "$HOME/.config/net.imput.helium/NativeMessagingHosts/de.bastian.desktop.json" \
+        "$HOME"/.config/hypr/*.conf "$HOME"/.config/desktop/* "$HOME"/.config/desktop/workspaces/*.code-workspace \
+        "$HOME"/.local/share/applications/*.desktop "$HOME"/.config/autostart/*.desktop "$HOME"/.config/zsh/* \
+        "$HOME"/.bashrc.d/* "$HOME"/.config/environment.d/*.conf "$HOME"/.config/systemd/user/*.d/*.conf; do
+        [ -f "$f" ] && [ ! -L "$f" ] || continue
+        grep -qE "$GREP_RE" "$f" 2>/dev/null && printf '%s\n' "$f"
+    done
+    return 0
+}
+# Dateien, die nur zur KWin-Variante gehören (räumt Schritt 7 weg, nicht umschreiben)
+is_kwin_file() {
+    case "$1" in
+        "$HOME/.local/share/applications/desktop-shortcuts.desktop"|"$HOME/.local/share/applications/desktop-screencast.desktop") return 0 ;;
+        "$HOME/.config/systemd/user/desktop-shell.service"*|"$HOME/.config/systemd/user/desktop-keys-watch.service"|\
+        "$HOME/.config/systemd/user/"*.wants/desktop-shell.service|"$HOME/.config/systemd/user/"*.wants/desktop-keys-watch.service) return 0 ;;
+    esac
+    return 1
+}
+# Sicherungsziel für Textdateien: <datei>.vor-migrate daneben; ~/.bashrc.d lädt jede Datei → dort nach $MIG
+backup_of() {
+    local f="$1" b
+    if [[ "$f" == "$HOME/.bashrc.d/"* ]]; then b="$MIG/backup${f#"$HOME"}.vor-migrate"; else b="$f.vor-migrate"; fi
+    [ -e "$b" ] && b="$b-$(date +%Y%m%d-%H%M%S)"
+    printf '%s' "$b"
+}
+
+# ---------------------------------------------------------------- Prüfung (Schritt 6, Voraussetzung für 7 und 8)
+# check_green [quiet]: 0 = grün. Prüft den Ist-Zustand, ändert nichts.
+check_green() {
+    local rc=0 url env pid cmdline n
+    if [ ! -d "$NEW/.git" ]; then bad "kein Klon in $(tilde "$NEW")"; return 1; fi
+    url="$(git -C "$NEW" remote get-url origin 2>/dev/null || true)"
+    [[ "$url" =~ $URL_RE ]] && ok "Klon: $(tilde "$NEW") ($url)" || { bad "origin von $(tilde "$NEW") ist nicht bastian-shell: ${url:-?}"; rc=1; }
+    env="$(sed -n 's/^DESKTOP=//p' "$HOME/.config/desktop/hyprland.env" 2>/dev/null || true)"
+    [ "$env" = "$NEW" ] && ok "hyprland.env: DESKTOP=$(tilde "$NEW")" || { bad "hyprland.env: DESKTOP=${env:-fehlt} (erwartet $(tilde "$NEW"))"; rc=1; }
+    grep -qF "$NEW" "$HOME/.config/hypr/hyprland.conf" 2>/dev/null && ok "~/.config/hypr/hyprland.conf → neuer Pfad" \
+        || { bad "~/.config/hypr/hyprland.conf zeigt nicht auf $(tilde "$NEW")"; rc=1; }
+    n="$(scan_links | wc -l)"
+    [ "$n" = 0 ] && ok "keine Symlinks mehr in die alten Ordner" || { bad "$n Symlink(s) zeigen noch in die alten Ordner (Schritt 3)"; rc=1; }
+    n=0; while IFS= read -r f; do is_kwin_file "$f" || n=$((n + 1)); done < <(text_candidates)
+    [ "$n" = 0 ] && ok "keine Textverweise mehr (außer KWin-Resten für Schritt 7)" || { bad "$n Textdatei(en) mit alten Pfaden (Schritt 3)"; rc=1; }
+    if systemctl --user is-active --quiet "$SHELL_UNIT" 2>/dev/null; then
+        pid="$(systemctl --user show -p MainPID --value "$SHELL_UNIT" 2>/dev/null || echo 0)"
+        cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+        [[ "$cmdline" == *"$NEW/shell"* ]] && ok "$SHELL_UNIT läuft vom neuen Pfad" || { bad "$SHELL_UNIT läuft nicht vom neuen Pfad: ${cmdline:-?}"; rc=1; }
+    else bad "$SHELL_UNIT läuft nicht"; rc=1; fi
+    if timeout 5 qs ipc --any-display -p "$NEW/shell" call shell status >/dev/null 2>&1; then ok "IPC antwortet (qs ipc -p ~/Workspace/bastian-shell/shell call shell status)"
+    else bad "IPC antwortet nicht auf $(tilde "$NEW")/shell"; rc=1; fi
+    if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        local ce; ce="$(hyprctl configerrors 2>/dev/null | tr -d '[:space:]' || true)"
+        [ -z "$ce" ] && ok "hyprctl configerrors leer" || { bad "hyprctl configerrors: $(hyprctl configerrors 2>/dev/null | head -3 | tr '\n' ' ')"; rc=1; }
+    else warn "nicht in einer Hyprland-Sitzung – hyprctl nicht geprüft"; rc=1; fi
+    return $rc
+}
+
+# ---------------------------------------------------------------- 0 Vorab
+head_ "0 · Vorab"
+(( APPLY )) && echo "  Modus: APPLY (ändert das System)" || echo "  Modus: Probelauf (ändert nichts – echt: --apply)"
+echo "  Ziel:  $(tilde "$NEW")  ·  alt: $(tilde "$OLD_H") (hyprland) + $(tilde "$OLD_D") (kwin)  ·  läuft aus $(tilde "$HERE")"
+for c in "${OLDS[@]}"; do
+    if [ -d "$c" ]; then
+        st="$(git -C "$c" status --porcelain 2>/dev/null | wc -l)"
+        [ "$st" = 0 ] && ok "$(tilde "$c"): sauber ($(git -C "$c" branch --show-current 2>/dev/null || echo ?))" \
+            || warn "$(tilde "$c"): $st offene Änderung(en) – vor dem Umzug committen"
+    else info "$(tilde "$c") gibt es nicht (mehr)"; fi
+done
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && ok "läuft in der Hyprland-Sitzung" || warn "nicht in Hyprland – Schritt 3/6 erst in der Hyprland-Sitzung ausführen"
+mkdir_mig() { (( APPLY )) && { mkdir -p "$MIG"; chmod 700 "$MIG"; }; return 0; }
+mkdir_mig
+
+# ---------------------------------------------------------------- 1 Klonen
+if want 1; then
+    step_title 1
+    main_tree=""
+    [ -d "$OLD_H/.git" ] || [ -f "$OLD_H/.git" ] && main_tree="$(git -C "$OLD_H" rev-parse 'main^{tree}' 2>/dev/null || true)"
+    if [ -d "$NEW/.git" ]; then
+        url="$(git -C "$NEW" remote get-url origin 2>/dev/null || true)"
+        [[ "$url" =~ $URL_RE ]] && ok "$(tilde "$NEW") ist ein Klon von bastian-shell" || { bad "$(tilde "$NEW") ist KEIN bastian-shell-Klon (origin: ${url:-?}) – abgebrochen"; exit 1; }
+        dirty="$(git -C "$NEW" status --porcelain)"
+        if [ -n "$dirty" ]; then
+            warn "$(tilde "$NEW") hat offene Änderungen – kein pull (prüfen/committen):"; printf '%s\n' "$dirty" | head -8 | sed 's/^/      /'
+        else
+            ok "sauber, Branch $(git -C "$NEW" branch --show-current)"
+            run "git -C $(q "$NEW") pull -q --ff-only"
+        fi
+    elif [ -e "$NEW" ]; then
+        bad "$(tilde "$NEW") existiert, ist aber kein Git-Klon – abgebrochen"; exit 1
+    else
+        run "git clone -q $URL $(q "$NEW")"
+        (( APPLY )) && (( RUN_RC )) && { bad "Klonen fehlgeschlagen – Abbruch"; exit 1; }
+    fi
+    # Stand prüfen: public soll dem lokalen main entsprechen (Hauptsitzung veröffentlicht vorher)
+    if [ -d "$NEW/.git" ]; then
+        new_tree="$(git -C "$NEW" rev-parse 'HEAD^{tree}')"
+        if [ -n "$main_tree" ] && [ "$new_tree" != "$main_tree" ]; then
+            warn "Klon-Stand ≠ lokales main (anderer Baum) – fehlt ein Push nach public, oder es gibt dort neuere Commits"
+        else ok "Klon-Stand = lokales main"; fi
+        [ -x "$NEW/system/migrate" ] && ok "system/migrate liegt im Klon (weiter mit ~/Workspace/bastian-shell/system/migrate)" \
+            || { bad "system/migrate fehlt im Klon – public ist älter als dieser Stand (erst veröffentlichen)"; FAILS+=("Klon ohne system/migrate"); }
+    else
+        remote="$(timeout 20 git ls-remote "$URL" HEAD 2>/dev/null | cut -f1 || true)"
+        if [ -z "$remote" ]; then warn "public nicht erreichbar ($URL) – SSH-Key/Netz prüfen"
+        elif git -C "$OLD_H" cat-file -e "$remote^{tree}" 2>/dev/null; then
+            [ "$(git -C "$OLD_H" rev-parse "$remote^{tree}")" = "$main_tree" ] && ok "public HEAD ${remote:0:7} = lokales main (gleicher Baum)" \
+                || warn "public HEAD ${remote:0:7} ≠ lokales main – Hauptsitzung muss erst nach public pushen (sonst fehlen system/migrate + Pfad-Umbau)"
+        else warn "public HEAD ${remote:0:7} lokal unbekannt (git fetch public) – nach dem Klonen wird der Stand geprüft"; fi
+    fi
+    gate 1
+fi
+
+# ---------------------------------------------------------------- 2 Lokale Dateien
+# Liste = was in den alten Ordnern liegt, aber laut .gitignore von main nicht ins Repo gehört.
+# Ausnahmen (nicht mitnehmen, Grund):
+skip_reason() {
+    case "$1" in
+        refs/*|projects/refs) (( WITH_REFS )) && return 1; echo "Referenz-Klone (neu klonbar, --with-refs nimmt sie mit)" ;;
+        */__pycache__/*|__pycache__/*|*.pyc) echo "Python-Cache" ;;
+        *.log) echo "Log" ;;
+        .claude/*) echo "Claude-Code-Laufzeit (Lock-Datei)" ;;
+        "theme/out/chrome-desktop/Cached Theme.pak") echo "Browser-Cache" ;;
+        theme/out/icons/*) echo "erzeugt theme/gen/icons.py neu (rice theme on)" ;;
+        .vscode/settings.json) echo "Projektfarbe aus scripts/vscode-colors (lokal per .git/info/exclude; neu: scripts/vscode-colors refresh)" ;;
+        system/copies/.config/kwinoutputconfig.json) echo "nur KWin (Monitore stehen in hypr/monitors.conf) → Sicherung in $(tilde "$MIG")" ;;
+        *) return 1 ;;
+    esac
+}
+if want 2; then
+    step_title 2
+    IGN_REPO="$OLD_H"; [ -d "$NEW/.git" ] && IGN_REPO="$NEW"    # .gitignore von main
+    # Kandidaten: H = ignorierte Dateien · D = alle Dateien (auf kwin sind manche getrackt), gefiltert mit .gitignore von main
+    declare -A SRC=()
+    if [ -d "$OLD_D" ]; then
+        while IFS= read -r -d '' r; do [ -e "$OLD_D/$r" ] && [ ! -d "$OLD_D/$r" ] && SRC["$r"]="$OLD_D"; done < <(
+            { git -C "$OLD_D" ls-files -z --cached; git -C "$OLD_D" ls-files -z --others; } 2>/dev/null \
+            | git -C "$IGN_REPO" check-ignore -z --no-index --stdin 2>/dev/null || true)
+    fi
+    if [ -d "$OLD_H" ]; then
+        while IFS= read -r -d '' r; do
+            [ -L "$OLD_H/$r" ] && [ "$r" = projects/refs ] && { SRC["$r"]="$OLD_H"; continue; }
+            [ -e "$OLD_H/$r" ] && [ ! -d "$OLD_H/$r" ] && SRC["$r"]="$OLD_H"
+        done < <(git -C "$OLD_H" ls-files -z --others --ignored --exclude-standard 2>/dev/null || true)
+    fi
+    # Live-Fassung: zeigt ein Symlink im Home auf eine der Fassungen, gewinnt die (z. B. ~/.ssh/config → desktop)
+    declare -A LIVE=()
+    while IFS= read -r l; do
+        if or="$(old_rel "$(readlink "$l")")"; then LIVE["${or#*$'\t'}"]="${or%%$'\t'*}"; fi
+    done < <(scan_links)
+    n_copy=0; n_same=0; n_skip=0; bytes=0; declare -A SKIPN=() SKIPEX=()
+    mapfile -t RELS < <(printf '%s\n' "${!SRC[@]}" | sort)
+    for r in "${RELS[@]}"; do
+        [ -n "$r" ] || continue
+        if why="$(skip_reason "$r")"; then
+            SKIPN["$why"]=$(( ${SKIPN["$why"]:-0} + 1 )); SKIPEX["$why"]="${SKIPEX["$why"]:-$r}"; n_skip=$((n_skip + 1))
+            [[ "$r" == system/copies/.config/kwinoutputconfig.json ]] && run "mkdir -p $(q "$MIG/kwin") && cp -an $(q "${SRC[$r]}/$r") $(q "$MIG/kwin/")"
+            continue
+        fi
+        src="${SRC[$r]}"; [ -e "$OLD_H/$r" ] && src="$OLD_H"; [ -n "${LIVE[$r]:-}" ] && src="${LIVE[$r]}"
+        other=""; for c in "${OLDS[@]}"; do [ "$c" != "$src" ] && [ -f "$c/$r" ] && ! cmp -s "$c/$r" "$src/$r" && other="$c"; done
+        dst="$NEW/$r"
+        if [ -e "$dst" ] || [ -L "$dst" ]; then
+            if cmp -s "$src/$r" "$dst" 2>/dev/null; then n_same=$((n_same + 1)); continue; fi
+            warn "$r liegt im Ziel schon (anders) – bleibt; alte Fassung → $(tilde "$MIG")/aus-${src##*/}/$r"
+            run "mkdir -p $(q "$(dirname "$MIG/aus-${src##*/}/$r")") && cp -a $(q "$src/$r") $(q "$MIG/aus-${src##*/}/$r")"
+            continue
+        fi
+        sz="$(stat -c %s "$src/$r" 2>/dev/null || echo 0)"; bytes=$((bytes + sz))
+        note=""; [ -n "${LIVE[$r]:-}" ] && note=" (live, Symlink zeigt hierhin)"
+        info "$r ← ${src##*/}$note"
+        run "mkdir -p $(q "$(dirname "$dst")") && cp -a $(q "$src/$r") $(q "$dst")"
+        n_copy=$((n_copy + 1))
+        if [ -n "$other" ]; then
+            info "   Zweitfassung in ${other##*/} weicht ab → Sicherung $(tilde "$MIG")/aus-${other##*/}/$r"
+            run "mkdir -p $(q "$(dirname "$MIG/aus-${other##*/}/$r")") && cp -a $(q "$other/$r") $(q "$MIG/aus-${other##*/}/$r")"
+        fi
+    done
+    if (( WITH_REFS )) && [ -d "$OLD_D/refs" ] && [ ! -e "$NEW/refs" ]; then run "cp -a $(q "$OLD_D/refs") $(q "$NEW/refs")"; fi
+    ok "$n_copy Datei(en) mitzunehmen ($((bytes / 1024 / 1024)) MB), $n_same schon gleich im Ziel, $n_skip ausgelassen"
+    for why in "${!SKIPN[@]}"; do info "ausgelassen ${SKIPN[$why]}×: $why (z. B. ${SKIPEX[$why]})"; done
+    # Mitgenommene lokale Registry/Kopien zeigen auf den alten Ordner → im Ziel umschreiben
+    for r in projects/projects.json theme/projects.json profiles/profiles.json system/copies/.claude/settings.json; do
+        f="$NEW/$r"; [ -f "$f" ] || f="${SRC[$r]:-}/$r"; [ -f "$f" ] || continue
+        n="$(py_sub "$f" count)"; [ "$n" = 0 ] && continue
+        info "   $r: $n Pfad(e) → ~/Workspace/bastian-shell"
+        run "$(q "$SELF") --_sub write $(q "$NEW/$r")"
+    done
+    if [ -f "$NEW/secrets.json" ] && [ "$(stat -c %a "$NEW/secrets.json")" != 600 ]; then run "chmod 600 $(q "$NEW/secrets.json")"; fi
+    # Prüfpunkt: ohne secrets.json + Registry läuft die Shell nur halb
+    if (( APPLY )); then
+        for r in secrets.json projects/projects.json; do [ -f "$OLD_H/$r" ] && [ ! -f "$NEW/$r" ] && FAILS+=("$r fehlt im Ziel"); done
+    fi
+    gate 2
+fi
+
+# ---------------------------------------------------------------- 3 Pfade außerhalb des Repos
+if want 3; then
+    step_title 3
+    have_new() { [ -e "$NEW/$1" ] || { (( ! APPLY )) && { [ -e "$OLD_H/$1" ] || [ -e "$OLD_D/$1" ]; }; }; }
+    # a) Symlinks direkt umbiegen (gleicher Pfad im neuen Repo) – danach sehen die Installer „ihre“ Links
+    echo "  -- a) Symlinks"
+    n_l=0
+    while IFS= read -r l; do
+        t="$(readlink "$l")"; or="$(old_rel "$t")" || continue; rel="${or#*$'\t'}"
+        case "$l" in
+            *.vor-*|*.bak-*) info "$(tilde "$l") ist eine alte Sicherung (Link ins Repo) → weg"; run "rm $(q "$l")"; continue ;;
+        esac
+        if [ -z "$rel" ] || ! have_new "$rel"; then warn "$(tilde "$l") → $t: im neuen Repo gibt es ${rel:-den Ordner} nicht – bleibt"; continue; fi
+        run "ln -sfn $(q "$NEW/$rel") $(q "$l")"; n_l=$((n_l + 1))
+    done < <(scan_links)
+    ok "$n_l Symlink(s) → ~/Workspace/bastian-shell"
+
+    # b) Installer aus dem neuen Repo (schreiben Konfig mit Pfad neu, sauber und idempotent)
+    echo "  -- b) Installer (aus ~/Workspace/bastian-shell)"
+    run "$(q "$NEW/scripts/hypr") install"                   # hyprland.env, ~/.config/hypr/{hyprland,hypridle}.conf, uwsm-Env, Portale, Shell-Unit
+    run "$(q "$NEW/scripts/session") install"                # hyprflow-Konfig + Autosave-Timer
+    if grep -qF '# >>> desktop share-picker' "$HOME/.config/hypr/xdph.conf" 2>/dev/null; then
+        mode=shell; grep -q 'hyprland-preview-share-picker' "$HOME/.config/hypr/xdph.conf" && mode=gtk
+        run "$(q "$NEW/scripts/share-picker") install $mode"  # xdph.conf: custom_picker_binary
+    fi
+    run "$(q "$NEW/scripts/kitty-theme") install"            # Kitty + Fastfetch-Links
+    [ -L "$HOME/.local/bin/sshs" ] && run "$(q "$NEW/scripts/sshs") install"
+    command -v helium >/dev/null 2>&1 && run "$(q "$NEW/scripts/chrome-ext") install --browser helium"   # Native-Messaging-Host
+    run "python3 -I $(q "$NEW/theme/gen/vscode.py")"         # VS-Code-Erweiterungen (Projektfarben lesen den Repo-Pfad aus hyprland.env)
+
+    # c) Textdateien mit festem Pfad: Sicherung <datei>.vor-migrate, dann ersetzen
+    echo "  -- c) Textdateien"
+    n_t=0; n_k=0
+    while IFS= read -r f; do
+        if is_kwin_file "$f"; then n_k=$((n_k + 1)); info "$(tilde "$f"): KWin – kommt in Schritt 7 weg"; continue; fi
+        case "$f" in   # schreiben die Installer oben neu (im Probelauf noch alt)
+            "$HOME/.config/desktop/hyprland.env"|"$HOME/.config/hypr/hyprland.conf"|"$HOME/.config/hypr/hypridle.conf"|\
+            "$HOME/.config/net.imput.helium/NativeMessagingHosts/de.bastian.desktop.json"|"$HOME/.config/uwsm/env-hyprland")
+                (( APPLY )) || { info "$(tilde "$f"): über Installer (b)"; continue; } ;;
+            "$HOME/.config/hypr/xdph.conf") (( APPLY )) || { info "$(tilde "$f"): über share-picker install (b)"; continue; } ;;
+        esac
+        n="$(py_sub "$f" count)"
+        b="$(backup_of "$f")"
+        info "$(tilde "$f"): $n Pfad(e)"
+        run "mkdir -p $(q "$(dirname "$b")") && cp -a $(q "$f") $(q "$b") && $(q "$SELF") --_sub write $(q "$f")"; n_t=$((n_t + 1))
+    done < <(text_candidates)
+    ok "$n_t Textdatei(en) umgeschrieben (Sicherung .vor-migrate), $n_k KWin-Datei(en) für Schritt 7"
+    # crontab (nur Hinweis, wird nicht automatisch umgeschrieben)
+    if grep -qE "$GREP_RE" <<<"$(crontab -l 2>/dev/null || true)"; then warn "crontab enthält alte Pfade → crontab -e"; else ok "crontab: nichts"; fi
+
+    # d) nur Hinweise (Apps schreiben die Dateien selbst; nicht anfassen)
+    echo "  -- d) Von Hand / nur Hinweis"
+    if grep -qsE "$GREP_RE" "$HOME/.config/net.imput.helium/Default/Preferences"; then
+        warn "Helium lädt die Erweiterung „Desktop“ noch aus dem alten Ordner → helium://extensions: Desktop entfernen, „Entpackte Erweiterung laden“: ~/Workspace/bastian-shell/theme/out/chrome-desktop-ext (Theme: …/chrome-desktop). ID bleibt gleich (fester key)."
+    fi
+    grep -qsE "$GREP_RE" "$HOME/.config/google-chrome/Default/Preferences" && info "Chrome (nicht installiert) kennt noch den alten Ordner – egal"
+    grep -qsE "$GREP_RE" "$HOME/.config/Code/User/globalStorage/storage.json" && info "VS Code: „Zuletzt geöffnet“ zeigt noch alte Ordner – neu öffnen: code ~/Workspace/bastian-shell"
+    for w in "$WS"/*.code-workspace; do [ -f "$w" ] && grep -qE "$GREP_RE" "$w" && warn "VS-Code-Workspace $(tilde "$w") enthält alte Pfade – von Hand anpassen"; done
+    grep -qsE "$GREP_RE" "$STATE/claude.json" && info "Shell-Zustand claude.json (alte Sitzungs-Ordner) – bleibt, veraltet von selbst"
+    gate 3
+fi
+
+# ---------------------------------------------------------------- 4 Repo prüfen
+if want 4; then
+    step_title 4
+    R="$NEW"; [ -d "$NEW/.git" ] || R="$HERE"
+    hits="$(git -C "$R" grep -nE "$GREP_RE" -- . ':!docs/MIGRATE.md' ':!system/migrate' 2>/dev/null || true)"
+    if [ -z "$hits" ]; then ok "keine festen Pfade auf desktop/desktop-hyprland in $(tilde "$R") (außer MIGRATE.md + migrate)"
+    else warn "feste Pfade gefunden:"; printf '%s\n' "$hits" | head -20 | sed 's/^/      /'; fi
+    if [ -d "$NEW/.git" ]; then
+        dirty="$(git -C "$NEW" status --porcelain)"
+        [ -z "$dirty" ] && ok "$(tilde "$NEW") sauber (lokale Dateien sind gitignored)" || { warn "$(tilde "$NEW") hat Änderungen (Generator-Ausgaben?):"; printf '%s\n' "$dirty" | head -10 | sed 's/^/      /'; }
+    fi
+fi
+
+# ---------------------------------------------------------------- 5 Claude Code
+if want 5; then
+    step_title 5
+    for d in "${CLAUDE_OLD[@]}"; do
+        [ -d "$d/memory" ] || { info "$(tilde "$d")/memory: nichts"; continue; }
+        for f in "$d"/memory/*; do
+            [ -f "$f" ] || continue; b="$(basename "$f")"; t="$CLAUDE_NEW/memory/$b"
+            if [ ! -e "$t" ]; then run "mkdir -p $(q "$CLAUDE_NEW/memory") && cp -p $(q "$f") $(q "$t")"
+            elif cmp -s "$f" "$t"; then ok "memory/$b schon da"
+            elif [ "$b" = MEMORY.md ]; then
+                # Index zusammenführen: fehlende Zeilen anhängen (nichts überschreiben)
+                run "grep -vxF -f $(q "$t") $(q "$f") >> $(q "$t") || true"
+            else warn "memory/$b gibt es schon anders – bleibt; Fassung aus ${d##*-Workspace-} → $(tilde "$MIG")/claude-memory/"
+                 run "mkdir -p $(q "$MIG/claude-memory/${d##*/}") && cp -p $(q "$f") $(q "$MIG/claude-memory/${d##*/}/")"
+            fi
+        done
+    done
+    info "Sitzungsverläufe (*.jsonl) bleiben in den alten Projektordnern unter ~/.claude/projects (nur Gedächtnis zieht um)"
+    run "$(q "$NEW/scripts/claude-skills") install"
+    if grep -qsE "$GREP_RE" "$HOME/.claude/settings.json"; then info "Hooks in ~/.claude/settings.json: stellt Schritt 3c um"; else ok "Hooks in ~/.claude/settings.json zeigen nicht auf alte Ordner"; fi
+    gate 5
+fi
+
+# ---------------------------------------------------------------- 6 Dienste + Prüfung
+if want 6; then
+    step_title 6
+    run "systemctl --user daemon-reload"
+    if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        run "systemctl --user reset-failed $SHELL_UNIT 2>/dev/null; systemctl --user restart $SHELL_UNIT"
+        for c in "${OLDS[@]}"; do run "qs kill --any-display -p $(q "$c/shell") >/dev/null 2>&1 || true"; done
+        systemctl --user is-active --quiet desktop-mail-watch.service 2>/dev/null && run "systemctl --user restart desktop-mail-watch.service"
+        info "Portal neu (Share-Picker-Pfad) – nur ohne laufenden Stream/Call:"
+        run "systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal"
+        run "hyprctl reload >/dev/null"
+        (( APPLY )) && for i in $(seq 1 20); do timeout 3 qs ipc --any-display -p "$NEW/shell" call shell status >/dev/null 2>&1 && break; sleep 1; done
+    else warn "nicht in Hyprland – Shell-Neustart/hyprctl erst in der Hyprland-Sitzung"; fi
+    info "keylight-off (beim Herunterfahren) liest DESKTOP bei jedem Aufruf aus hyprland.env – kein Neustart nötig (schaltet sonst das Licht aus)"
+    echo "  -- Prüfung"
+    if check_green; then ok "GRÜN – Schritt 7 und 8 sind frei"
+    elif (( APPLY )); then bad "nicht grün – Schritt 7/8 gesperrt. Rückweg: docs/MIGRATE.md („Zurück“)"; FAILS+=("Prüfung Schritt 6 rot"); gate 6
+    else info "(Probelauf: vor Schritt 1–6 ist die Prüfung naturgemäß rot)"; fi
+fi
+
+# ---------------------------------------------------------------- 7 KWin-Variante + Plasma
+# Pakete (Analyse 19.10.2026, dnf do --assumeno: 147 Pakete / 665 MiB, kein Keep-Paket in der Transaktion)
+PLASMA_REMOVE=(aurorae bluedevil colord-kde desktop-backgrounds-kde f44-backgrounds-kde flatpak-kcm kactivitymanagerd
+    kcm-plasmalogin kdeplasma-addons kde-settings-plasma kde-settings-plasmalogin kglobalacceld kinfocenter kmenuedit
+    krdp krdp-libs kscreen kscreenlocker ksystemstats kwin kwin-common kwin-libs kwrited ocean-sound-theme
+    plasma-browser-integration plasma-desktop plasma-desktop-doc plasma-discover plasma-discover-flatpak plasma-discover-kns
+    plasma-discover-libs plasma-discover-notifier plasma-discover-offline-updates plasma-discover-packagekit plasma-disks
+    plasma-drkonqi plasma-keyboard plasma-login-manager plasma-lookandfeel-fedora plasma-milou plasma-nm plasma-nm-l2tp
+    plasma-nm-openconnect plasma-nm-openswan plasma-nm-openvpn plasma-nm-pptp plasma-nm-vpnc plasma-pa plasma-print-manager
+    plasma-setup plasma-systemmonitor plasma-systemsettings plasma-thunderbolt plasma-vault plasma-welcome
+    plasma-welcome-fedora plasma-workspace plasma-workspace-libs plasma-workspace-wallpapers powerdevil spectacle)
+# Bleibt + vorher „user“ markieren (sonst nimmt dnf sie als unbenutzte Abhängigkeit mit):
+#   Qt-Theming (QT_QPA_PLATFORMTHEME=kde), Cursor-Basis, Helligkeit, kioclient/kde-open (+ was kde-connect/kde-gtk-config
+#   brauchen), Schriften, Dateidialog-Portal (portals.conf default=kde), org.kde.kirigami (Shell), kread/kwriteconfig6,
+#   qdbus-qt6, KWallet, KIO, Energieprofile, GTK-Einstellungen
+KEEP_MARK=(plasma-integration breeze-cursor-theme ddcutil kde-cli-tools libkworkspace6 plasma-workspace-common libplasma
+    google-noto-sans-fonts google-noto-sans-mono-fonts google-noto-serif-fonts xdg-desktop-portal-kde kf6-kirigami kf6-kconfig
+    qt6-qttools kf6-kwallet kio-extras tuned tuned-ppd xsettingsd kf6-baloo)
+# Bleibt sowieso (Gruppe/User installiert) – nur zur Kontrolle, dass dnf sie nicht anfasst:
+KEEP_CHECK=(hyprland uwsm hypridle hyprlock quickshell xdg-desktop-portal xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
+    plasma-integration-qt5 polkit-kde pam-kwallet kwalletmanager5 kdialog plasma-breeze plasma-breeze-common plasma-breeze-qt6
+    breeze-icon-theme breeze-gtk-common kde-gtk-config kdecoration kde-settings ksshaskpass kf6-kded kf6-kglobalaccel kdesu
+    kf6-baloo-file dolphin konsole kwrite ark okular gwenview kcalc filelight kde-partitionmanager kde-connect
+    NetworkManager pipewire wireplumber fedora-release-identity-kde-desktop "${KEEP_MARK[@]}")
+DNF_OPTS="--setopt=protected_packages="   # plasma-desktop ist per /etc/dnf/protected.d geschützt (fedora-release-identity-kde-desktop)
+
+if want 7; then
+    step_title 7
+    green=1
+    if (( APPLY )); then
+        check_green >/dev/null 2>&1 || green=0
+        (( green )) || { bad "Prüfung aus Schritt 6 ist nicht grün – Schritt 7 gesperrt (system/migrate --only 6 zeigt warum)"; FAILS+=("Schritt 7 gesperrt"); }
+    else info "Voraussetzung: Prüfung aus Schritt 6 grün (wird mit --apply geprüft)"; fi
+
+    if (( green )); then
+    dm="$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)"; dm="${dm##*/}"
+    if (( APPLY )) && ! confirm "KWin-Variante entfernen, Login-Ersatz einrichten und Plasma-Pakete entfernen (Pakete erst nach Login-Wechsel)?" "plasma weg"; then
+        bad "nicht bestätigt – Schritt 7 übersprungen"; FAILS+=("Schritt 7 nicht bestätigt")
+    else
+    # a) Alte Teile im Home: KWin-Variante (aus scripts/rice, shellpkg, screenrec, winrules abgeleitet), ungenutzte
+    #    Theme-Reste, alte Sicherungen der Rice. NICHT `rice off`: das nähme auch Mail/Agenda/Keylight-Units und das
+    #    Theme (Farben, Cursor, Schriften) mit. Alles kommt vorher in ein tar unter ~/Backups (Rückweg).
+    echo "  -- a) Alte Teile im Home (vorher Sicherung: $(tilde "$BACKUPS")/desktop-reste-<zeit>.tar.gz)"
+    OLD_PARTS=(
+        # KWin-Variante: Shell-Dienst + Kürzel-Wächter (KWin-Zeit)
+        .config/systemd/user/desktop-shell.service .config/systemd/user/graphical-session.target.wants/desktop-shell.service
+        .config/systemd/user/desktop-shell.service.d .config/systemd/user/desktop-keys-watch.service
+        .config/systemd/user/default.target.wants/desktop-keys-watch.service
+        # KWin-Scripts, Fensterwechsler, Plasma-Shell-Paket (Lockscreen), Fensterregeln
+        .local/share/kwin/scripts/desktop-edges .local/share/kwin/scripts/desktop-tiling .local/share/kwin/tabbox/desktop-switcher
+        .local/share/plasma/shells/de.bastian.desktop .config/plasma-de.bastian.desktop-appletsrc .config/kwinrulesrc
+        # kglobalaccel-Kürzel, KWin-Screencast-Freigabe + Helfer, KWin-Fensterlisten-Freigabe (Hyprland: Hypr.qml)
+        .local/share/applications/desktop-shortcuts.desktop .local/share/applications/desktop-screencast.desktop
+        .local/share/applications/org.quickshell.desktop .local/libexec/desktop-screencast
+        .config/systemd/user/plasma-workspace.target.wants/app-org.kde.krdpserver.service
+        # Rückweg-Dateien von rice off/theme off/konsole-ui off/wallpaper restore (gibt es ohne Plasma nicht mehr)
+        .local/state/desktop/shortcut-backup.txt .local/state/desktop/switcher-layout.txt .local/state/desktop/wallpaper-backup.json
+        .local/state/desktop/theme-backup.txt .local/state/desktop/theme-backup-2026-10-18-qt .local/state/desktop/bashrc-backup
+        .local/state/desktop/konsole-ui-backup.json .local/state/desktop/konsole-ui-files .local/state/desktop/dotfiles-backup
+        .local/state/desktop/chrome-reste-backup .local/state/desktop/claude-settings-backup.json
+        # ungenutzte Theme-Reste aus der Zeit vor der Rice (Catppuccin; nur Ziel von theme-backup.txt)
+        .local/share/plasma/look-and-feel/Catppuccin-Mocha-Red .local/share/aurorae/themes/CatppuccinMocha-Modern
+        .local/share/color-schemes/CatppuccinMochaRed.colors .local/share/icons/catppuccin-mocha-dark-cursors
+        .local/share/icons/catppuccin-mocha-red-cursors
+    )
+    # alte Sicherungsdateien der Rice (*.vor-desktop, *.vor-goxlr, *.vor-gate-*, *.bak-* …) – NICHT *.vor-migrate (Rückweg dieses Umzugs)
+    while IFS= read -r f; do OLD_PARTS+=("${f#"$HOME"/}"); done < <(find "$HOME" -xdev \( -path "$WS" -o -path "$HOME/Data" -o -path "$HOME/.cache" \
+        -o -path "$HOME/.var" -o -path "$HOME/.local/share/containers" -o -path "$HOME/.local/share/Steam" -o -path "$BACKUPS" -o -name node_modules \) -prune \
+        -o \( -name '*.vor-desktop' -o -name '*.vor-desktop-*' -o -name '*.vor-goxlr' -o -name '*.vor-gate-*' -o -name '*.vor-tasks-*' \
+        -o -name '*.vor-claude-fix' -o -name '*.vor-umzug' -o -name '*.vor-umzug-*' -o -name '*.vor-rg-*' -o -name '*.vor-desktop-colors' \
+        -o -name 'Preferences.bak-20*' -o -name 'mimeapps.list.bak-*' -o -name 'xdph.conf.bak-*' \) -print 2>/dev/null | sort || true)
+    # erst nach dem Login-Wechsel (sonst fehlt plasmalogin sein Theme/Restore): Login-Sicherung + Farbschema „Desktop“ (ember,
+    # nutzt nur der plasmalogin-Greeter; neu erzeugen: scripts/rice variant ember)
+    [ "$dm" != plasmalogin.service ] && OLD_PARTS+=(.local/state/desktop/loginscreen-backup .local/state/desktop/loginscreen-theme.sha256
+        .local/share/color-schemes/Desktop.colors)
+    present=(); for f in "${OLD_PARTS[@]}"; do [ -e "$HOME/$f" ] || [ -L "$HOME/$f" ] && present+=("$f"); done
+    if (( ${#present[@]} )); then
+        for f in "${present[@]}"; do info "weg: ~/$f"; done
+        ts="$(date +%Y%m%d-%H%M%S)"
+        run "mkdir -p $(q "$BACKUPS") && tar -C ~ -czf $(q "$BACKUPS/desktop-reste-$ts.tar.gz") $(printf '%q ' "${present[@]}") && chmod 600 $(q "$BACKUPS/desktop-reste-$ts.tar.gz")"
+        if (( APPLY )) && (( RUN_RC )); then bad "Sicherung fehlgeschlagen – nichts gelöscht"; FAILS+=("tar desktop-reste"); gate 7
+        fi
+        run "systemctl --user disable desktop-shell.service desktop-keys-watch.service >/dev/null 2>&1; systemctl --user stop desktop-shell.service desktop-keys-watch.service >/dev/null 2>&1; true"
+        run "cd ~ && rm -rf $(printf '%q ' "${present[@]}")"
+        run "systemctl --user daemon-reload"
+        ok "${#present[@]} alte Teile (Rückweg: tar -C ~ -xzf ~/Backups/desktop-reste-<zeit>.tar.gz)"
+    else ok "keine alten Teile mehr im Home"; fi
+    [ "$dm" = plasmalogin.service ] && info "bleiben bis nach dem Login-Wechsel: loginscreen-backup, loginscreen-theme.sha256, Desktop.colors (ember)"
+    # KWin/Plasma-Schlüssel (nur unsere; die Dateien selbst bleiben, Plasma-Reste stören Hyprland nicht)
+    if command -v kwriteconfig6 >/dev/null 2>&1; then
+        kw=""
+        for k in "Plugins desktop-edgesEnabled" "Plugins desktop-tilingEnabled" "Plugins screenedgeEnabled" "ScreenEdges RemainActiveOnFullscreen" \
+                 "TabBox LayoutName" "Effect-overview BorderActivate" "org.kde.kdecoration2 ButtonsOnLeft"; do
+            read -r g key <<<"$k"
+            [ -n "$(kreadconfig6 --file kwinrc --group "$g" --key "$key" 2>/dev/null)" ] && kw+="kwriteconfig6 --file kwinrc --group $(q "$g") --key $key --delete; "
+        done
+        [ -n "$(kreadconfig6 --file plasmarc --group OSD --key Enabled 2>/dev/null)" ] && kw+="kwriteconfig6 --file plasmarc --group OSD --key Enabled --delete; "
+        [ -n "$(kreadconfig6 --file plasmashellrc --group Shell --key ShellPackage 2>/dev/null)" ] && kw+="kwriteconfig6 --file plasmashellrc --group Shell --key ShellPackage --delete; "
+        # Look-and-Feel zeigt sonst auf das gelöschte Catppuccin-Paket
+        [ "$(kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage 2>/dev/null)" = Catppuccin-Mocha-Red ] && kw+="kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage --delete; "
+        if [ -n "$kw" ]; then info "KWin/Plasma-Schlüssel: $(grep -o -- '--group [^ ]* --key [^ ]*' <<<"$kw" | sed 's/--group //;s/ --key /:/' | tr '\n' ' ')"; run "$kw true"
+        else ok "keine KWin-Schlüssel mehr in kwinrc/plasmarc/plasmashellrc/kdeglobals"; fi
+    fi
+    command -v kbuildsycoca6 >/dev/null 2>&1 && run "kbuildsycoca6 >/dev/null 2>&1 || true"
+    info "bleiben (Hyprland nutzt sie): DesktopHearth.colors + kdeglobals, Cursor Desktop, Desktop-Icons, Konsole-Profil, kscreenlockerrc (Wallpaper-Pfad), theme-backup-2026-10-18 (gtk.py)"
+
+    # b) Login: plasmalogin braucht kwin → Ersatz greetd + tuigreet ZUERST (nie ohne funktionierenden Login)
+    echo "  -- b) Anmeldung (heute: ${dm:-?})"
+    if [ "$dm" = plasmalogin.service ]; then
+        if ! rpm -q greetd tuigreet >/dev/null 2>&1; then run "sudo dnf install -y greetd greetd-selinux tuigreet"; else ok "greetd + tuigreet installiert"; fi
+        guser="$(awk '$1=="u"{print $2; exit}' /usr/lib/sysusers.d/greetd.conf 2>/dev/null || true)"; guser="${guser:-greetd}"
+        if grep -qs 'tuigreet' /etc/greetd/config.toml; then ok "/etc/greetd/config.toml nutzt tuigreet"
+        else
+            run "sudo cp -an /etc/greetd/config.toml /etc/greetd/config.toml.vor-migrate 2>/dev/null; printf '%s\n' '# system/migrate: tuigreet (Konsole), Standard = Hyprland unter uwsm. Rückweg: docs/MIGRATE.md' '[terminal]' 'vt = 1' '' '[default_session]' \"command = \\\"tuigreet --time --asterisks --remember --sessions /usr/share/wayland-sessions --cmd 'uwsm start -e -D Hyprland hyprland.desktop'\\\"\" 'user = \"$guser\"' | sudo tee /etc/greetd/config.toml >/dev/null"
+        fi
+        # KWallet beim Login entsperren (wie heute bei plasmalogin)
+        if [ -f /etc/pam.d/greetd ] && ! grep -q pam_kwallet5 /etc/pam.d/greetd; then
+            run "sudo cp -an /etc/pam.d/greetd /etc/pam.d/greetd.vor-migrate && printf '%s\n' '-auth       optional     pam_kwallet5.so' '-session    optional     pam_kwallet5.so auto_start' | sudo tee -a /etc/pam.d/greetd >/dev/null"
+        elif [ ! -f /etc/pam.d/greetd ]; then info "/etc/pam.d/greetd kommt mit dem Paket – danach KWallet-Zeilen: Schritt 7 nochmal"
+        else ok "/etc/pam.d/greetd entsperrt KWallet"; fi
+        if (( LOGIN_SWITCH )); then
+            if (( APPLY )) && ! confirm "Anmeldung jetzt auf greetd umstellen (gilt ab Neustart)? Vorher im TTY getestet?" "greetd"; then
+                bad "nicht bestätigt"
+            else run "sudo systemctl enable --force greetd.service"; info "Neustart → tuigreet. Zurück aus dem TTY: sudo systemctl enable --force plasmalogin.service && sudo reboot"; fi
+        else
+            info "TEST vor dem Umstellen (abmelden, Strg+Alt+F3, im TTY anmelden):"
+            info "   sudo systemctl stop plasmalogin && sudo systemctl start greetd   → anmelden, „Hyprland (uwsm-managed)“, KWallet + Shell + 3 Monitore prüfen"
+            info "   klappt nicht: sudo systemctl stop greetd; sudo systemctl start plasmalogin"
+            info "dann: system/migrate --apply --only 7 --login-switch   (danach Neustart, dann Schritt 7 nochmal für die Pakete)"
+        fi
+    elif [ "$dm" = greetd.service ]; then ok "Anmeldung läuft über greetd"
+    else warn "Anmeldung ist ${dm:-unbekannt} – Paket-Entfernung prüft nur, dass es nicht plasmalogin ist"; fi
+
+    # c) Pakete (erst, wenn die Anmeldung nicht mehr plasmalogin ist)
+    echo "  -- c) Plasma-/KWin-Pakete"
+    rem=(); for p in "${PLASMA_REMOVE[@]}"; do rpm -q "$p" >/dev/null 2>&1 && rem+=("$p"); done
+    mark=(); for p in "${KEEP_MARK[@]}"; do rpm -q "$p" >/dev/null 2>&1 && mark+=("$p"); done
+    if (( ${#rem[@]} == 0 )); then ok "Plasma/KWin-Pakete sind weg"
+    else
+        mb="$(rpm -q --qf '%{SIZE}\n' "${rem[@]}" 2>/dev/null | awk '{s+=$1} END {printf "%.0f", s/1048576}')"
+        info "wird entfernt (direkt, ${#rem[@]} Pakete, $mb MB): ${rem[*]}"
+        info "bleibt + wird „user“ markiert (${#mark[@]}): ${mark[*]}"
+        info "bleibt (Kontrolle): Hyprland/uwsm/Quickshell, Portale, Dolphin, Konsole, KWrite, Ark, Okular, Gwenview, KCalc, Filelight, Partitionmanager, KDE Connect, Breeze-Stil/-Icons, polkit-kde, KWallet, kdialog, ksshaskpass, NetworkManager, PipeWire"
+        # Probelauf der Transaktion (ohne root): Markierung wird per --action=install simuliert
+        dry="$(timeout 300 dnf do --assumeno $DNF_OPTS --action=remove "${rem[@]}" --action=install "${mark[@]}" 2>&1 || true)"
+        gone="$(awk '/^[A-Z]/{f=($0 ~ /^Removing/); next} f && /^ [A-Za-z0-9]/{print $1}' <<<"$dry" | sort -u)"
+        sum="$(grep -E '^ Removing:|^After this operation' <<<"$dry" | tr -s ' ' | tr '\n' ' ' || true)"
+        [ -n "$sum" ] && info "dnf-Probelauf: $sum" || warn "dnf-Probelauf ohne Zusammenfassung: $(tail -3 <<<"$dry" | tr '\n' ' ')"
+        extra="$(comm -13 <(printf '%s\n' "${rem[@]}" | sort -u) <(printf '%s\n' "$gone") | tr '\n' ' ')"
+        [ -n "$extra" ] && info "geht als Abhängigkeit mit: $extra"
+        clash="$(comm -12 <(printf '%s\n' "${KEEP_CHECK[@]}" | sort -u) <(printf '%s\n' "$gone") | tr '\n' ' ')"
+        if [ -n "$clash" ]; then bad "dnf würde Keep-Pakete mitnehmen: $clash – Paket-Schritt gesperrt"; FAILS+=("Keep-Konflikt: $clash")
+        elif [ "$dm" = plasmalogin.service ]; then
+            warn "Anmeldung ist noch plasmalogin (braucht kwin) → Pakete erst nach dem Login-Wechsel (b)"
+        else
+            # Plasma-Menü (XDG_MENU_PREFIX=plasma- in hypr/env.conf) gehört zu plasma-workspace → vorher lokal kopieren
+            [ -f /etc/xdg/menus/plasma-applications.menu ] && [ ! -f "$HOME/.config/menus/plasma-applications.menu" ] \
+                && run "mkdir -p ~/.config/menus && cp -n /etc/xdg/menus/plasma-applications.menu ~/.config/menus/"
+            run "rpm -qa --qf '%{NAME}\n' | sort > $(q "$MIG/rpm-vorher-$(date +%Y%m%d).txt")"
+            (( ${#mark[@]} )) && run "sudo dnf mark user ${mark[*]}"
+            # ohne -y: dnf zeigt die Transaktion und fragt selbst noch einmal
+            run "sudo dnf remove $DNF_OPTS ${rem[*]}"
+            info "danach: ~/.local/state/desktop/loginscreen-backup + loginscreen-theme.sha256 löschbar (Restore für plasmalogin), sudo rm -rf /var/lib/plasmalogin"
+        fi
+    fi
+    fi
+    fi
+fi
+
+# ---------------------------------------------------------------- 8 Alte Ordner löschen
+if want 8; then
+    step_title 8
+    blocked=0
+    (( DELETE_OLD )) || { info "nur mit --delete-old (zusätzlich zu --apply)"; blocked=1; }
+    for c in "${OLDS[@]}"; do [[ "$SELF" == "$c"/* ]] && { warn "läuft aus $(tilde "$c") – Schritt 8 aus ~/Workspace/bastian-shell/system/migrate starten"; blocked=1; }; done
+    if (( APPLY )); then check_green >/dev/null 2>&1 || { bad "Prüfung aus Schritt 6 nicht grün – gesperrt"; blocked=1; }
+    else info "Voraussetzung: Prüfung aus Schritt 6 grün"; fi
+    GITD="$OLD_D"; [ -d "$OLD_D/.git" ] || GITD="$OLD_H"
+    date_="$(date +%Y-%m-%d)"; BUNDLE="$BACKUPS/desktop-$date_.bundle"; LOCAL_TAR="$BACKUPS/desktop-$date_-lokal.tar.gz"
+    for c in "${OLDS[@]}"; do
+        [ -d "$c" ] || continue
+        st="$(git -C "$c" status --porcelain 2>/dev/null | wc -l)"
+        [ "$st" = 0 ] || { bad "$(tilde "$c") hat $st offene Änderung(en) – erst committen"; blocked=1; }
+        # was nicht mitgenommen wurde (Schritt 2 hat es ausgelassen) → Hinweis + Sicherung als tar (ohne refs/ und Caches)
+        nm="$(git -C "$c" ls-files --others --ignored --exclude-standard --directory 2>/dev/null | grep -vE '__pycache__|^refs/|^\.claude/|^theme/out/icons/|Cached Theme.pak' || true)"
+        [ -n "$nm" ] && info "$(tilde "$c"): nicht im Git (wandert ins lokal-tar): $(tr '\n' ' ' <<<"$nm" | cut -c1-300)"
+    done
+    for c in "${OLDS[@]}"; do
+        [ -d "$c/refs" ] && [ ! -e "$NEW/refs" ] && info "$(tilde "$c")/refs (Referenz-Klone) wird NICHT gesichert – URLs landen in $(tilde "$BACKUPS")/desktop-$date_-refs.txt (neu klonen: git clone <url> ~/Workspace/bastian-shell/refs/<name>)"
+    done
+    for m in "${CLAUDE_OLD[@]}"; do [ -d "$m" ] && info "$(tilde "$m") (Claude-Verläufe) bleibt liegen"; done
+    # Prozesse, die noch in den alten Ordnern arbeiten (Terminal, VS Code …)
+    busy="$(for p in /proc/[0-9]*; do cwd="$(readlink "$p/cwd" 2>/dev/null || true)"; for c in "${OLDS[@]}"; do [[ "$cwd" == "$c" || "$cwd" == "$c"/* ]] && echo "$(cat "$p/comm" 2>/dev/null)(${p#/proc/})"; done; done | sort -u | tr '\n' ' ' || true)"
+    [ -n "$busy" ] && warn "Prozesse mit Arbeitsordner in den alten Ordnern: $busy (Terminals/VS Code dort schließen)"
+    if (( blocked )) && (( APPLY )); then
+        bad "Schritt 8 gesperrt"; FAILS+=("Schritt 8 gesperrt")
+    elif (( APPLY )) && ! confirm "Alte Ordner $(tilde "$OLD_H") und $(tilde "$OLD_D") löschen (nach Bundle-Sicherung)?" "löschen"; then
+        bad "nicht bestätigt"; FAILS+=("Schritt 8 nicht bestätigt")
+    else
+        run "mkdir -p $(q "$BACKUPS") && git -C $(q "$GITD") bundle create $(q "$BUNDLE") --all && git -C $(q "$GITD") bundle verify $(q "$BUNDLE") >/dev/null"
+        info "Bundle enthält alle Branches (kwin, hyprland, main) + Stash; wiederherstellen: git clone $(tilde "$BUNDLE") ~/Workspace/desktop-alt"
+        run "cd $(q "$WS") && { for c in desktop-hyprland desktop; do [ -d \"\$c\" ] && (cd \"\$c\" && git ls-files -z --others --ignored --exclude-standard | grep -zvE '__pycache__|/refs/|^refs/|^\\.claude/|theme/out/icons/|Cached Theme.pak' | sed -z \"s|^|\$c/|\"); done; } | tar --null -T - -czf $(q "$LOCAL_TAR") && chmod 600 $(q "$LOCAL_TAR")"
+        run "for d in $(q "$OLD_D")/refs/*/; do [ -d \"\$d\" ] && printf '%s %s\n' \"\$(basename \"\$d\")\" \"\$(git -C \"\$d\" remote get-url origin 2>/dev/null)\"; done > $(q "$BACKUPS/desktop-$date_-refs.txt") || true"
+        [ -d "$OLD_H" ] && run "git -C $(q "$GITD") worktree remove --force $(q "$OLD_H") && git -C $(q "$GITD") worktree prune"
+        run "rm -rf $(q "$OLD_D")"
+        info "danach kaputte Links suchen: find ~/.config ~/.local -xtype l"
+    fi
+fi
+
+# ---------------------------------------------------------------- Ende
+head_ "Fertig"
+if (( APPLY )); then
+    (( ${#FAILS[@]} )) && { warn "${#FAILS[@]} Problem(e):"; printf '      %s\n' "${FAILS[@]}"; exit 1; }
+    echo "  Durch. Kontrolle: system/migrate (ohne --apply) bzw. system/migrate --only 6"
+else
+    echo "  Probelauf: $TODO Aktion(en) gezeigt, davon $SUDO_TODO mit sudo. Nichts wurde geändert. Ausführen: system/migrate --apply"
+fi

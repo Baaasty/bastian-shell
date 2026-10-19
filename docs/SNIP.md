@@ -33,5 +33,5 @@ Die Knopfreihe unter der Auswahl hat dieselben Aktionen für die Maus.
 
 - `scripts/snip-ocr BILD.png` – Text lesen + kopieren (Ausgabe `OK n` / `EMPTY` / `NOTOOL` / `NOLANG`). Vorverarbeitung (Graustufen, 2×, dunkler Grund wird umgedreht) steht oben im Skript.
 - `scripts/snip-color BILD.png X Y` – Hex eines Pixels (Bildkoordinaten) + kopieren.
-- IPC (`qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call snip …`): `region` · `text` · `pick` · `pin` · `closePins` · zum Testen ohne Maus: `ocrArea x y w h` · `pinArea x y w h` · `pickAt x y` (globale Koordinaten) · `crop x y w h`.
+- IPC (`qs ipc --any-display -p ~/Workspace/bastian-shell/shell call snip …`): `region` · `text` · `pick` · `pin` · `closePins` · zum Testen ohne Maus: `ocrArea x y w h` · `pinArea x y w h` · `pickAt x y` (globale Koordinaten) · `crop x y w h`.
 - Kürzel stehen in `hypr/binds.conf` (Abschnitt Screenshots), Übersicht `docs/HOTKEYS.md`.

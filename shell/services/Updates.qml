@@ -183,7 +183,7 @@ Singleton {
 
     Component.onCompleted: _schedule(startDelayMs)
 
-    // qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call updates status|check|refresh|open|fake <n>
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call updates status|check|refresh|open|fake <n>
     IpcHandler {
         target: "updates"
         function status(): string {

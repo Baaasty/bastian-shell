@@ -31,7 +31,7 @@ Spalte „Klasse“:
 | `~/.config/Code/User/snippets/` | – | nur die leere `cpp.json`-Vorlage – bei echten Snippets in `copies.txt` aufnehmen |
 | `~/.config/Code/User/profiles/`, `sync/` | – | Settings Sync ist offenbar an → kommt per Anmeldung zurück |
 | VS Code-Theme „Desktop“ + Projekt-Erweiterung | a | `theme/gen/all.py` → `~/.vscode/extensions/desktop.*` |
-| `~/.claude/settings.json` | K | nur `model`, `theme`, `env`, Hooks → alle auf `~/Workspace/desktop/scripts/claude-{status,gate}`. Keine Secrets. Gate-Hooks setzt `scripts/claude-gate-hooks on`, die claude-status-Hooks stehen nur hier. Eigene Kopie lokal (gitignored), im Repo `settings.json.example` (Pfade über `$HOME`) |
+| `~/.claude/settings.json` | K | nur `model`, `theme`, `env`, Hooks → alle auf `~/Workspace/bastian-shell/scripts/claude-{status,gate}`. Keine Secrets. Gate-Hooks setzt `scripts/claude-gate-hooks on`, die claude-status-Hooks stehen nur hier. Eigene Kopie lokal (gitignored), im Repo `settings.json.example` (Pfade über `$HOME`) |
 | `~/.claude/skills/desktop-project` | a | Symlink per `scripts/claude-skills install` |
 | `~/.claude/skills/new-project`, `project` | – | Symlinks aus dem privaten Skill-Repo (dessen `./install install`) |
 | `~/.claude/skills/security-audit`, `synced/` | – | kommen von Claude selbst |
@@ -70,7 +70,7 @@ Spalte „Klasse“:
 | `~/.ssh/id_*` | c | SSH-Keys |
 | `~/.local/share/kwalletd/` | c | KDE-Wallet |
 | `~/.gnupg/` | c | (fast leer) |
-| `~/Workspace/desktop/secrets.json` | c | Hue, statsfm, Mail-Konten, Stalwart … Vorlage: `secrets.example.json` |
+| `~/Workspace/bastian-shell/secrets.json` | c | Hue, statsfm, Mail-Konten, Stalwart … Vorlage: `secrets.example.json` |
 | `.env`, `.env.local` in Projekten | c | aus `.env.example` neu |
 | icp-Speicher, Anisette-Volume `anisette-data` | c | `icp` neu anmelden (Apple-ID + 2FA) |
 

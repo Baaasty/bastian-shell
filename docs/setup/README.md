@@ -1,7 +1,7 @@
 # Logins & Kopplungen
 
 Alles, was einmal eingerichtet werden muss. Zugangsdaten und Tokens liegen nur in
-`~/Workspace/desktop/secrets.json` (gitignored, Rechte 600). Vorlage: `secrets.example.json`.
+`~/Workspace/bastian-shell/secrets.json` (gitignored, Rechte 600). Vorlage: `secrets.example.json`.
 Die Shell merkt Änderungen an der Datei von selbst, kein Neustart nötig.
 
 | Dienst | wofür | wie koppeln | wo gespeichert | Anleitung |

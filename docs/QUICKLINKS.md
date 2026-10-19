@@ -25,7 +25,7 @@ Ohne eigenen Namen („Workspace 2“) gibt es kein Projekt. Umbenennen: Doppelk
   Branch/Änderungen/CI über der Leiste und der Hinweis `Q links`. **Q** öffnet das Popup: ↑/↓ (oder J/K) wählen,
   Enter öffnet, 1–9 öffnet die Zeile direkt, A = Link ergänzen, Entf zweimal = Link entfernen, Esc = zurück in den Modus.
   Im Popup stehen auch **Repository** (aus `git remote`, falls nicht schon als Link eingetragen) und **Last CI run**.
-- Per Befehl: `qs ipc -p ~/Workspace/desktop-hyprland/shell call workbar quickLinks <n>` (n = Platz in der Leiste, 0 = aktueller);
+- Per Befehl: `qs ipc -p ~/Workspace/bastian-shell/shell call workbar quickLinks <n>` (n = Platz in der Leiste, 0 = aktueller);
   im Modus `workbar modeLinks` (wie Q).
 
 ## Wo liegen die Daten?
@@ -77,7 +77,7 @@ lassen) und im Quicklinks-Popup. Gleiche Zuordnung wie oben (Workspace-Name = Pr
 
 ## Woher kommen die Daten?
 
-`scripts/gitinfo <ordner>…` (nur lesen) gibt JSON aus; probieren: `scripts/gitinfo ~/Workspace/desktop`.
+`scripts/gitinfo <ordner>…` (nur lesen) gibt JSON aus; probieren: `scripts/gitinfo ~/Workspace/bastian-shell`.
 - **Git:** `git status --porcelain=v2 --branch` im Haupt-Repo des Projekts (`paths[0]`), mit `--no-optional-locks`
   (schreibt nichts, hält keinen Index-Lock).
 - **CI:** `scripts/gitinfo --ci-only <ordner>` → `gh run list --limit 1` (nur github.com-Remotes, 5 s Timeout).

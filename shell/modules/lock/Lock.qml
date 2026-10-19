@@ -262,7 +262,7 @@ Scope {
         id: dimmer
     }
 
-    // qs ipc --any-display -p ~/Workspace/desktop/shell call lock lock
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call lock lock
     IpcHandler {
         target: "lock"
 

@@ -1,12 +1,14 @@
 # Desktop-Shell (Quickshell) als User-Dienst: startet mit der Plasma-Sitzung, Neustart bei Absturz.
 # Installiert/entfernt über scripts/rice on|off (Link nach ~/.config/systemd/user).
+# Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/bastian-shell.
 [Unit]
 Description=Desktop Shell (Quickshell)
 PartOf=graphical-session.target
 After=graphical-session.target plasma-kwin_wayland.service plasma-plasmashell.service
 
 [Service]
-ExecStart=/usr/bin/qs -p %h/Workspace/desktop/shell
+EnvironmentFile=-%h/.config/desktop/hyprland.env
+ExecStart=/bin/sh -c 'exec /usr/bin/qs -p "$${DESKTOP:-%h/Workspace/bastian-shell}/shell"'
 Restart=on-failure
 RestartSec=3
 

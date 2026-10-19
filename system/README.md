@@ -22,10 +22,10 @@ Plasma bleibt installiert und ist die Rückfall-Sitzung. Stand 2026-10-18 (AP 15
 
 1. Fedora 44 **KDE** installieren (Workstation geht auch: bootstrap holt dann die KDE-Gruppe und stellt die Anmeldung
    auf Plasma Login um), eigener Benutzer, Netzwerk.
-2. Repo holen: `git clone https://github.com/Baaasty/bastian-shell ~/Workspace/desktop`
-   (eigener Fork: `gh repo clone <github-user>/bastian-shell ~/Workspace/desktop`)
-3. Schauen, was passieren würde: `~/Workspace/desktop/system/bootstrap`
-4. Ausführen: `~/Workspace/desktop/system/bootstrap --apply` (fragt einmal nach dem sudo-Passwort)
+2. Repo holen: `git clone https://github.com/Baaasty/bastian-shell ~/Workspace/bastian-shell`
+   (eigener Fork: `gh repo clone <github-user>/bastian-shell ~/Workspace/bastian-shell`)
+3. Schauen, was passieren würde: `~/Workspace/bastian-shell/system/bootstrap`
+4. Ausführen: `~/Workspace/bastian-shell/system/bootstrap --apply` (fragt einmal nach dem sudo-Passwort)
 5. Neustart (NVIDIA + MOK, siehe unten), im Login **„Hyprland (uwsm-managed)“** wählen
 6. Nochmal: `system/bootstrap --apply --only 9,10` (Theme an braucht die laufende Sitzung)
 7. Die manuellen Schritte unten abarbeiten (auch `system/bootstrap --only 11`)
@@ -59,14 +59,15 @@ Befehle mit sudo stehen in der Ausgabe mit **`[sudo]`**; die Schlusszeile zählt
   fremde Dateien (werden vorher als `.vor-desktop` bzw. nach `~/.local/state/desktop/` gesichert).
 - Equibop wird nicht mehr installiert (Chat = Discord-RPM + eigener Equicord-Build, Roadmap 18.10.).
 
-### Pfade (AP 13)
+### Pfade
 
-Alle Repo-Pfade stehen oben in `bootstrap` im Block **„Pfade“**: `WORKSPACE`, `REPO_NAME` (heute `desktop`, nach AP 13
-`shell`), `REPO_BRANCH`, `CHECKOUTS` (bekannte Checkouts/Worktrees, heute `~/Workspace/desktop` und `~/Workspace/desktop-hyprland`).
-Alles Neue zeigt auf den Checkout, aus dem bootstrap läuft. Links, die schon in einen der `CHECKOUTS` zeigen, gelten als
-`ok` und werden **nicht** umgebogen (sonst springt das System zwischen den Checkouts). Umbiegen = den jeweiligen
+Das Repo liegt in **`~/Workspace/bastian-shell`** (Branch `main`). Alle Repo-Pfade stehen oben in `bootstrap` im Block
+**„Pfade“**: `WORKSPACE`, `REPO_NAME`, `REPO_BRANCH`, `CHECKOUTS`. Skripte und Shell ermitteln den Ort selbst
+(Skriptverzeichnis, `Quickshell.shellDir`); für systemd-Units und Hyprland steht er an **einer** Stelle:
+`DESKTOP=` in `~/.config/desktop/hyprland.env` (schreibt `scripts/hypr install`, Rückfall `~/Workspace/bastian-shell`).
+Links, die schon in einen der `CHECKOUTS` zeigen, gelten als `ok` und werden nicht umgebogen. Umbiegen = den jeweiligen
 Installer aus dem gewünschten Checkout aufrufen (`scripts/hypr install`, `scripts/session install`, `scripts/claude-skills install` …).
-Schritt 9 meldet `systemd/`-Units, in denen ein Checkout-Pfad fest steht (`%h/Workspace/…`) – die räumt AP 13 auf.
+Umzug aus den alten Ordnern (`desktop` + `desktop-hyprland` in `~/Workspace`): **`system/migrate`** ([docs/MIGRATE.md](../docs/MIGRATE.md)).
 
 ## Dotfiles: Links, Kopien, Sync
 
@@ -94,7 +95,7 @@ Heute sind alle Dateien noch normale Dateien (Stand = Repo, `system/sync` zeigt 
 
 1. `system/sync` → alles `ok` / „gleich“? Sonst erst `system/sync pull` bzw. Unterschied prüfen.
 2. `system/bootstrap --only 8` (zeigt nur) → `system/bootstrap --apply --only 8`
-   (Links, die schon in `~/Workspace/desktop` oder `~/Workspace/desktop-hyprland` zeigen, bleiben, siehe „Pfade“)
+   (Links, die schon in `~/Workspace/bastian-shell` zeigen, bleiben, siehe „Pfade“)
    - ersetzt `~/.gitconfig`, `~/.ssh/config`, Units, Skripte … durch Links; Original als `<datei>.vor-desktop`
      (Skripte aus `~/.local/bin` nach `~/.local/state/desktop/dotfiles-backup/`, damit sie nicht im PATH liegen)
    - legt `~/.bashrc.d/desktop.sh` an und nimmt die `DOCKER_HOST`-Zeile aus `~/.bashrc` (Backup `~/.bashrc.vor-desktop`).

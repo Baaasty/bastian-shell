@@ -31,7 +31,7 @@ Ausnahme beim Start: ist die Shell selbst in den letzten 2 min abgestürzt, zeig
 Testen (ändert nichts am System):
 
 ```sh
-Q="qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call crash"
+Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call crash"
 $Q test           # Discord, Hauptprozess (Restart sichtbar)
 $Q testRenderer   # Discord, nur Renderer
 $Q details        # alle Karten auf-/zuklappen

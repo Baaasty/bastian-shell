@@ -499,12 +499,15 @@ proj_package = {
     "capabilities": {"untrustedWorkspaces": {"supported": True}, "virtualWorkspaces": False},
 }
 def _root_js() -> str:
-    """Repo-Pfad für die Erweiterung: unter ~ relativ zu os.homedir() (kein fester Home-Pfad in der Datei)."""
-    root = pathlib.Path(__file__).resolve().parents[2]
-    try:
-        return "path.join(os.homedir(), %s)" % json.dumps(str(root.relative_to(pathlib.Path.home())))
-    except ValueError:
-        return json.dumps(str(root))
+    """Repo-Pfad für die Erweiterung: DESKTOP aus ~/.config/desktop/hyprland.env (eine Stelle, scripts/hypr install),
+    sonst ~/Workspace/bastian-shell. Kein fester Checkout-Pfad in der Datei (gleiche Ausgabe in jedem Checkout)."""
+    return """(() => {
+  try {
+    const m = /^DESKTOP=(.+)$/m.exec(fs.readFileSync(path.join(os.homedir(), ".config/desktop/hyprland.env"), "utf8"));
+    if (m) return m[1].trim();
+  } catch (e) {}
+  return path.join(os.homedir(), "Workspace/bastian-shell");
+})()"""
 
 
 proj_js = """// %(mark)s – theme/gen/vscode.py. Farben: palette.json -> projectAccents, Zuordnung: theme/projects.json

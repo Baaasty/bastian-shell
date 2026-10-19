@@ -24,7 +24,7 @@ Der Wächter (`scripts/lock guard`, eigener systemd-Scope) prüft alle paar Seku
 Strg+Alt+F3, einloggen, dann (Hyprland startet hyprlock mit seiner eigenen Umgebung):
 
 ```sh
-hyprctl --instance 0 dispatch exec ~/Workspace/desktop-hyprland/scripts/lock rescue
+hyprctl --instance 0 dispatch exec ~/Workspace/bastian-shell/scripts/lock rescue
 ```
 
 Zurück mit Strg+Alt+F2 (bzw. der Konsole, auf der die Sitzung läuft). Geht gar nichts: `loginctl terminate-user $USER`.

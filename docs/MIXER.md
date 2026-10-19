@@ -33,7 +33,7 @@ siehe `docs/setup/goxlr.md`). Der Mixer schreibt nie in einen Ausgang, nur in Ap
 ## Testen ohne Maus
 
 ```sh
-qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call mixer status      # Text: Ausgang, Eingang, Apps, GoXLR
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call mixer status      # Text: Ausgang, Eingang, Apps, GoXLR
 qs ipc ... call mixer open | close | toggle                                       # open per IPC ohne Klick-Fang: mit `close` schließen
 qs ipc ... call mixer setApp <App> <0-100>                                        # nur App-Lautstärke
 qs ipc ... call mixer muteApp <App> <true|false>

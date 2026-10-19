@@ -47,7 +47,7 @@ Standard in `config/notifications.json`, eigene Werte in `~/.config/desktop/noti
 ## Prüfen (ohne Tasten)
 
 ```
-qs ipc --any-display -p ~/Workspace/desktop-hyprland/shell call notifs status
+qs ipc --any-display -p ~/Workspace/bastian-shell/shell call notifs status
 … call notifs quietAt 2026-10-18T23:30      # liegt die Zeit in einer Ruhezeit? (nur Logik)
 … call notifs decide Test "Titel" false      # was würde mit so einer Meldung passieren?
 … call notifs snooze 0 10                    # Panel-Eintrag 0 um 10 min zurückstellen (0 Minuten = „Tomorrow“)
