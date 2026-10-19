@@ -13,6 +13,9 @@ import Quickshell.Io
 //   terminal(name)  sshs <name>          eigenes Kitty-Fenster (Klasse sshs)
 //   files(name)     sshs <name> --files  dasselbe Fenster, schaltet nach der Anmeldung auf Dateien (yazi per SFTP)
 //   upload(name)    Datei-Wähler der Shell (mehrere, FilePicker.openFiles) → sshs put <name> ~ <dateien…> --notify
+// root(name) = Server läuft „als root“: Terminal/Files hängen --su an (sshs tippt nach der Anmeldung su, das Passwort
+// gibst du ein; Root-Login per SSH bleibt aus). Gemerkt in ~/.local/state/desktop/sshs-root.json.
+// Container: loadContainers(name) → sshs ps <name> --json (als Anmelde-Benutzer, BatchMode), Ergebnis in ps/psHost.
 // sshs startet Kitty selbst über uwsm app; der Upload läuft in einer eigenen systemd-Scope (übersteht Shell-Neustarts),
 // Fortschritt + Ergebnis meldet sshs als Benachrichtigung.
 Singleton {
@@ -30,6 +33,11 @@ Singleton {
     property string note: ""            // letzte Rückmeldung (kurz im Popout)
     property string lastDir: home       // lokaler Ordner des letzten Uploads (Startordner des Wählers)
     readonly property bool uploading: upHost !== ""
+    property var rootFor: ({})          // {name: true} – Server, die per su als root geöffnet werden
+    // Container (sshs ps): nur ein Server gleichzeitig
+    property string psHost: ""
+    property var ps: null               // {ok, user, engines, denied, groups:[{name, running, total, containers}], error}
+    readonly property bool psLoading: psProc.running
 
     // ---------- Web-Konsolen ----------
     property var _baseConsoles: []
@@ -99,13 +107,40 @@ Singleton {
         list = list.map(s => s.name === name ? Object.assign({}, s, { last: now }) : s).sort((a, b) => b.last - a.last);
     }
 
+    function isRoot(name: string): bool {
+        return !!rootFor[name];
+    }
+    function setRoot(name: string, on: bool): void {
+        const m = Object.assign({}, rootFor);
+        if (on)
+            m[name] = true;
+        else
+            delete m[name];
+        rootFor = m;
+        rootFile.setText(JSON.stringify(m));
+    }
     function terminal(name: string): void {
         touch(name);
-        Launch.cmd([sshs, name]);
+        Launch.cmd([sshs, name].concat(isRoot(name) ? ["--su"] : []));
     }
     function files(name: string): void {
         touch(name);
-        Launch.cmd([sshs, name, "--files"]);
+        Launch.cmd([sshs, name, "--files"].concat(isRoot(name) ? ["--su"] : []));
+    }
+    // Terminal als root mit einem Befehl nach su (Container ohne Docker-Rechte des Anmelde-Benutzers)
+    function rootRun(name: string, cmd: string): void {
+        touch(name);
+        Launch.cmd([sshs, name, "--su", "--run", cmd]);
+    }
+    function loadContainers(name: string): void {
+        if (psHost !== name)
+            ps = null;
+        psHost = name;
+        if (psProc.running)
+            return;
+        psProc.host = name;
+        psProc.command = [sshs, "ps", name, "--json"];
+        psProc.running = true;
     }
     function upload(name: string): void {
         if (uploading) {
@@ -166,6 +201,32 @@ Singleton {
                 : "Upload to " + root.upHost + " failed");
             root.upHost = "";
             root.upCount = 0;
+        }
+    }
+    Process {
+        id: psProc
+        property string host: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (psProc.host !== root.psHost)
+                    return;               // inzwischen anderer Server gewählt
+                try {
+                    root.ps = JSON.parse(text);
+                } catch (e) {
+                    root.ps = { ok: false, error: "sshs ps failed" };
+                }
+            }
+        }
+    }
+    FileView {
+        id: rootFile
+        path: root.home + "/.local/state/desktop/sshs-root.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const d = JSON.parse(text());
+                root.rootFor = d && typeof d === "object" ? d : {};
+            } catch (e) {}
         }
     }
     Timer {

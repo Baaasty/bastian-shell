@@ -393,14 +393,14 @@ PopupWindow {
                     DlRow {}
                 }
             }
-
-            Txt {
-                anchors.centerIn: parent
-                visible: pop.shown.length === 0
-                text: !Downloads.ready ? "Reading…" : pop.query !== "" ? "No match" : "No downloads yet"
-                color: Theme.textFaint
-                font.weight: Font.Normal
-            }
+        }
+        // Leer-Hinweis mittig in der Liste (nicht im Flickable: dessen Inhalt ist leer 0 px hoch -> Text saß oben auf dem Kopf)
+        Txt {
+            anchors.centerIn: list
+            visible: pop.shown.length === 0
+            text: !Downloads.ready ? "Reading…" : pop.query !== "" ? "No match" : "No downloads yet"
+            color: Theme.textFaint
+            font.weight: Font.Normal
         }
         WheelScroll {
             flick: list

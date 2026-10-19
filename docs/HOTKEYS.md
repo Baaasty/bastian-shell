@@ -35,7 +35,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + Shift + Tab`<br>`Alt + Shift + Tab` | Previous window |
 | `Super + ^` | Next window of the same app |
 | `Super + Shift + ^` | Previous window of the same app |
-| `Super + Alt + V` | Clipboard history |
+| `Super + V` | Clipboard history |
 | `Super + ·` | Emoji picker |
 | `Super + Alt + F` | Focus mode |
 | `Super + Alt + G` | Game mode (bar off, do not disturb) |
@@ -50,7 +50,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + B` | Bar mode (letter opens a popout) |
 | `Super + Alt + S` | Sound mixer |
 | `Super + Alt + L` | Light |
-| `Super + Alt + U` | Dev popout, Server tab (consoles, upload, files, terminal) |
+| `Super + Alt + U` | Servers (consoles, upload, files, terminal) |
 | `Super + Alt + Z` | Notifications (keyboard) |
 | `Super + Alt + X` | Dismiss newest notification |
 | `Super + C` | Call cameras on/off |
@@ -85,7 +85,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + Shift + ←↑↓→` | Move window |
 | `Super + F` | Maximize |
 | `Super + Shift + F` | Fullscreen |
-| `Super + V` | Toggle floating |
+| `Super + Alt + V` | Toggle floating |
 | `Super + S` | Toggle split |
 | `Alt + F4` | Close window (quits Discord/Spotify too) |
 | `Super + Q` | Close window (Discord/Spotify: back to the bar) |
