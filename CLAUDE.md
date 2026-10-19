@@ -17,6 +17,10 @@ Plasma bleibt Fundament (Fenster, Einstellungen, Fallback). Was gebaut wird, ste
   (sonst sterben sie mit, wenn Quickshell neu startet).
   Discord/Spotify/Thunderbird sind RPMs (früher Flatpak): starten über `Launch.run("discord")` bzw. `scripts/app-run`
   (RPM zuerst, Flatpak-Fallback), Umzug der Daten: `scripts/flatpak-to-native`.
+- Keine neue Abhängigkeit (dnf-Paket, COPR, Python-Modul, QML-Plugin) ohne Rückfrage – dann in `system/packages/` + `docs/TECHSTACK.md`.
+- Größere Features erst planen (Plan Mode), Plan bestätigen lassen, dann bauen.
+- Fertig = läuft, getestet, committet → in der Roadmap abhaken: `- [x] … (JJJJ-MM-TT)`.
+- Security: noch kein Audit – bei Gelegenheit Skill `security-audit`, Profil `quick` (Berichte unter `~/security-audit-skill/bastian-shell/run-N`, nie im Repo).
 
 ## Stil (verbindlich)
 
@@ -68,3 +72,50 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/rice off` (stellt Vanilla-Plasma wieder her)
 - Lockscreen-Paket: `scripts/shellpkg install|test|on|off` · Wallpaper: `scripts/wallpaper set|restore`
 - Kürzel-Datei ändern: `rice off && rice on` (kglobalaccel übernimmt Änderungen an bestehenden Dateien nicht live)
+- Checks: `scripts/check` (Tests unter `scripts/tests/`, qmllint wenn installiert) – läuft auch als Git-Hook
+
+## Qualität
+
+Vor jedem Commit muss grün sein (Git-Hook `.githooks/pre-commit`: Secrets-Sperre + `scripts/check`):
+
+- `scripts/check` = `scripts/tests/*-test.js` (node) + `*-test.py` + qmllint (fehlt noch: `qt6-qtdeclarative-devel`, braucht `sudo`)
+- danach mit `qs -p ~/Workspace/bastian-shell/shell` testen, Bastian schickt Screenshot (siehe Regeln)
+- Fremden Code (GPL, caelestia/end-4) nur mit Herkunfts-Header übernehmen.
+
+## Konventionen
+
+Profil **solo**: Bezeichner, Datei- und Ordnernamen Englisch · Kommentare Deutsch (warum statt was,
+nie mischen) · Doku Deutsch, Dateinamen Englisch · Commits: Conventional Commits
+(`feat|fix|refactor|docs|test|chore|perf|build(scope): was`, ≤ 72 Zeichen, Text Deutsch, Body = warum).
+`TODO:` nur mit Ziel (`→ ROADMAP AP 22`). Volle Regeln: `~/Workspace/WebBude/webbude-skills/skills/_standard/templates/CONVENTIONS.md`.
+Abweichungen in diesem Projekt: Commits bis 2026-10-19 im Format `bastian-shell: …` (Englisch) – ab jetzt Conventional Commits,
+Scope = Bereich (`bar`, `workbar`, `launcher`, `bridge`, `hypr`, `theme`, `system`, `docs` …).
+
+## Workflow
+
+- Größere Features: Plan Mode → Plan bestätigen lassen → umsetzen → Checks zeigen → Roadmap abhaken.
+- Roadmap: aktuell `docs/ROADMAP-HYPRLAND.md` (Hyprland-Umzug), `docs/ROADMAP.md` = KWin-Weg + Gesamtliste.
+  Nur `- [ ]` / `- [x]` (kein `[~]` → `- [ ] … (teilweise: was fehlt)`), erster offener Punkt = nächster Schritt.
+- Ideen „nicht jetzt“: eine Zeile in `docs/BACKLOG.md` statt umsetzen; ganzes Konzept → `docs/BACKLOG-<THEMA>.md`.
+- Beim Kompaktieren erhalten: geänderte Dateien, offene TODOs, aktueller Roadmap-Punkt.
+
+## Doku-Pflege
+
+Doku im selben Commit wie der Code. **Code ist die Quelle der Wahrheit:** Docs behaupten nie Umgesetztes, das nicht im
+Code steht, und wiederholen nicht, was der Code schon zeigt (Versionen, Feldlisten, IPC-Funktionen) – sie verweisen auf die
+Stelle und erklären das Warum. Widerspricht die Doku dem Code: Doku sofort korrigieren. Ausnahme Planung
+(ROADMAP, BACKLOG) – dort steht Geplantes, klar als geplant markiert. Inhaltsverzeichnis aller Docs: [docs/README.md](docs/README.md).
+
+| Auslöser | Doc |
+| --- | --- |
+| Punkt läuft, getestet, committet | Roadmap abhaken: `- [x] … (JJJJ-MM-TT)` |
+| Neue Aufgabe beim Bauen | Roadmap `- [ ]` an die richtige Stelle (Reihenfolge = Priorität) |
+| Idee „nicht jetzt“ | `docs/BACKLOG.md` (eine Zeile) |
+| Neues Paket, Werkzeugwechsel | `docs/TECHSTACK.md` (warum) + `docs/DECISIONS.md` + `system/packages/` – nach OK |
+| Grundsatzentscheidung | `docs/DECISIONS.md`: `JJJJ-MM-TT · Entscheidung · Grund · Status` |
+| Scope ändert sich (Ziel, Nicht-Ziel) | `SPEC.md` (gilt als PRD) + DECISIONS – nur nach OK |
+| Komponente gebaut/umgebaut | `docs/<THEMA>.md` (Bedienung, IPC, Grenzen) + Zeile in `docs/README.md` |
+| Neues Kürzel | `docs/HOTKEYS.md` |
+| Neuer Befehl, Ordner, Skript | CLAUDE.md „Befehle“ / „Struktur“ |
+| Setup-/Login-Schritt gelernt | `docs/setup/<thema>.md` |
+| Fehler passiert zum zweiten Mal | Regel unter „Regeln“ |

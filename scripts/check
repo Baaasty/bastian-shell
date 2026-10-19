@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Checks vor einem Commit: Tests unter scripts/tests (node/python) + qmllint über alle QML-Dateien (falls installiert).
+# qmllint kommt mit qt6-qtdeclarative-devel (sudo dnf install qt6-qtdeclarative-devel – vorher fragen).
+set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")/.."
+for t in scripts/tests/*-test.js; do node "$t" >/dev/null || { echo "check: $t rot" >&2; exit 1; }; done
+for t in scripts/tests/*-test.py; do python3 -I "$t" >/dev/null || { echo "check: $t rot" >&2; exit 1; }; done
+lint=$(command -v qmllint || command -v qmllint-qt6 || ls /usr/lib64/qt6/bin/qmllint 2>/dev/null || true)
+if [ -z "$lint" ]; then echo "check: qmllint nicht installiert – übersprungen" >&2; exit 0; fi
+mapfile -t files < <(git ls-files -co --exclude-standard '*.qml')
+[ ${#files[@]} -eq 0 ] || "$lint" "${files[@]}"

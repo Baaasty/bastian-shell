@@ -40,3 +40,14 @@ theme/out/wallpaper/
 theme/out/chrome-desktop-ext/wallpaper.jpg
 # Chrome legt beim Laden der entpackten Theme-Erweiterung einen Cache daneben
 theme/out/chrome-desktop/Cached Theme.pak
+
+# Bastians Standard (/project)
+.env
+.env.*
+*.pem
+*.key
+.claude/settings.local.json
+CLAUDE.local.md
+*.qmlc
+.qmlls.ini
+!.env.example

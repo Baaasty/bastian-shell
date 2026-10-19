@@ -4,6 +4,43 @@ Stand: 2026-10-17 · Status: **bestätigt** (Korrekturen aus KWin-Prüfung + Geg
 
 **Muss** = gehört zur ersten fertigen Version. **Später** = kommt danach. **Runde** = Bau-Reihenfolge (R0–R13, siehe unten).
 
+## Kurzfassung (PRD)
+
+Ergänzt 2026-10-19 aus dieser SPEC (gilt als PRD, Details in den Abschnitten darunter). Status: Entwurf, `OFFEN` = mit Bastian klären.
+
+### Was
+Eigene Desktop-Shell in Quickshell (Bar, Dashboard, Launcher, Benachrichtigungen, OSD, Power-Menü, Desktops) über einem
+fertigen Fundament (Plasma/KWin, inzwischen Hyprland: `docs/ROADMAP-HYPRLAND.md`) – dazu das PC-Repo zum Neuaufsetzen (§7).
+
+### Warum
+- Ein Look aus einem Guss (Stil in `CLAUDE.md`) statt Plasma-Panel, -Launcher und -OSD.
+- Tastatur zuerst: die Shell wird per Kürzel aus dem Muscle Memory bedient (Leitlinie 2026-10-19).
+- Fundament und Rückweg bleiben: Plasma voll nutzbar, alles mit einem Befehl zurück (§5, `scripts/rice off`).
+
+### Für wen
+Nur Bastian, sein PC mit drei Monitoren (§1). Nicht für: andere Rechner oder Nutzer als fertiges Produkt.
+
+### Kern-Funktionen
+- **F1** (muss) Top-Bar auf DP-2 (§2.1)
+- **F2** (muss) Dashboard (§2.2)
+- **F3** (muss) Launcher (§2.3)
+- **F4** (muss) Benachrichtigungen mit Verlauf (§2.4)
+- **F5** (muss) OSD + Power-Menü (§2.5)
+- **F6** (muss) Freie Desktops + Vorlagen (§2.7)
+- **F7** (muss) Eigene Tastenkürzel (§3)
+
+### Nicht-Ziele
+- Kein Dock, kein Rahmen ums Bild, kein Stream-Modus, kein GoXLR-Mixer – nicht gebraucht (§1).
+- Keine Shell auf den Seitenmonitoren (nur Wallpaper) – die gehören Discord/Doku und Browser (§1).
+- Keine Pflicht-Vorlagen und keine Automatik ohne Aus-Schalter – nicht einengen (§0).
+- Nichts an Plasma, das sich nicht mit einem Befehl zurücknehmen lässt (§5).
+
+### Erfolg
+- Nach einer Woche Alltag: was nicht genutzt wird oder nervt, fliegt raus (§0).
+- Jede Shell-Funktion ist per Kürzel und Tastatur bedienbar (sonst nicht fertig).
+- `scripts/rice off` stellt jederzeit Vanilla-Plasma wieder her.
+- Prüfbares Kriterium je Kern-Funktion: `OFFEN`.
+
 ## 0. Grundsatz: nicht einengen
 - Alles bleibt normal bedienbar wie Plasma: Fenster frei schieben (Maus oder Meta+Pfeile). Kürzel: nur noch eigene (§3), alte KDE-Kürzel sind freigeräumt.
 - **Freie Desktops sind die Basis:** "+" legt einen leeren Desktop an, wie in Plasma. **Vorlagen** (Code, Office, Fun) gibt es nur zusätzlich, nie als Pflicht.

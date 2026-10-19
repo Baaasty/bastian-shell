@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git blame:*)",
+      "Bash(ls:*)",
+      "Bash(rg:*)",
+      "Bash(scripts/check:*)",
+      "Bash(qs ipc:*)",
+      "Bash(journalctl --user -u desktop-shell:*)"
+    ],
+    "deny": [
+      "Read(./**/.env)",
+      "Read(./**/.env.local)",
+      "Read(./**/.env.development)",
+      "Read(./**/.env.production)",
+      "Read(./**/.env.dev)",
+      "Read(./**/.env.prod)",
+      "Read(./**/.env.test)",
+      "Read(./**/.env.staging)",
+      "Read(./**/.env.*.local)",
+      "Read(./**/secrets.json)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(kwin_wayland:*)",
+      "Bash(pkill plasmashell:*)",
+      "Bash(killall plasmashell:*)",
+      "Bash(pkill kded6:*)",
+      "Bash(killall kded6:*)"
+    ]
+  }
+}

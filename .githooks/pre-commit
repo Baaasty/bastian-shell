@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Läuft vor jedem Commit (aktiv über: git config core.hooksPath .githooks).
+# Überspringen nur im Notfall: git commit --no-verify
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+# 1) Nie Secrets committen (.env*, secrets.json, *.pem, *.key – neu hinzugefügt/umbenannt; schon eingecheckte Dateien gleichen Namens bleiben änderbar)
+bad=$(git diff --cached --name-only --diff-filter=ACR | grep -E '(^|/)(secrets\.json|\.env(\.[^/]*)?|[^/]+\.(pem|key))$' | grep -vE '\.example$' || true)
+if [ -n "$bad" ]; then
+  echo "pre-commit: Secret-Datei vorgemerkt, abgebrochen:" >&2
+  echo "$bad" >&2
+  exit 1
+fi
+
+# 2) Qualitäts-Checks (nur wenn eingerichtet)
+[ ! -x scripts/check ] || scripts/check

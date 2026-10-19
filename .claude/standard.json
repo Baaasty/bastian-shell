@@ -1,0 +1,9 @@
+{
+  "version": 4,
+  "appliedAt": "2026-10-19",
+  "type": "desktop",
+  "profile": "solo",
+  "stack": "qml",
+  "skipped": [],
+  "_hinweis": "Stand von Bastians Projekt-Standard (skills/_standard in webbude-skills). Aktualisieren mit /project (Standard angleichen); skipped = nie wieder fragen."
+}
