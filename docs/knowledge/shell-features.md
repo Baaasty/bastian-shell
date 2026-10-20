@@ -47,6 +47,7 @@ Code: `shell/services/SpotifyApi.qml`, `shell/modules/bar/Spotify*.qml`, Backend
 - „Als Nächstes“ ab dem aktuellen Song; Songwechsel schneidet sofort per MPRIS ab. Ohne Shuffle: Warteschlange nur selbst Eingereihtes; mit Shuffle: Gehörtes (Sitzung + recently-played, 5 min Cache) raus.
 - Budget im Skript für alle Aufrufe: 20 Anfragen / 60 s; nach 429 Pause = Retry-After, mind. 30 s, verdoppelt bis 15 min, Erfolg setzt zurück. Playlist-Kopf 5 min gecacht.
 - Ein `now` kostet meist 2 Anfragen (Warteschlange + Player), Seiten nur bei neuer `snapshot_id`. Spotify-eigene Playlists kommen über die Einbett-Seite (max. ~100 Songs, aktueller Song fehlt dann evtl.).
+- Frisch gestartetes Spotify lädt nichts (MPRIS: Stopped, CanPlay=false) – Play geht dann über `spotify-api resume` (Web API, dieses Gerät). Ohne Spielstand bei Spotify startet der letzte gehörte Song von vorn (recently-played kennt keine Position).
 
 ## Update-Chip
 Code: `shell/services/Updates.qml`, `shell/modules/bar/UpdatesChip.qml`, Backend `scripts/pkg` · Zustand: `~/.local/state/desktop/updates.json` (löschen = beim nächsten Start neu prüfen)
@@ -102,8 +103,8 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
 - xdph wartet blockierend auf `share-pick` – hängt es, hängt jedes weitere Teilen (20.10.: Region für Discord → Discord fragte in
   Schleife, Portal-Neustart nötig). Darum: hartes Zeitlimit je Anfrage (60 s + 20 s), eine Anfrage nach der anderen (Sperre),
   Reiter Region nicht für Discord & Co., Region nie gemerkt. `share-stop` liest nur `pw-cli ls` (pw-dump hängt mit xdph).
-- GTK-Alternative (hyprland-preview-share-picker, Commit `7e11349` geprüft, `PIN` im Skript) braucht sudo-Pakete; Tastatur erst nach Klick.
 - Die Karte bricht nur bewusst ab (Esc, Cancel, Klick daneben/auf anderen Monitor); endet ihr Fang ohne Klick, fängt sie neu.
+- GTK-Alternative (hyprland-preview-share-picker, Commit `7e11349` geprüft, `PIN` im Skript) braucht sudo-Pakete; Tastatur erst nach Klick.
 
 # Launcher
 
@@ -179,10 +180,10 @@ Code: `shell/modules/idle/Idle.qml` (IPC `dim`), `scripts/idle` · Konfig: `hypr
 Code: `shell/modules/screenshot/` (`Snip.qml`, `SnipPin.qml`, `SnipToast.qml`), `scripts/snip-ocr`, `scripts/snip-color`
 - Bilder nur im RAM (`$XDG_RUNTIME_DIR/desktop-snip/`), OCR-Bild sofort gelöscht, Pins beim Schließen; alles offline.
 - OCR braucht `tesseract tesseract-langpack-deu tesseract-langpack-eng` (sudo). Farbe kommt aus dem eingefrorenen Bild, `hyprpicker` ist unnötig.
-
 - Maus und Pfeile teilen sich einen Zielpunkt: der echte Zeiger springt per `movecursor` mit, das Bewegungs-Echo wird über `warps` verworfen. Alt+Pfeile sind in Hyprland belegt, darum Strg für „ganze Auswahl“.
 - Pipette nur im Snip, kein eigenes Kürzel (ein Weg statt zwei). Der Hex in der Lupe liest ein Canvas aus demselben eingefrorenen Bild wie `snip-color` beim Kopieren.
 - Aufnahme-Quellwahl = SharePicker im Modus „record“ (ohne Portal, nichts gemerkt). wf-recorder kann nur Bildschirmbereiche: ein Fenster wird als seine Fläche aufgenommen (was darüber liegt, ist mit drin; Verschieben wird nicht verfolgt), darum listet die Wahl nur sichtbare Fenster.
+
 ## Absturz-Karten
 Code: `shell/services/Crashes.qml`, `shell/modules/crash/` · DrKonqi: `scripts/hypr drkonqi off|on|status`
 - Nur Apps bekommen eine Karte; CLI-Abstürze werden nur gezählt (`crash list`). Kein Restart für Shell, Hyprland, Portale (die startet systemd).

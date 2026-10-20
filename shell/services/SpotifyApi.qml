@@ -37,6 +37,14 @@ Singleton {
     readonly property real bornAt: Date.now()
 
     readonly property bool spotifyRunning: Players.spotify !== null
+    // Spotify läuft, hat aber nichts geladen (frisch gestartet): MPRIS meldet Stopped + CanPlay=false, Play wirkt dort nicht
+    readonly property bool idle: {
+        const p = Players.spotify;
+        return p !== null && (!p.canPlay || !p.trackTitle);
+    }
+    property var lastPlayed: null        // { uri, name, artists, image } – zuletzt gehört laut API, für die leere Anzeige
+    property bool resuming: false
+    property string resumeError: ""      // kurzer Text, falls resume scheitert
     readonly property bool shuffleOn: {
         const p = Players.spotify;
         return p && p.shuffleSupported ? p.shuffle : apiShuffle;
@@ -78,6 +86,54 @@ Singleton {
     function message(kind: string): string {
         return messages[kind] || ("Spotify error (" + kind + ")");
     }
+
+    // resume-spezifisch: no_device heißt hier „Client noch nicht bei Spotify Connect“
+    function resumeMessage(kind: string): string {
+        return kind === "no_device" ? "Open Spotify first"
+            : kind === "nothing" ? "Nothing to resume – pick something in Library"
+            : message(kind);
+    }
+
+    // Play/Pause für Spotify: ohne geladenen Song über die Web API auf diesem PC weiterspielen
+    function playPause(): void {
+        const p = Players.spotify;
+        if (!p)
+            return;
+        if (idle)
+            resume();
+        else
+            p.togglePlaying();
+    }
+
+    function resume(): void {
+        if (resumeProc.running)
+            return;
+        if (!configured || blocked()) {
+            showResumeError(configured ? "rate_limited" : "unconfigured");
+            return;
+        }
+        resumeError = "";
+        resuming = true;
+        resumeProc.running = true;
+    }
+
+    function showResumeError(kind: string): void {
+        resumeError = resumeMessage(kind);
+        resumeErrorOff.restart();
+    }
+
+    // einmal je Leerlauf-Phase: zuletzt gehörten Song holen (Skript cacht ihn RECENT_TTL)
+    function loadLast(): void {
+        if (idle && configured && !blocked() && !lastProc.running)
+            lastProc.running = true;
+    }
+    onIdleChanged: {
+        if (idle)
+            loadLast();
+        else
+            resumeError = "";
+    }
+    onConfiguredChanged: loadLast()
 
     function blocked(): bool {
         return Date.now() < blockedUntil;
@@ -398,6 +454,42 @@ Singleton {
         onTriggered: {
             pending = false;
             root.refresh();
+        }
+    }
+
+    Timer {
+        id: resumeErrorOff
+        interval: 6000
+        onTriggered: root.resumeError = ""
+    }
+
+    Process {
+        id: lastProc
+        command: [root.script, "last"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const j = root.parse(text);
+                if (!j.failed)
+                    root.lastPlayed = j.track || null;
+            }
+        }
+    }
+
+    Process {
+        id: resumeProc
+        command: [root.script, "resume"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const j = root.parse(text);
+                root.resuming = false;
+                if (j.failed) {
+                    root.showResumeError(j.failed);
+                    return;
+                }
+                if (j.track)
+                    root.lastPlayed = j.track;
+                settle.restart();  // Warteschlange/Kontext zum neuen Song nachladen
+            }
         }
     }
 

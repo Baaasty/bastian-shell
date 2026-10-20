@@ -97,6 +97,11 @@ Scope {
         }
         function playPause(): void {
             const p = root.player;
+            // Spotify frisch gestartet, nichts geladen: über die Web API weiterspielen statt „Nothing playing“
+            if (p && p === Players.spotify && SpotifyApi.idle) {
+                SpotifyApi.resume();
+                return press("play_arrow");
+            }
             if (!p || !p.canTogglePlaying)
                 return press("");
             const icon = p.isPlaying ? "pause" : "play_arrow";

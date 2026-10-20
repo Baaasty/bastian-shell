@@ -10,9 +10,12 @@
   scripts/spotify-api play-track <uri> [ctx]     Song spielen (im Kontext, falls angegeben)
   scripts/spotify-api play-context <uri> [--from-start|--shuffle]
                                                  Playlist/Album spielen (ab Song 1 / zufällig)
+  scripts/spotify-api last                       zuletzt gehörter Song (+ Kontext), für die leere Anzeige
+  scripts/spotify-api resume                     auf diesem PC weiterspielen, wenn MPRIS nichts geladen hat
+                                                 (frisch gestartetes Spotify): sonst letzter Song im Kontext
 
 Fehler kommen als {"error": "<art>", ...} (Exit 1): unconfigured, reauth, premium, forbidden,
-rate_limited (+retry_after), no_device, not_found, network, http.
+rate_limited (+retry_after), no_device, not_found, nothing (resume ohne Verlauf), network, http.
 Tokens stehen nur in secrets.json und werden nie ausgegeben. Kopplung: scripts/spotify-auth
 Gesperrte (fremde/Spotify-)Playlists: Songliste aus der öffentlichen Einbett-Seite (ohne Token).
 Rate-Limit: höchstens BUCKET_SIZE Anfragen je BUCKET_WINDOW s über alle Aufrufe (ratelimit.json im Cache);
@@ -51,6 +54,8 @@ COLLECTION_TTL = 600  # Lieblingssongs-Cache (s), haben keine snapshot_id
 META_TTL = 300        # Playlist-Kopf (Name, Cover, snapshot_id) – sonst kostet jeder Songwechsel eine Anfrage mehr
 RECENT_TTL = 300      # zuletzt gehörte Songs (Shuffle-Filter, Playlist-Sortierung)
 TIMEOUT = 10
+DEVICE_TRIES = 3      # resume: so oft nach diesem PC unter den Spotify-Connect-Geräten fragen …
+DEVICE_PAUSE = 2.0    # … mit so viel Pause (s) – frisch gestartet meldet sich der Client erst nach ein paar Sekunden
 
 BUCKET_SIZE = 20      # Anfragen …
 BUCKET_WINDOW = 60    # … je so viele Sekunden, für alle Aufrufe zusammen (Shell, Kürzel, Hand)
@@ -774,10 +779,75 @@ def cmd_play_context(uri: str, mode: str = "") -> dict:
     return play({"context_uri": uri})
 
 
+def bare_uri(uri: str) -> str:
+    """recently-played hängt teils ?sessionId=…&mode=enhanced an – so lehnt /me/player/play den Kontext ab."""
+    return str(uri).split("?", 1)[0]
+
+
+def last_played() -> dict:
+    """{"track": {...}|None, "context": uri} – der neueste Eintrag aus recently-played, RECENT_TTL gecacht.
+    Ohne Scope user-read-recently-played (alte Kopplung) leer – auch das gecacht."""
+    c = cache_get("last")
+    if c and time.time() - float(c.get("at") or 0) < RECENT_TTL:
+        return {"track": c.get("track"), "context": bare_uri(c.get("context") or "")}
+    try:
+        items = (call("GET", "/me/player/recently-played", {"limit": 1}) or {}).get("items") or []
+    except ApiError as e:
+        if e.kind not in ("forbidden", "http"):
+            raise
+        items = []
+    it = items[0] if items and isinstance(items[0], dict) else {}
+    res = {"track": track(it.get("track")), "context": bare_uri(((it.get("context") or {}).get("uri")) or "")}
+    cache_put("last", dict(res, at=time.time()))
+    return res
+
+
+def local_device() -> dict:
+    """Spotify auf diesem PC: Computer mit Hostnamen, sonst der aktive, sonst der einzige Computer.
+    Nicht dabei -> DEVICE_TRIES-mal nachfragen (Client meldet sich erst kurz nach dem Start an)."""
+    host = socket.gethostname().split(".")[0].lower()
+    for n in range(DEVICE_TRIES):
+        devs = (call("GET", "/me/player/devices") or {}).get("devices") or []
+        pcs = [d for d in devs if isinstance(d, dict) and d.get("id") and not d.get("is_restricted")
+               and d.get("type") == "Computer"]
+        hit = (next((d for d in pcs if host and host in (d.get("name") or "").lower()), None)
+               or next((d for d in pcs if d.get("is_active")), None)
+               or (pcs[0] if len(pcs) == 1 else None))
+        if hit:
+            return hit
+        if n + 1 < DEVICE_TRIES:
+            time.sleep(DEVICE_PAUSE)
+    raise ApiError("no_device", 404, "Spotify is not running on this PC")
+
+
+def cmd_resume() -> dict:
+    """Weiterspielen auf diesem PC. Mit Spielstand bei Spotify: dort fortsetzen (übernimmt das Gerät);
+    ohne (nach Neustart meist leer): letzter gehörter Song in seinem Kontext, sonst nur der Song."""
+    dev = local_device()
+    target = {"device_id": dev["id"]}
+    p = call("GET", "/me/player", {"additional_types": "track,episode"})
+    if p and p.get("item"):
+        call("PUT", "/me/player/play", target)
+        return {"ok": True, "via": "resume", "track": track(p.get("item"))}
+    last = last_played()
+    t = last["track"]
+    if not t:
+        raise ApiError("nothing", message="no recently played track")
+    body = play_body(t["uri"], last["context"])
+    try:
+        call("PUT", "/me/player/play", target, body)
+    except ApiError as e:
+        # Kontext weg (gelöschte/gesperrte Playlist) -> wenigstens den Song
+        if "context_uri" not in body or e.kind not in ("not_found", "forbidden", "http"):
+            raise
+        call("PUT", "/me/player/play", target, {"uris": [t["uri"]]})
+    return {"ok": True, "via": "recent", "track": t}
+
+
 def run(argv: list[str]) -> tuple[dict, int]:
     ap = argparse.ArgumentParser(prog="spotify-api", description="Spotify Web API → JSON")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("queue", "context", "now", "playlists"):
+    for name in ("queue", "context", "now", "playlists", "last", "resume"):
         sub.add_parser(name)
     pt = sub.add_parser("play-track")
     pt.add_argument("uri")
@@ -800,6 +870,10 @@ def run(argv: list[str]) -> tuple[dict, int]:
             res = cmd_now()
         elif a.cmd == "playlists":
             res = cmd_playlists()
+        elif a.cmd == "last":
+            res = last_played()
+        elif a.cmd == "resume":
+            res = cmd_resume()
         elif a.cmd == "playlist":
             res = cmd_playlist(a.ref, a.offset)
         elif a.cmd == "play-track":

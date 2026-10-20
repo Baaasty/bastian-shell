@@ -56,6 +56,7 @@ Item {
     }
 
     readonly property string hint: !SpotifyApi.configured ? SpotifyApi.message("unconfigured")
+        : SpotifyApi.idle && rows.length === 0 ? "Press play to pick up where you left off"
         : SpotifyApi.status === "error" && rows.length === 0 ? SpotifyApi.message(SpotifyApi.error)
         : SpotifyApi.status === "loading" && rows.length === 0 ? "Loading…"
         : SpotifyApi.status === "ok" && rows.length === 0 ? "Nothing up next"

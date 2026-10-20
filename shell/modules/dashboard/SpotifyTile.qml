@@ -176,7 +176,7 @@ Glass {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: if (tile.player) tile.player.togglePlaying()
+                        onClicked: SpotifyApi.playPause()
                     }
                 }
                 Icon {

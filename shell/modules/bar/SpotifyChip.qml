@@ -13,6 +13,10 @@ Row {
 
     property var barWindow
     readonly property var player: Players.spotify
+    // Spotify läuft, aber nichts geladen: zuletzt gehörten Song gedimmt zeigen, Play spielt ihn per Web API weiter
+    readonly property bool idle: SpotifyApi.idle
+    readonly property var last: SpotifyApi.lastPlayed
+    readonly property string idleHint: SpotifyApi.resuming ? "Resuming…" : SpotifyApi.resumeError || "Play to resume"
 
     // Spotify läuft nicht: Play startet es im Hintergrund und spielt los, sobald es da ist
     property bool starting: false
@@ -40,6 +44,10 @@ Row {
             if (root.player && root.player.canPlay && (parked || ticks > 10)) {
                 if (!root.player.isPlaying)
                     root.player.play();
+                stop();
+            } else if (root.player && ticks > 12) {
+                // frisch gestartet lädt Spotify nichts (CanPlay bleibt false) -> über die Web API weiterspielen
+                SpotifyApi.resume();
                 stop();
             } else if (ticks > 40) {
                 stop(); // nach 20 s aufgeben
@@ -105,7 +113,8 @@ Row {
             Image {
                 anchors.fill: parent
                 visible: root.player !== null
-                source: root.player ? root.player.trackArtUrl : ""
+                source: root.idle ? (root.last ? root.last.image : "") : root.player ? root.player.trackArtUrl : ""
+                opacity: root.idle ? 0.45 : 1
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 sourceSize.width: 44
@@ -124,15 +133,16 @@ Row {
         Txt {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, 260)
-            text: root.player ? root.player.trackTitle : root.starting ? "Starting Spotify…" : "Spotify"
-            color: root.player ? Theme.text : Theme.textMuted
+            text: root.idle ? (root.last ? root.last.name : "Spotify")
+                : root.player ? root.player.trackTitle : root.starting ? "Starting Spotify…" : "Spotify"
+            color: root.player && !root.idle ? Theme.text : Theme.textMuted
         }
         Txt {
             anchors.verticalCenter: parent.verticalCenter
             visible: root.player !== null
             width: Math.min(implicitWidth, 160)
-            text: root.player ? root.player.trackArtist : ""
-            color: Theme.textMuted
+            text: root.idle ? root.idleHint : root.player ? root.player.trackArtist : ""
+            color: root.idle ? (SpotifyApi.resumeError ? Theme.warning : Theme.textFaint) : Theme.textMuted
             font.weight: Font.Normal
         }
     }
@@ -140,7 +150,7 @@ Row {
     Btn {
         glyph: root.player && root.player.isPlaying ? "pause" : "play_arrow"
         filled: true
-        onClicked: root.player ? root.player.togglePlaying() : root.startAndPlay()
+        onClicked: root.player ? SpotifyApi.playPause() : root.startAndPlay()
     }
     Btn {
         glyph: "skip_next"
@@ -279,7 +289,8 @@ Row {
                     clip: true
                     Image {
                         anchors.fill: parent
-                        source: root.player ? root.player.trackArtUrl : ""
+                        source: root.idle ? (root.last ? root.last.image : "") : root.player ? root.player.trackArtUrl : ""
+                        opacity: root.idle ? 0.45 : 1
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                         sourceSize.width: 208
@@ -310,20 +321,21 @@ Row {
                     spacing: 4
                     Txt {
                         width: parent.width
-                        text: root.player ? root.player.trackTitle : ""
+                        text: root.idle ? (root.last ? root.last.name : "Nothing loaded") : root.player ? root.player.trackTitle : ""
+                        color: root.idle ? Theme.textMuted : Theme.text
                         font.pixelSize: 16
                         font.weight: Font.DemiBold
                     }
                     Txt {
                         width: parent.width
-                        text: root.player ? root.player.trackArtist : ""
+                        text: root.idle ? (root.last ? root.last.artists : "") : root.player ? root.player.trackArtist : ""
                         color: Theme.textMuted
                         font.weight: Font.Normal
                     }
                     Txt {
                         width: parent.width
-                        text: root.player ? root.player.trackAlbum : ""
-                        color: Theme.textFaint
+                        text: root.idle ? root.idleHint : root.player ? root.player.trackAlbum : ""
+                        color: root.idle && SpotifyApi.resumeError ? Theme.warning : Theme.textFaint
                         font.pixelSize: 12
                         font.weight: Font.Normal
                     }
@@ -365,6 +377,7 @@ Row {
                 MonoTxt {
                     x: 16
                     y: 156
+                    visible: !root.idle   // nichts geladen: kein „0:00 / 0:00“
                     text: root.player ? popout.fmt(root.player.position) : ""
                     color: Theme.textFaint
                     font.pixelSize: 12
@@ -373,6 +386,7 @@ Row {
                     anchors.right: parent.right
                     anchors.rightMargin: 16
                     y: 156
+                    visible: !root.idle
                     text: root.player ? popout.fmt(root.player.length) : ""
                     color: Theme.textFaint
                     font.pixelSize: 12
@@ -398,7 +412,7 @@ Row {
                     Btn {
                         glyph: root.player && root.player.isPlaying ? "pause" : "play_arrow"
                         filled: true
-                        onClicked: if (root.player) root.player.togglePlaying()
+                        onClicked: SpotifyApi.playPause()
                     }
                     Btn {
                         glyph: "skip_next"
