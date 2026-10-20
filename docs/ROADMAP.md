@@ -24,6 +24,11 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [ ] Bar-Tooltips: Maus auf einen Chip → „Name · Kürzel“, auch wenn daneben ein Popout offen ist
 - [ ] Spotify aus dem Launcher holt das weggeräumte Fenster; Symbol im Chip, wenn Spotify aus ist
 - [ ] Discord nach Selbst-Update: Popout zeigt „Restart Discord“ (spielt Equicord neu ein), direkt nach dem Start automatisch; Verlassen-Knopf zweistufig („Leave?“) – nach dem nächsten Call testen
+- [x] xwaylandvideobridge startet unter Hyprland nicht mehr (teilte still DP-2) (2026-10-20)
+- [ ] Popouts: Klick daneben (VS Code, anderer Monitor) schließt und bleibt zu · Hand-Zeiger/Tooltip auf anderen Chips, ein Klick wechselt · Songwechsel/Discord-Ereignis lässt es offen
+- [ ] Teilen-Chip (Super+Alt+P): Stop bei einer Browser-Freigabe · Mittelklick stoppt alles · gemerktes DP-2 startet Discord-Stream ohne Karte (Forget ✓, Picker-Vorrang ✓)
+- [ ] Snip mit Pfeiltasten: 1 px / Shift 10 px, Enter = Start, Pfeile = Auswahl, Enter = fertig, Esc = zurück (auch Super+R, Super+Shift+C)
+- [ ] Discord-Absturz beim ersten Cam-Start: bei Wiederholung `~/.local/state/desktop/discord-stderr.log` schicken
 
 ## Handtest (Bastian) – je Block „ok“ oder z. B. „A3 kaputt“ melden
 
