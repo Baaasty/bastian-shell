@@ -25,9 +25,10 @@
 | Hyprland-Dialoge (App reagiert nicht) | `hyprtoolkit.py` → `~/.config/hypr/hyprtoolkit.conf` (auch per `scripts/hypr install`) |
 | Bildschirm-teilen-Auswahl | `share_picker.py` → Stylesheet für hyprland-preview-share-picker |
 | Qt/KDE-Apps, KDE-Dateidialog | `kde_colors.py` → Schema „Desktop Hearth“, setzen `plasma-apply-colorscheme DesktopHearth`; Widget-Stil Breeze |
-| Qt-Menüs mit echten Radien (vorbereitet, aus) | `kvantum.py` → `scripts/kvantum-theme on\|off` (braucht `kvantum`, sudo) |
+| Qt-Widget-Stil (Menüs mit Radien, ruhiger Hover) | `kvantum.py` → Kvantum „DesktopHearth“, **an** seit 2026-10-20: `scripts/kvantum-theme on\|off\|status` |
+| KWrite/Kate-Textfläche (KTextEditor) | `ktexteditor.py` → Theme „Desktop“ (`~/.local/share/org.kde.syntax-highlighting/themes/desktop.theme`), `ktexteditor.py --an\|--aus` |
 | GTK3/GTK4/libadwaita, auch Flatpaks | `gtk.py` → `gtk.css` + `settings.ini`, Flatpak-Override (Lesen der gtk-Ordner); zurück `--rueckweg` |
-| Ordner-Icons (holzbraun) | `icons.py` → Icon-Theme `Desktop-Icons` (an: `/usr/libexec/plasma-changeicons Desktop-Icons`) |
+| Ordner- und Ort-Icons (holzbraun) | `icons.py` → Icon-Theme `Desktop-Icons` (an: `/usr/libexec/plasma-changeicons Desktop-Icons`) |
 | Cursor „Desktop“ | `design/cursors/build-xcursor.sh` (läuft mit `all.py`) |
 | Wallpaper | `wallpaper.py` (nicht in `all.py`) → `scripts/wallpaper set` |
 | Kitty (Standard-Terminal) | `kitty.py` → `theme/out/kitty/theme.conf`, `scripts/kitty-theme install\|off` |
@@ -67,7 +68,15 @@ Was der Shell gehört, ist **eigen** gebaut; was Apps und Portale zeigen, lässt
 ### Qt/KDE
 
 - Breeze malt Menüs immer in der Fensterfarbe mit ~5-px-Ecken und Akzent-Rahmen als Hover – per Farbschema nicht änderbar.
-  Nur Kvantum (`kvantum.py`, Basis KvFlat, GPL-3.0) gibt Radien und ruhigen Hover; Tabs/Häkchen sind dort etwas gröber.
+  Darum Kvantum (`kvantum.py`, Basis KvFlat, GPL-3.0): Radien, ruhiger Hover; Häkchen = gefülltes Terrakotta-Kästchen.
+  Kvantum liest seine Farben aus der eigenen `.kvconfig` (aus der Palette), nicht aus `kdeglobals`. Laufende Qt-Prozesse
+  (auch `dolphin --daemon`, `xdg-desktop-portal-kde` = Dateidialoge) wechseln den Stil erst nach Neustart.
+  Variante geht mit: `all.py` (also auch `rice variant`) ruft `kvantum-theme refresh` (nur wenn an).
+  `splitter_width=1` wie Breeze: Dolphins kleine Statuszeile zieht 2 + 2·Splitterbreite als Rand ab (sonst „11 …ers“).
+  Grenze: KDE-Dateidialog, Detailansicht – Kvantums `CT_ItemViewItem` verwirft die Breite von `KFileItemDelegate`, das
+  danach noch 2·PM_FocusFrameHMargin abzieht → schmale Spalten mittig gekürzt („2 …ms“). Per `.kvconfig` nicht lösbar.
+- KTextEditor (KWrite, Kate) nimmt für die Textfläche nicht das Farbschema, sondern ein KSyntaxHighlighting-Theme;
+  ohne Eintrag „Color Theme“ in `kwriterc`/`katerc` (Gruppe „KTextEditor Renderer“) wählt es Breeze Dark (blaugrau).
 - Das alte Schema „Desktop“ (ember) bleibt bestehen, hearth überschreibt es nicht: `scripts/rice` und `scripts/loginscreen`
   (Greeter-Farbschema) nutzen es noch.
 - Qt-Apps lesen nur `kdeglobals`; `QT_QPA_PLATFORMTHEME=kde` kommt aus der Hyprland-Umgebung. Unter Hyprland ohne Titelleisten
@@ -75,6 +84,8 @@ Was der Shell gehört, ist **eigen** gebaut; was Apps und Portale zeigen, lässt
 - **Ordner-Icons:** Breeze färbt bunte Ordner über `ColorScheme-Accent` mit dem Akzent – Akzent ändern hieße ganze UI ändern.
   Darum spiegelt `icons.py` Breeze Dark per Symlinks (KIconLoader sucht gekürzte Namen; ein schlankes Theme würde
   `folder-new` & Co. überdecken) und ersetzt nur die Ordner-SVGs. Name `Desktop-Icons`, weil `icons/Desktop` der Cursor ist.
+  Ort-Bilder mit festen Farben (Schreibtisch, Papierkorb; Liste `ILLUSTRATED`) legt es nach Helligkeit auf Palette-Rampen;
+  App-Icons und KDE-Logo bleiben. Laufende Apps sehen neue Icons erst nach Neustart.
 
 ### GTK
 

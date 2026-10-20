@@ -16,7 +16,7 @@ python3 -I theme/gen/all.py walnut       # andere Variante (Namen bleiben "Deskt
 Variante umschalten (setzt `defaultTheme`, erzeugt alles neu, wendet an, was schon aktiv ist; Shell live):
 `scripts/rice variant` (Liste) · `scripts/rice variant dusk` · Vergleich ohne Umschalten: `design/variants.html`.
 
-Einzeln: `kde_colors.py`, `konsole.py`, `starship.py`, `vscode.py` (+ `vscode_projects.py`), `chrome.py`, `thunderbird.py`; Cursor: `design/cursors/build-xcursor.sh`.
+Einzeln: `kde_colors.py`, `ktexteditor.py` (an/aus: `--an`/`--aus`), `konsole.py`, `starship.py`, `vscode.py` (+ `vscode_projects.py`), `chrome.py`, `thunderbird.py`; Cursor: `design/cursors/build-xcursor.sh`.
 Wallpaper (nicht in `all.py`): `wallpaper.py [variante] [--motif=licht,huegel,holz]` → `out/wallpaper/<variante>/<motiv>/` (gitignored) + Vorschauen `design/wallpapers/`; Vergleich `design/wallpapers.html`, setzen `scripts/wallpaper set --variant dusk --motif huegel`.
 `--alles` erzeugt zusätzlich `design/palette.js`, das Lockscreen-Theme und `Theme.qml` des Fensterwechslers (`bridge/kwin/desktop-switcher/`, installiert per `scripts/rice switcher`).
 

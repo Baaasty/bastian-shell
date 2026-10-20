@@ -647,11 +647,11 @@
 <use width="450" height="1230" xlink:href="#button-pressed-topleft" id="kvflat-lineedit-focused-bottomleft" transform="matrix(0,-1,1,0,226.24686,445)"/>
 <g id="common-focused-left" transform="translate(25,-9)">
 <path style="fill:#2F2620" id="path3760" d="m 306.5,1179 0,30 2.5,0 0,-30 z"/>
-<path style="fill:#C65A3D;fill-rule:evenodd" id="path3762" d="m 305,1179 0,30 1.5,0 0,-30 z"/>
+<path style="fill:#A07C5C;fill-rule:evenodd" id="path3762" d="m 305,1179 0,30 1.5,0 0,-30 z"/>
 </g>
 <g id="common-focused-topleft" transform="translate(25,-9)">
 <path style="fill:#2F2620" id="path3766" d="m 309,1176.5 c -1.22656,0 -2.5,1.2656 -2.5,2.5 h 2.5 z "/>
-<path style="fill:#C65A3D" id="path3768" d="m 309,1175 c -2,0 -4,2 -4,4 h 1.5 c 0,-1.2422 1.27344,-2.5 2.5,-2.5 z "/>
+<path style="fill:#A07C5C" id="path3768" d="m 309,1175 c -2,0 -4,2 -4,4 h 1.5 c 0,-1.2422 1.27344,-2.5 2.5,-2.5 z "/>
 </g>
 <use width="450" height="1230" xlink:href="#common-focused-left" id="common-focused-top" transform="matrix(0,1,-1,0,1534,836)"/>
 <use width="450" height="1230" xlink:href="#common-focused-topleft" id="common-focused-topright" transform="matrix(0,1,-1,0,1534,836)"/>

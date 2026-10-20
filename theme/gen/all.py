@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Alle Schritt-5-Generatoren nacheinander (KDE, Konsole, Starship, Equibop, Discord, VS Code, Chrome, Vimium C, Thunderbird, Hyprland + Hyprland-Dialoge, Cursor).
+"""Alle Schritt-5-Generatoren nacheinander (KDE, KTextEditor, Konsole, Starship, Equibop, Discord, VS Code, Chrome, Vimium C, Thunderbird, Hyprland + Hyprland-Dialoge, Cursor).
 
 Erzeugt theme/out/ und installiert nach ~/.local – aktiviert nichts.
 Aufruf aus dem Repo-Root:
@@ -18,7 +18,7 @@ args = sys.argv[1:]
 variant = [a for a in args if not a.startswith("--")]
 passthru = variant + (["--nur-out"] if "--nur-out" in args else [])
 
-steps = ["kde_colors.py", "konsole.py", "starship.py", "kitty.py", "fastfetch.py", "zsh.py", "bat.py", "delta.py", "yazi.py", "lazygit.py", "gtk.py", "equibop.py", "discord.py", "vscode.py", "chrome.py", "vimium.py", "thunderbird.py", "hypr.py", "hyprtoolkit.py", "share_picker.py"]
+steps = ["kde_colors.py", "ktexteditor.py", "konsole.py", "starship.py", "kitty.py", "fastfetch.py", "zsh.py", "bat.py", "delta.py", "yazi.py", "lazygit.py", "gtk.py", "equibop.py", "discord.py", "vscode.py", "chrome.py", "vimium.py", "thunderbird.py", "hypr.py", "hyprtoolkit.py", "share_picker.py"]
 if "--alles" in args:
     steps += ["preview_palette.py", "lockscreen_theme.py", "switcher.py"]
 
@@ -29,6 +29,12 @@ for s in steps:
     r = subprocess.run([sys.executable, "-I", str(HERE / s), *extra], cwd=ROOT)
     if r.returncode:
         failed.append(s)
+
+# Kvantum nur auffrischen, wenn es an ist (sonst fehlt evtl. das Paket); die Variante kommt aus palette.json
+if "--nur-out" not in args and not variant:
+    r = subprocess.run([sys.executable, "-I", str(ROOT / "scripts/kvantum-theme"), "refresh"], cwd=ROOT)
+    if r.returncode:
+        failed.append("kvantum-theme refresh")
 
 if "--nur-out" not in args and "--ohne-cursor" not in args:
     print("Cursor-Theme:", flush=True)

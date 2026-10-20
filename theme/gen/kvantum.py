@@ -105,6 +105,13 @@ OWN = re.compile(r'id="((?:menu-normal|menu-shadow|menuitem-(?:normal|focused|pr
                  r'lineedit-(?:normal|focused)|focus-normal|'
                  r'progress-(?:normal|pattern-normal))(?:-(?:top|bottom|left|right|topleft|topright|bottomleft|bottomright))?)"')
 svg = OWN.sub(lambda m: f'id="kvflat-{m.group(1)}"', svg)
+# Fokus-Rahmen von Ansichten (Dolphin, Listen): ruhiges Holz statt Terrakotta – Akzent bleibt sparsam
+# recolor() legt Blau auf genau diese vier Glut-Töne
+_glut = {mix(t["accent"], t["bgBottom"], 0.45).upper(), t.get("accentPressed", t["accent"]).upper(),
+          t["accent"].upper(), t.get("accentText", t["accent"]).upper()}
+svg = re.sub(r'(<g\b[^>]*\bid="common-focused(?:-[a-z]+)?"[^>]*>)(.*?)(</g>)',
+             lambda m: m.group(1) + HEX.sub(lambda c: t["woodLight"] if c.group(0).upper() in _glut else c.group(0),
+                                            m.group(2)) + m.group(3), svg, flags=re.S)
 
 parts: list[str] = []
 defs: list[str] = []
@@ -268,6 +275,9 @@ gen = {
     "spread_menuitems": "false",          # Einträge innen (Abstand = Menürahmen), Hover mit eigenen Ecken
     "menu_separator_height": 9,
     "submenu_overlap": 0,
+    # Dolphins kleine Statuszeile rechnet ihre Breite mit 2 + 2·PM_SplitterWidth als Rand ab (KvFlat: 7 -> 16 px,
+    # Text wird zu „11 …ers“ gekürzt). 1 px wie Breeze; die Trennlinie zeichnet ohnehin niemand.
+    "splitter_width": 1,
 }
 for k, v in gen.items():
     cfg = set_key(cfg, "%General", k, v)
