@@ -29,7 +29,8 @@ Scope {
     property bool open: false
     property var list: []          // HyprlandToplevel in Reihenfolge
     property int current: 0
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
 
     // Liste beim Öffnen einmal festhalten (Reihenfolge ändert sich sonst beim Durchblättern)
     function collect(sameApp: bool): var {
@@ -44,7 +45,6 @@ Scope {
             list = collect(sameApp);
             if (!list.length)
                 return;
-            screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
             // wie KWin: Start beim zuletzt benutzten anderen Fenster
             current = list.length > 1 ? (delta > 0 ? 1 : list.length - 1) : 0;
             open = true;

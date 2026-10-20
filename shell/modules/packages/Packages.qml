@@ -14,7 +14,8 @@ Scope {
     id: root
 
     property bool open: false
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
 
     // --- Ansicht
     property string page: "updates"     // updates | system | copr | flatpak | appimage
@@ -82,7 +83,6 @@ Scope {
     function openIt(): void {
         if (open)
             return;
-        screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         sel = -1;
         expandedKey = "";
         view = "list";

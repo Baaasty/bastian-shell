@@ -20,7 +20,8 @@ Scope {
     property bool open: false
     property string query: ""
     property bool mediaOpen: false
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
     // Abschnittsname in hypr/binds.conf ("# ---------- Topbar ----------"), der in die eigene Gruppe „Topbar“ kommt
     readonly property string topbarSection: "Topbar"
     // Fenster, das beim Öffnen fokussiert war (der Viewer selbst ist eine Layer-Fläche, ändert das also nicht)
@@ -36,7 +37,6 @@ Scope {
         const t = Hyprland.activeToplevel;
         activeClass = t ? Hypr.appId(t) : "";
         activeTitle = t ? Hypr.title(t) : "";
-        screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         query = "";
         mediaOpen = false;
         Hypr.panelOpened("keys");

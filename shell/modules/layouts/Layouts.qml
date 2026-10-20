@@ -14,7 +14,8 @@ Scope {
     id: root
 
     property bool open: false
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
 
     property var items: []              // [{name, windows, classes, monitors, saved, project, broken}]
     property var desk: null             // aktueller Desktop (Zahl) oder null
@@ -74,7 +75,6 @@ Scope {
     function openIt(): void {
         if (open)
             return;
-        screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         query = "";
         sel = 0;
         naming = false;

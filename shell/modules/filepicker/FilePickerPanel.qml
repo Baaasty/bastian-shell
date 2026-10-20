@@ -3,7 +3,6 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Quickshell.Hyprland
 import qs.config
 import qs.services
 
@@ -20,7 +19,8 @@ Scope {
     readonly property string mode: FilePicker.mode
     readonly property var filters: FilePicker.filters
     readonly property string home: FilePicker.home
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
 
     property string dir: ""             // aktueller Ordner (absolut, ohne / am Ende außer „/“)
     property bool showHidden: false     // bleibt für die Sitzung
@@ -285,7 +285,6 @@ Scope {
     }
 
     function begin(): void {
-        screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         query = "";
         confirm = "";
         notice = "";

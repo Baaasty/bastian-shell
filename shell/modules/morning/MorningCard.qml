@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
-import Quickshell.Hyprland
 import qs.config
 import qs.services
 import qs.components
@@ -13,7 +12,8 @@ import qs.components
 Scope {
     id: root
 
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
     property real remaining: 1      // 1 → 0 über closeSec
 
     readonly property string who: {
@@ -48,7 +48,6 @@ Scope {
         target: Morning
         function onOpenChanged() {
             if (Morning.open) {
-                root.screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
                 root.remaining = 1;
             }
         }

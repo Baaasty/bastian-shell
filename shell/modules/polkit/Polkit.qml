@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import Quickshell.Hyprland
 import Quickshell.Services.Polkit
 import qs.config
 
@@ -16,7 +15,8 @@ Scope {
 
     property bool wanted: true          // false = Agent abgemeldet (Wächter lässt den KDE-Agent ran)
     property bool demo: false           // Vorschau mit Scheindaten (kein Agent-Ablauf, nichts wird geprüft)
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
     readonly property var flow: agentLoader.item ? agentLoader.item.flow : null
     readonly property bool registered: agentLoader.item ? agentLoader.item.isRegistered : false
     readonly property bool active: demo || (flow !== null)
@@ -50,7 +50,6 @@ Scope {
             onAuthenticationRequestStarted: {
                 root.failed = false;
                 root.checking = false;
-                root.screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
                 card.reset();
             }
             onIsRegisteredChanged: root.writeState()
@@ -123,7 +122,6 @@ Scope {
         }
         // zum Testen: Dialog mit Scheindaten (Enter schließt, „wrong“ zeigt den Fehlversuch, Esc bricht ab)
         function demo(many: bool): string {
-            root.screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
             root.failed = false;
             root.checking = false;
             root.demo = true;

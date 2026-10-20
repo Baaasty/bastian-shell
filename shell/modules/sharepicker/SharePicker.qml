@@ -32,7 +32,8 @@ Scope {
     property bool selecting: false        // slurp läuft, Karte ist so lange weg
     property var windows: []              // [{id, cls, title, top}] top = HyprlandToplevel oder null
     property var screensList: []          // [{name, label, detail, screen}]
-    property string screenName: Config.mainScreen
+    // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
+    readonly property string screenName: Config.mainScreen
 
     readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/desktop-share-pick"
     readonly property var tabs: ["screens", "windows", "region"]
@@ -132,7 +133,6 @@ Scope {
             writeResult(token, "cancel");   // ältere Anfrage verwerfen
         prepare(req);
         token = req.token;
-        screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         open = true;
         return "ok";
     }
