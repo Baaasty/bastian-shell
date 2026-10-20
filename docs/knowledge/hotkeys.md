@@ -34,8 +34,8 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 |---|---|
 | `Super + ← / →` | Focus window |
 | `Super + Shift + ←↑↓→` | Move window |
-| `Super + ↑` | Maximize, again = fullscreen |
-| `Super + ↓` | Restore (fullscreen → maximized → normal) |
+| `Super + ↑`<br>`Alt + Shift + ↑` | Maximize, again = fullscreen |
+| `Super + ↓`<br>`Alt + Shift + ↓` | Restore (fullscreen → maximized → normal) |
 | `Super + Ctrl + →` | Resize window: wider |
 | `Super + Ctrl + ←` | Resize window: narrower |
 | `Super + Ctrl + ↓` | Resize window: taller |
@@ -85,7 +85,8 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + T` | Tasks |
 | `Super + A` | Agents (Claude) |
 | `Super + E` | Files |
-| `Super + B / W` | Browser |
+| `Super + B` | Browser here: new tab, else new window |
+| `Super + W` | Browser |
 | `Super + I` | Settings |
 | `Super + Alt + M` | Music (Spotify) |
 | `Super + Alt + C` | Chat (Discord) |

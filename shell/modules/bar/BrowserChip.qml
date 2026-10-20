@@ -7,6 +7,7 @@ import qs.components
 // Browser-Chip in der Bar (Helium, Standard für http/https laut xdg-mime): Klick holt das zuletzt benutzte
 // Helium-Fenster nach vorn (ist es schon vorn: das nächste, reihum wie in der App-Leiste), sonst startet Helium.
 // Mittelklick = neues Fenster. Weggeräumte Fenster (special:parked) zählen nicht.
+// Kürzel/Bar-Modus (here): bleibt auf dem Desktop – Browser hier → nach vorn + neuer Tab, sonst neues Fenster.
 // Bar-Modus (Super+Leertaste): B · Kürzel Super+B, alt Super+W (hypr/binds.conf, ohne Shell startet es Helium direkt)
 // IPC: qs ipc call browser focus|newWindow|status
 Chip {
@@ -29,6 +30,20 @@ Chip {
             return;
         }
         Hypr.activate(wins.length > 1 && Hypr.isActive(wins[0]) ? wins[1] : wins[0]);
+    }
+    // Super+B: nie auf einen anderen Desktop springen. Browser auf diesem Desktop → nach vorn + neuer Tab,
+    // sonst neues Fenster (landet per Regel rechts auf dem sichtbaren Workspace, hypr/rules.conf)
+    function here(): void {
+        const wins = windows().filter(t => Hypr.deskOf(t) === Hypr.currentDesk);
+        if (!wins.length) {
+            if (windows().length)
+                newWindow();
+            else
+                Launch.app(desktopId);
+            return;
+        }
+        Hypr.activate(wins[0]);
+        Hypr.batch(["dispatch sendshortcut CTRL, T, " + Hypr.sel(wins[0])], null);
     }
     function newWindow(): void {
         Launch.cmd([desktopId, "--new-window"]);
@@ -54,7 +69,7 @@ Chip {
         target: BarKeys
         function onActionRequested(name) {
             if (name === "browser")
-                chip.raise();
+                chip.here();
         }
     }
 
@@ -65,6 +80,9 @@ Chip {
         }
         function newWindow(): void {
             chip.newWindow();
+        }
+        function here(): void {
+            chip.here();
         }
         function status(): string {
             return JSON.stringify(chip.windows().map(t => Hypr.title(t)));

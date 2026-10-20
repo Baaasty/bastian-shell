@@ -3,7 +3,7 @@
 
   winmove dir l|r|u|d        wie `movewindow <richtung>`
   winmove mon <monitorname>  wie `movewindow mon:<name>`
-  winmove max up|down        Stufe hoch/runter: normal → maximiert → Vollbild (Super+↑/↓)
+  winmove max up|down        Stufe hoch/runter: normal → maximiert → Vollbild (Super+↑/↓, Alt+Shift+↑/↓)
 
 Warum: Mit cursor:no_warps bleibt der Mauszeiger auf dem alten Monitor, und Hyprland fokussiert dort das
 verbliebene Fenster, nicht das verschobene (z. B. zwei Fenster im Split, rechtes auf den nächsten Monitor).
@@ -15,6 +15,7 @@ Für „↑ eine Stufe größer, ↓ eine Stufe zurück“ braucht es den aktuel
 0 normal, 1 maximiert, 2+ Vollbild). Ein Umschalter auf einen anderen Modus wechselt direkt dorthin.
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -42,7 +43,21 @@ def step(direction):
     elif direction == "down" and state > 0:
         # Vollbild → maximiert (Umschalter auf anderen Modus), maximiert → normal (Umschalter aus)
         hc("dispatch", "fullscreen", "1")
+    else:
+        return 0
+    shell_refresh()
     return 0
+
+
+def shell_refresh():
+    # Vollbild → maximiert meldet Hyprland nicht verlässlich: die Shell sofort nachfragen lassen,
+    # sonst kommt die Bar erst mit ihrer Abfrage (Windows.qml) zurück. Ohne laufende Shell egal.
+    shell = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shell")
+    try:
+        subprocess.Popen(["qs", "ipc", "--any-display", "-p", shell, "call", "hypr", "refresh"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
 
 
 def main():

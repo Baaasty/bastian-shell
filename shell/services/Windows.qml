@@ -30,9 +30,10 @@ Singleton {
         function onVersionChanged() { root.recompute(); }
     }
     // Vollbild → maximiert (Super+↓, Hyprland fullscreen 2 → 1) kam nicht zuverlässig als Ereignis an: der Stand
-    // blieb auf Vollbild, Bar und Leisten blieben weg. Solange Vollbild gilt, die echte Lage nachfragen (1×/s, billig).
+    // blieb auf Vollbild, Bar und Leisten blieben weg. Solange Vollbild gilt, die echte Lage nachfragen (2×/s, billig).
+    // Über Super+↑/↓ fragt scripts/winmove sofort nach (hypr refresh), das hier fängt F11 & Co.
     Timer {
-        interval: 1000
+        interval: 500
         repeat: true
         running: root.fullscreen
         onTriggered: Hyprland.refreshToplevels()
