@@ -80,6 +80,8 @@ Discord muss dabei beendet sein. Rückweg: `scripts/equicord uninject`.
   20.10. (Host 1.0.164) neu: **SIGABRT** im Renderer 0,4 s nach dem ersten Kamerastart, ohne NVIDIA-Bibliothek, zweiter Start ging.
   Stack fehlt (Kern abgeschnitten, Crashpad aus wegen Equicords `ELECTRON_ENABLE_STACK_DUMPING`) → `app-run` schreibt
   stderr nach `~/.local/state/desktop/discord-stderr.log`, dort steht der Stack beim nächsten Absturz.
+  Abends 3 weitere Renderer-Abstürze, wieder `libnvcuvid + 0x1b021` (Kamera H.264 und Go Live H.265 über NVENC) – Discord/NVIDIA,
+  nicht Plugin oder fastprobe. Ein Absturz des Hauptprozesses kam von KDEs `colorreload-gtk-module` (Ursache: `theme/gen/gtk.py`).
 - Discord-Updates können DOM-Selektoren und Store-Namen brechen (das Plugin patcht nichts, ist also weniger fragil).
 - Eigener Equicord-Build = Updates nur per `scripts/equicord update`.
 - **Testen ohne Call:** `scripts/cam-fake` gibt sich als Plugin aus (nur bei beendetem Discord). `DESKTOP_CAMS_SOCK` und

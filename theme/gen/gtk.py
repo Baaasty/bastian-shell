@@ -359,6 +359,10 @@ def set_ini(path: pathlib.Path, tag: str, set_keys: dict, drop_keys=()):
     for k, v in set_keys.items():
         if k not in seen:
             out.append(f"{k}={v}")
+    # unverändert: nicht schreiben – jede Änderung weckt GTK-Programme und kded (siehe gtk-modules unten)
+    if out == lines:
+        print(f"  = {path} (unverändert)")
+        return
     path.write_text("\n".join(out) + "\n")
     print(f"  -> {path}")
 
@@ -376,10 +380,12 @@ backup_file(gl, "flatpak-overrides-global")
 install_css("gtk-4.0", css4)
 install_css("gtk-3.0", css3)
 
-# GTK3: Breeze-Theme (dunkel) bleibt, nur die Farben kommen aus gtk.css; die KDE-Module (alte Titelknopf-SVGs
-# in Ember-Farben, colors.css-Reload) raus.
+# GTK3: Breeze-Theme (dunkel) bleibt, nur die Farben kommen aus gtk.css.
+# gtk-modules NICHT anfassen: kded (gtkconfig) schreibt sie bei jeder KDE-Einstellungsänderung ohnehin zurück. Das Hin
+# und Her lässt laufende GTK-Programme colorreload-gtk-module entladen, dessen Dateiwächter auf colors.css aber bleibt –
+# beim nächsten colors.css von kded springt er in entladenen Code: SIGSEGV (2026-10-20 Discord + xdg-desktop-portal-gtk).
 set_ini(CFG / "gtk-3.0/settings.ini", "gtk-3.0-settings.ini",
-        {"gtk-theme-name": "Breeze", "gtk-application-prefer-dark-theme": "true"}, drop_keys=("gtk-modules",))
+        {"gtk-theme-name": "Breeze", "gtk-application-prefer-dark-theme": "true"})
 set_ini(CFG / "gtk-4.0/settings.ini", "gtk-4.0-settings.ini", {"gtk-application-prefer-dark-theme": "true"})
 
 # gsettings: GTK3 (Wayland) liest hier zuerst; libadwaita nutzt color-scheme
