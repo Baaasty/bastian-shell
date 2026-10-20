@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import qs.config
 
 // Fensterlage auf dem Hauptmonitor: ragt ein Fenster oben in die Bar? Läuft etwas im Vollbild?
@@ -27,6 +28,14 @@ Singleton {
     Connections {
         target: Hypr
         function onVersionChanged() { root.recompute(); }
+    }
+    // Vollbild → maximiert (Super+↓, Hyprland fullscreen 2 → 1) kam nicht zuverlässig als Ereignis an: der Stand
+    // blieb auf Vollbild, Bar und Leisten blieben weg. Solange Vollbild gilt, die echte Lage nachfragen (1×/s, billig).
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.fullscreen
+        onTriggered: Hyprland.refreshToplevels()
     }
     onScreenChanged: recompute()
     Component.onCompleted: recompute()
