@@ -661,6 +661,7 @@ class Session:
                 self.update_settings(d)
             elif action == "leave":
                 self.call("SELECT_VOICE_CHANNEL", {"channel_id": None, "timeout": 5})
+                log("leave: ok")   # Spur fürs Log: kam der Befehl bei Discord an (die Shell prüft nach 4 s nach)
                 self.dirty_channel = True
             elif action in ("uvol", "umute"):
                 args = {"user_id": a[0]}

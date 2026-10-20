@@ -64,6 +64,16 @@ case "$(which_app "$app")" in
         if [ "$app" = discord ]; then
             # eigenes Equicord (Plugin desktopBridge) nach einem Discord-Update neu einspielen; still, nie abbrechen
             "$(dirname -- "$(readlink -f -- "$0")")/equicord" inject --if-needed || true
+            # Discords Updater startet sich nach einem Host-Update selbst neu (ohne Equicord, Flags, fastprobe) -> 2 min
+            # aufpassen und höchstens einmal heilen. Eigene Unit: überlebt das exec unten und Shell-Neustarts.
+            # Fester Name = nie zwei Wächter; DESKTOP_DISCORD_HEALED = dieser Start ist schon die Heilung.
+            if [ -z "${DESKTOP_DISCORD_HEALED:-}" ]; then
+                apps=$(cd "${XDG_CONFIG_HOME:-$HOME/.config}/discord" 2>/dev/null && ls -d app-* 2>/dev/null)
+                # shellcheck disable=SC2086  # Ordnernamen ohne Leerzeichen, eins pro Argument
+                systemd-run --user --quiet --collect --unit=desktop-discord-update-watch \
+                    "$(dirname -- "$(readlink -f -- "$0")")/equicord" watch-update $apps >/dev/null 2>&1 || true
+            fi
+            unset DESKTOP_DISCORD_HEALED
             # Kameras/Plugin sollen auch minimiert/weggeräumt weiterlaufen (Chromium drosselt sonst Hintergrund-Fenster)
             set -- --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding "$@"
             # Kamera startet sonst erst nach ~7 s (Format-Abfrage an die Facecam); nur wenn gebaut und nicht abgeschaltet

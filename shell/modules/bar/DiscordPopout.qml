@@ -22,6 +22,7 @@ PopupWindow {
     property string expandedId: ""      // Person mit offenem Lautstärke-Menü
     property string openGuild: ""       // aufgeklappter Server in der Kanal-Auswahl
     property bool confirmLeave: false
+    property bool confirmRestart: false // „Restart Discord“ im Call: erst nachfragen (beendet den Call)
     property real appear: 0             // 0..1 für Ein-/Ausblenden
 
     readonly property bool want: hoverOpen && !!barWindow && chip !== null
@@ -67,6 +68,7 @@ PopupWindow {
         }
         expandedId = "";
         confirmLeave = false;
+        confirmRestart = false;
         hoverOpen = false;
         appear = 0;
     }
@@ -165,6 +167,11 @@ PopupWindow {
         id: leaveReset
         interval: 3000
         onTriggered: pop.confirmLeave = false
+    }
+    Timer {
+        id: restartReset
+        interval: 4000
+        onTriggered: pop.confirmRestart = false
     }
 
     // Dauer: "4 min", "1 h 05"
@@ -464,10 +471,69 @@ PopupWindow {
                 width: flick.width
                 spacing: 0
 
+                // ================= Equicord weg (meist nach einem Discord-Update) =================
+                // statt still wegfallender Cam/Stream-Knöpfe: sagen, was los ist, und mit einem Knopf heilen
+                Reveal {
+                    id: eqBox
+                    shown: Discord.pluginMissing || Discord.restarting
+                    gap: 4
+
+                    Rectangle {
+                        width: parent.width
+                        height: eqText.implicitHeight + 20
+                        radius: Theme.radiusMd
+                        color: Theme.surfaceSunken
+                        border.width: 1
+                        border.color: Qt.alpha(Theme.accent, 0.45)
+
+                        Icon {
+                            id: eqIcon
+                            x: 10
+                            y: 10
+                            name: Discord.restarting ? "autorenew" : "extension_off"
+                            size: 18
+                            color: Theme.accentText
+                        }
+                        Txt {
+                            id: eqText
+                            anchors.left: eqIcon.right
+                            anchors.leftMargin: 8
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            y: 10
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: 13
+                            font.weight: Font.Normal
+                            color: Theme.text
+                            text: Discord.restarting ? "Restarting Discord with Equicord…"
+                                : Discord.pluginMissingReason === "update"
+                                    ? "Equicord gone after a Discord update – Cam, Stream and camera tiles are off."
+                                    : "Equicord isn’t responding – Cam, Stream and camera tiles are off."
+                        }
+                    }
+                    // im Call zweimal drücken: der Neustart beendet den Call
+                    CtlBtn {
+                        visible: !Discord.restarting
+                        width: parent.width
+                        icon: "restart_alt"
+                        text: pop.confirmRestart ? "Restart now? Leaves the call" : "Restart Discord"
+                        primary: true
+                        onClicked: {
+                            if (Discord.inVoice && !pop.confirmRestart) {
+                                pop.confirmRestart = true;
+                                restartReset.restart();
+                                return;
+                            }
+                            pop.confirmRestart = false;
+                            Discord.restartDiscord();
+                        }
+                    }
+                }
+
                 // ================= Call =================
                 Reveal {
                     shown: Discord.inVoice
-                    gap: 4
+                    gap: Discord.pluginMissing || Discord.restarting ? 12 : 4
 
                     Row {
                         spacing: 8
@@ -712,12 +778,15 @@ PopupWindow {
                             text: "Enable Controls"
                             onClicked: Discord.reauth()
                         }
-                        // zweimal klicken, damit man nicht aus Versehen rausfliegt (beim ersten Mal Akzent + Haken)
+                        // zweimal klicken, damit man nicht aus Versehen rausfliegt: beim ersten Mal wird der Knopf breit
+                        // und fragt „Leave?“ (ein Haken sah aus wie „erledigt“ – man blieb im Call, ohne es zu merken)
                         CtlBtn {
+                            z: 1
                             x: ctl.width - width
-                            width: ctl.height
-                            icon: pop.confirmLeave ? "check" : "call_end"
-                            text: ""
+                            width: pop.confirmLeave ? ctl.colW + 6 + ctl.height : ctl.height
+                            Behavior on width { NumberAnimation { duration: pop.quick; easing.type: Easing.OutCubic } }
+                            icon: "call_end"
+                            text: pop.confirmLeave ? "Leave?" : ""
                             primary: pop.confirmLeave
                             onClicked: {
                                 if (!pop.confirmLeave) {

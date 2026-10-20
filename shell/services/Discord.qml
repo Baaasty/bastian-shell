@@ -39,6 +39,21 @@ Singleton {
     readonly property int speakingCount: members.filter(m => m.speaking).length
     property bool canControl: false      // Kopplung enthält rpc.voice.write (Plugin: immer)
     readonly property bool viaPlugin: Cams.connected   // Daten kommen aus dem Equicord-Plugin desktopBridge
+    // Plugin fehlt, obwohl Discord läuft und es an sein soll – meist nach einem Discord-Update (neuer app-Ordner ohne
+    // Equicord, Discord hat sich am app-run vorbei selbst neu gestartet). Quelle: scripts/equicord status --json.
+    property bool pluginMissing: false
+    property string pluginMissingReason: ""   // update (nicht eingespielt) | socket (eingespielt, aber kein Socket)
+    property bool restarting: false           // „Restart Discord“ läuft (beenden, einspielen, neu starten)
+    property string notifiedFor: ""           // Vorfall, zu dem schon benachrichtigt wurde (einmal pro Vorfall)
+    readonly property string equicordBin: Quickshell.shellDir + "/../scripts/equicord"
+    // beendet Discord (auch einen laufenden Call), spielt Equicord ein, startet über scripts/app-run neu
+    function restartDiscord(): void {
+        if (restarting)
+            return;
+        restarting = true;
+        restartGiveUp.restart();
+        Launch.cmd([equicordBin, "restart"]);
+    }
     property string lastBridgeLine: ""   // letzter Stand der RPC-Bridge (sie meldet Gleiches nicht noch einmal)
     property string lastError: ""        // kurz sichtbar nach fehlgeschlagener Aktion
 
@@ -213,8 +228,13 @@ Singleton {
         if (viaPlugin)
             send("stream " + (on ? 1 : 0));
     }
+    // Prüfen statt glauben: bleibt Discord nach 4 s im selben Kanal, kurz sagen, dass es nicht ging
+    property string leaveFrom: ""
     function leave(): void {
-        send("leave");
+        if (send("leave")) {
+            leaveFrom = channelId;
+            leaveCheck.restart();
+        }
     }
     function setUserVolume(id: string, volume: real): void {
         const v = Math.round(Math.max(0, Math.min(200, volume)));
@@ -263,8 +283,12 @@ Singleton {
             root.applyData(d);
         }
         function onConnectedChanged() {
-            if (Cams.connected)
+            eqCheck.running = true;
+            if (Cams.connected) {
+                root.restarting = false;
+                root.pluginMissing = false;
                 return;   // der Zustand des Plugins kommt mit dem ersten Paket
+            }
             // Plugin weg: zurück zur Bridge (letzter bekannter Stand), sonst leer
             root.clear();
             if (root.lastBridgeLine)
@@ -406,6 +430,63 @@ Singleton {
     }
 
     Timer {
+        id: leaveCheck
+        interval: 4000
+        onTriggered: {
+            if (root.inVoice && root.leaveFrom !== "" && root.channelId === root.leaveFrom) {
+                root.lastError = "Discord stayed in the call – hang up in Discord.";
+                errorClear.restart();
+            }
+            root.leaveFrom = "";
+        }
+    }
+
+    // ---------- Equicord-Plugin weg? (alle 20 s, solange es nicht verbunden ist) ----------
+    Process {
+        id: eqCheck
+        command: [root.equicordBin, "status", "--json"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let d;
+                try {
+                    d = JSON.parse(text);
+                } catch (e) {
+                    return;
+                }
+                root.pluginMissing = d.missing === true && !Cams.connected;
+                root.pluginMissingReason = root.pluginMissing ? (d.reason || "") : "";
+                if (!d.running && root.restarting)
+                    return;   // Neustart läuft: Discord ist gerade beendet
+                if (!root.pluginMissing) {
+                    root.notifiedFor = "";
+                    return;
+                }
+                // einmal pro Vorfall (= dieser Discord-Prozess) benachrichtigen
+                const key = d.pid + ":" + d.reason;
+                if (root.notifiedFor !== key) {
+                    root.notifiedFor = key;
+                    Quickshell.execDetached(["notify-send", "-a", "Discord", "Desktop plugin missing",
+                        d.reason === "update" ? "Discord updated itself and dropped Equicord. Discord popout → Restart Discord."
+                                              : "Equicord is in, but the plugin isn’t talking. Discord popout → Restart Discord."]);
+                }
+            }
+        }
+    }
+    Timer {
+        interval: 20000
+        repeat: true
+        running: !Cams.connected
+        triggeredOnStart: true
+        onTriggered: eqCheck.running = true
+    }
+    // Neustart: fertig, sobald das Plugin wieder da ist (Cams.onConnectedChanged oben), spätestens nach 90 s freigeben
+    Timer {
+        id: restartGiveUp
+        interval: 90000
+        onTriggered: root.restarting = false
+    }
+
+    Timer {
         id: errorClear
         interval: 4000
         onTriggered: root.lastError = ""
@@ -448,7 +529,11 @@ Singleton {
         target: "discord"
 
         function status(): string {
-            return JSON.stringify({ source: root.viaPlugin ? "plugin" : "bridge", state: root.state, inVoice: root.inVoice, channel: root.channelName, members: root.members.length, speaking: root.speakingCount });
+            return JSON.stringify({ source: root.viaPlugin ? "plugin" : "bridge", state: root.state, inVoice: root.inVoice, channel: root.channelName, members: root.members.length, speaking: root.speakingCount, pluginMissing: root.pluginMissing, reason: root.pluginMissingReason });
+        }
+        // Equicord neu einspielen und Discord neu starten (beendet einen laufenden Call)
+        function restartDiscord(): void {
+            root.restartDiscord();
         }
         function retry(): void {
             root.retry();

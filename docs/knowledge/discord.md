@@ -59,9 +59,12 @@ Discord muss dabei beendet sein. Rückweg: `scripts/equicord uninject`.
   PipeWire). `getDesktopSources` liefert dort nur XWayland-Fenster `window:N` → „No screencast portal config available“
   in `~/.config/discord/logs/discord-webrtc_0`, Zuschauer sehen Schwarz. Die Aufnahme selbst hängt nicht am Fenster
   (läuft nativ: Voice-Modul ↔ PipeWire); `render_unfocused` in `hypr/rules.conf` hält weggeräumt zusätzlich das Fenster wach.
-- **Discord-Update** bringt einen neuen `app-*`-Ordner ohne Equicord. `scripts/app-run discord` spielt vor jedem Start
-  neu ein (`inject --if-needed`); startet Discord sich nach dem Update selbst neu, läuft dieser eine Start ohne Plugin →
-  Discord einmal beenden und neu starten.
+- **Discord-Update** bringt einen neuen `app-*`-Ordner ohne Equicord. `app-run` spielt vor dem Start ein, Discords Updater
+  installiert Host-Updates aber erst danach (Splash) und startet sich selbst neu – ohne Plugin, Flags und `fastprobe`.
+  `equicord status --json` erkennt das (Shell prüft alle 20 s), dann Meldung + Popout-Knopf „Restart Discord“ (`equicord restart`,
+  im Call zweimal drücken). Abschalten geht nicht: `SKIP_HOST_UPDATE` liest nur der alte Updater, Host-Updates sind Pflicht.
+  Vorbeugend startet `app-run` die Unit `desktop-discord-update-watch` (`equicord watch-update`, 2 min): neuer app-Ordner
+  ohne Equicord und kein Call → einmal automatisch `restart`; im Call oder Call-Stand unbekannt → nur Meldung/Knopf.
 - **arRPC** (Equibop) legt einen eigenen `discord-ipc-0` an, der nur Rich Presence kann (`Unknown command`, Code 1000).
   Die Bridge überspringt solche Sockets; ist es der einzige, zeigt das Popout „has no call API“.
 - **Renderer-Absturz (SIGSEGV) im Call mit Kamera/Go Live:** 10 von 11 Kernen seit 18.10. (Flatpak und RPM, mit und ohne

@@ -8,12 +8,18 @@
   equicord uninject    Discord wieder ohne Equicord
   equicord install     (alt, Equibop) Equibop auf den eigenen Build umstellen + Plugin einschalten (Equibop beendet!)
   equicord off         (alt, Equibop) zurück auf Standard-Equicord
-  equicord status      was ist gebaut, eingespielt, verbunden
+  equicord status      was ist gebaut, eingespielt, verbunden; `--json` = eine Zeile für die Shell (Discord.qml, alle 20 s)
+  equicord restart     Discord beenden, einspielen, über scripts/app-run neu starten (Knopf im Discord-Popout,
+                       wenn das Plugin nach einem Discord-Update fehlt) – beendet einen laufenden Call
+  equicord watch-update [app-…]  (startet scripts/app-run als eigene kurze Unit) 2 min lang aufpassen: startet Discord
+                       sich selbst aus einem NEUEN, nicht eingespielten app-Ordner neu und ist in keinem Call -> einmal `restart`
 
 Einspielen in Discord (ohne sudo: das RPM legt die App beim ersten Start unter ~/.config/discord/app-<version>/ ab,
 gleiches Verfahren wie der offizielle Equicord-Installer): resources/app.asar -> resources/_app.asar, daneben
 resources/app/{index.js,package.json}, index.js lädt <Klon>/dist/desktop/patcher.js (der startet dann Discord aus _app.asar).
 Ein Discord-Update bringt einen neuen app-Ordner ohne Equicord mit -> `scripts/app-run discord` spielt vor dem Start neu ein.
+Discords Updater installiert ein Host-Update aber erst NACH diesem Start (Splash) und startet sich dann selbst aus dem neuen
+Ordner neu – ohne Equicord. Das meldet `status --json` (missing), die Shell zeigt dann „Restart Discord“ (= `restart`).
 Plugin-Schalter: ~/.config/Equicord/settings/settings.json (plugins.DesktopBridge.enabled), Sicherung vorher.
 
 Was „install“ ändert (nur diese zwei Stellen, vorher als Kopie gesichert unter ~/.local/state/desktop/equibop-backup/):
@@ -287,7 +293,151 @@ def sock_alive():
         s.close()
 
 
+def discord_main():
+    """(pid, Laufzeit in s) des Discord-Hauptprozesses (ohne --type=), sonst (0, 0)."""
+    r = subprocess.run(["ps", "-C", "Discord", "-o", "pid=,etimes=,args="], capture_output=True, text=True)
+    best = (0, 0)
+    for line in r.stdout.splitlines():
+        p = line.split(None, 2)
+        if len(p) < 2 or not p[0].isdigit() or not p[1].isdigit() or "--type=" in (p[2] if len(p) > 2 else ""):
+            continue
+        if int(p[1]) > best[1]:
+            best = (int(p[0]), int(p[1]))
+    return best
+
+
+def plugin_enabled():
+    try:
+        return ((read_json(EQ_SETTINGS).get("plugins") or {}).get(PLUGIN) or {}).get("enabled") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def status_json():
+    # schnell (alle 20 s): kein git, kein Vergleich der Plugin-Dateien
+    res = discord_resources()
+    pid, up = discord_main()
+    inj = bool(res) and injected(res)
+    sock = sock_alive()
+    on = plugin_enabled()
+    # fehlt: Discord läuft, Plugin soll an sein, aber kein Socket – nach einem Update (nicht eingespielt) sofort,
+    # sonst erst nach 60 s (so lange braucht Discord höchstens zum Laden des Plugins)
+    reason = ""
+    if pid and on and not sock:
+        reason = "update" if not inj else ("socket" if up >= 60 else "")
+    print(json.dumps({"running": bool(pid), "pid": pid, "uptime": up, "enabled": on, "injected": inj, "socket": sock,
+                      "built": os.path.exists(PATCHER), "version": os.path.basename(os.path.dirname(res)) if res else "",
+                      "missing": reason != "", "reason": reason}), flush=True)
+
+
+def restart():
+    """Discord beenden (wie Tray -> Quit: SIGTERM an den Hauptprozess), einspielen, über app-run neu starten."""
+    pid, _ = discord_main()
+    if pid:
+        say("Beende Discord (%d) …" % pid)
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            pass
+        for _ in range(60):
+            if not discord_running():
+                break
+            time.sleep(0.25)
+        else:
+            # hängt: Rest hart beenden, sonst verweigert inject
+            subprocess.run(["pkill", "-KILL", "-x", "Discord"], capture_output=True)
+            time.sleep(1)
+    if discord_running():
+        notify("Discord didn’t quit", "Quit it from the tray, then start it again.")
+        die("Discord läuft noch.")
+    try:
+        inject()
+    except SystemExit as e:
+        if e.code:
+            notify("Equicord not injected", "See: scripts/equicord inject")
+            raise
+    app_run = os.path.join(REPO, "scripts", "app-run")
+    say("Starte Discord …")
+    os.execv(app_run, [app_run, "discord"])
+
+
+WATCH_SECONDS = 120
+
+
+def in_call():
+    """Im Voice-Call? True/False laut Shell (RPC-Bridge), None = unbekannt (Shell aus, Bridge nicht verbunden)."""
+    qs = shutil.which("qs") or "/usr/bin/qs"
+    try:
+        r = subprocess.run([qs, "ipc", "--any-display", "-p", os.path.join(REPO, "shell"), "call", "discord", "status"],
+                           capture_output=True, text=True, timeout=5)
+        d = json.loads(r.stdout or "null")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+    if not isinstance(d, dict) or d.get("state") != "ok":
+        return None
+    return d.get("inVoice") is True
+
+
+def watch_update():
+    """Discords Updater installiert Host-Updates erst nach dem Start und startet sich dann selbst neu – am app-run
+    (Einspielen, Flags, fastprobe) vorbei. Hier einmal heilen, solange noch kein Call läuft; sonst bleibt es bei
+    Meldung + Popout-Knopf (Discord.qml). Höchstens ein Neustart: der geheilte Start setzt DESKTOP_DISCORD_HEALED,
+    app-run startet dann keinen neuen Wächter; zusätzlich zählen nur app-Ordner, die beim Start noch nicht da waren."""
+    known = set(a for a in sys.argv[2:] if a.startswith("app-"))
+    if not known:
+        try:
+            known = set(d for d in os.listdir(DISCORD_HOME) if d.startswith("app-"))
+        except OSError:
+            pass
+    end = time.monotonic() + WATCH_SECONDS
+    while time.monotonic() < end:
+        time.sleep(2)
+        pid, up = discord_main()
+        if not pid:
+            continue
+        try:
+            app = os.path.dirname(os.readlink("/proc/%d/exe" % pid))
+        except OSError:
+            continue
+        if not os.path.basename(app).startswith("app-") or os.path.basename(app) in known:
+            continue
+        if injected(os.path.join(app, "resources")):
+            return
+        # neuer Ordner ohne Equicord: Discord kurz ankommen lassen (Updater fertig, RPC-Bridge verbunden), dann Call prüfen
+        call = None
+        for _ in range(20):
+            if discord_main()[0] != pid:
+                break
+            if discord_main()[1] >= 15:
+                call = in_call()
+                if call is not None:
+                    break
+            time.sleep(2)
+        if discord_main()[0] != pid:
+            continue   # hat sich noch einmal neu gestartet: weiter aufpassen
+        if call is not False:
+            say("Discord-Update ohne Equicord, aber %s – kein automatischer Neustart (Popout-Knopf)."
+                % ("im Call" if call else "Call-Stand unbekannt"))
+            return
+        say("Discord hat sich nach einem Update ohne Equicord neu gestartet (%s) – starte einmal neu." % os.path.basename(app))
+        notify("Discord updated itself", "Restarting once with Equicord …")
+        launcher = ["uwsm", "app", "--"] if shutil.which("uwsm") else \
+            ["systemd-run", "--user", "--scope", "--slice=app.slice", "--quiet", "--"]
+        subprocess.Popen(launcher + [os.path.join(REPO, "scripts", "equicord"), "restart"],
+                         env=dict(os.environ, DESKTOP_DISCORD_HEALED="1"), start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3)   # eigener Scope steht, bevor diese Unit endet
+        return
+
+
+def notify(title, body):
+    subprocess.run(["notify-send", "-a", "Discord", title, body], capture_output=True)
+
+
 def status():
+    if "--json" in sys.argv[2:]:
+        status_json()
+        return
     built = os.path.exists(PATCHER)
     say("Klon:        %s (%s)" % (CLONE, head() if os.path.isdir(CLONE) else "fehlt"))
     synced = os.path.isdir(PLUGIN_DST) and all(
@@ -324,7 +474,8 @@ def status():
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     fn = {"build": build, "update": update, "install": install, "off": off, "status": status,
-          "inject": inject, "uninject": uninject}.get(cmd)
+          "inject": inject, "uninject": uninject, "restart": restart,
+          "watch-update": watch_update}.get(cmd)
     if not fn:
         print(__doc__.strip())
         sys.exit(0 if cmd in ("", "-h", "--help", "help") else 2)
