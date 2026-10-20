@@ -9,8 +9,10 @@ import qs.components
 
 // Ausschneiden (Druck / Super+Shift+S): Bildschirm einfrieren, Bereich ziehen, kopieren + speichern.
 // Einfrieren macht grim (wlr-screencopy unter Hyprland): ein Bild aller Monitore, Auswahl und Zuschnitt darauf.
-// Aufnahme-Modus (Meta+R): gleiche Auswahl, danach nimmt Recording.qml den Bereich als Video auf.
-// Extras (docs/knowledge/shell-features.md): T = Text aus Bild (OCR, scripts/snip-ocr) · C = Farbpipette (scripts/snip-color) · P = Ausschnitt anpinnen (SnipPin.qml).
+// Aufnahme (Meta+R): erst die Quellwahl im Teilen-Stil (SharePicker, Modus „record“, nichts gemerkt), Region = diese Auswahl,
+// danach nimmt Recording.qml den Bereich als Video auf.
+// Extras (docs/knowledge/shell-features.md): T = Text aus Bild (OCR, scripts/snip-ocr) · C = Farbpipette (scripts/snip-color,
+// eigenes Kürzel gibt es nicht mehr – eine Pipette, im Snip) · P = Ausschnitt anpinnen (SnipPin.qml).
 Scope {
     id: root
 
@@ -46,7 +48,6 @@ Scope {
     // was Enter mit der Auswahl macht: copy = kopieren + speichern · text = OCR · pin = anpinnen
     property string intent: "copy"
     property bool pickMode: false     // Farbpipette: ein Klick = ein Pixel
-    property bool pickOnly: false     // Pipette direkt gestartet (kein Zurück zur Auswahl)
     property var pendingPick: null    // ohne Maus: [x, y] global
     property var pins: []             // angepinnte Bilder: {id, path, w, h, x, y, zoom, screen}
     property int pinSeq: 0
@@ -73,7 +74,6 @@ Scope {
         recordMode = record;
         intent = what;
         pickMode = pick;
-        pickOnly = pick;
         capture.running = true;
         captureTimeout.restart();
     }
@@ -84,9 +84,9 @@ Scope {
         pickMode = false;
         intent = "copy";
     }
-    // Esc: in der Pipette (aus der Auswahl heraus) erst zurück zur Auswahl, Tastatur-Startpunkt verwerfen, sonst abbrechen
+    // Esc: aus der Pipette zurück zur Auswahl, Tastatur-Startpunkt verwerfen, sonst abbrechen
     function goBack(): void {
-        if (pickMode && !pickOnly)
+        if (pickMode)
             pickMode = false;
         else if (mode === "key")
             mode = "idle";
@@ -365,6 +365,37 @@ Scope {
         id: rec
     }
 
+    // ---- Quellwahl der Aufnahme (shell.qml reicht den SharePicker herein) ----
+    property var picker: null
+    property var recPick: null
+    function recordPicked(p): void {
+        recPick = p;
+        recDelay.restart();
+    }
+    // erst starten, wenn die Wahl-Karte weg ist (sonst wäre sie im ersten Bild bzw. im eingefrorenen Bild der Region)
+    Timer {
+        id: recDelay
+        interval: 250
+        onTriggered: {
+            const p = root.recPick;
+            root.recPick = null;
+            if (!p || rec.busy)
+                return;
+            if (p.kind === "region")
+                root.start(true, "copy", false);
+            else if (p.kind === "screen" && p.screen)
+                root.record(p.screen.x, p.screen.y, p.screen.width, p.screen.height);
+            else if (p.kind === "window") {
+                // wf-recorder kann nur Bildschirmbereiche: das Fenster als seine Fläche aufnehmen (was darüber liegt, ist mit drin)
+                const g = Hypr.geo(p.top);
+                if (g.width > 0 && g.height > 0)
+                    root.record(Math.round(g.x), Math.round(g.y), Math.round(g.width), Math.round(g.height));
+                else
+                    toast.show({ icon: "error", text: "Window not found" });
+            }
+        }
+    }
+
     // grim schreibt das Gesamtbild, danach gibt od die Bildbreite aus dem PNG-Kopf aus (Bytes 16–19, für px).
     // Fertig = Breite gelesen (kommt nur, wenn grim geklappt hat); Fehler = Exit-Code ≠ 0.
     Process {
@@ -471,13 +502,6 @@ Scope {
             else
                 root.start(false, "text", false);
         }
-        // Super+Shift+C: Farbpipette – ein Pixel anklicken, #RRGGBB kopieren
-        function pick(): void {
-            if (root.active)
-                root.cancel();
-            else
-                root.start(false, "copy", true);
-        }
         // Super+Shift+P: Bereich wählen und als Referenz-Bild anpinnen · closePins schließt alle
         function pin(): void {
             if (root.active)
@@ -510,12 +534,16 @@ Scope {
                 saveAll.running = true;
         }
         // Meta+R: Bereich wählen und als Video aufnehmen · läuft schon eine Aufnahme → stoppen
+        // erst Quellwahl (Monitor / Fenster / Region); nochmal drücken schließt sie wieder
         function record(): void {
             if (rec.recording)
                 rec.stop();
             else if (root.active)
                 root.cancel();
-            else if (!rec.busy)
+            else if (root.picker && root.picker.open) {
+                if (root.picker.recordMode)
+                    root.picker.cancel();   // offene Teilen-Anfrage einer App nie anfassen
+            } else if (!rec.busy && !root.busy && !(root.picker && root.picker.openRecord(root.recordPicked)))
                 root.start(true, "copy", false);
         }
         function stopRecording(): void {
@@ -657,20 +685,24 @@ Scope {
                 }
             }
 
-            // Aktionen unter der Auswahl (rechtsbündig), für die Maus
+            // Aktionen unter der Auswahl (rechtsbündig), für die Maus · vor der Auswahl: Werkzeuge mittig unter dem Hinweis
             Row {
+                id: actions
                 z: 5 // über der Maus-Fläche
-                visible: root.mode === "adjust" && !root.pickMode
+                readonly property bool tools: root.mode === "idle" && !root.recordMode && !root.dragging
+                visible: (root.mode === "adjust" || tools) && !root.pickMode
                 spacing: 6
-                x: Math.max(8, Math.min(win.lx + root.selW - width, win.width - width - 8))
+                x: tools ? Math.round((win.width - width) / 2) : Math.max(8, Math.min(win.lx + root.selW - width, win.width - width - 8))
                 // schmale Auswahl: unter die Größenanzeige statt daneben
                 readonly property real gapY: root.selW < width + 180 ? 42 : 8
-                y: win.ly + root.selH + gapY + 30 > win.height ? win.ly + root.selH - gapY - 30 : win.ly + root.selH + gapY
+                y: tools ? 88 : win.ly + root.selH + gapY + 30 > win.height ? win.ly + root.selH - gapY - 30 : win.ly + root.selH + gapY
                 Repeater {
                     // [Icon, Name, Taste, Art] · Art: 0 Hauptaktion (Enter) · 1 Speichern · 2 Schließen · 3 Text · 4 Farbe · 5 Anpinnen
                     model: root.recordMode
                         ? [["radio_button_checked", "Record", "Enter", 0], ["close", "", "Esc", 2]]
-                        : [["content_copy", "Copy", "Enter", 0], ["save", "Save", "S", 1], ["document_scanner", "Text", "T", 3], ["colorize", "Color", "C", 4], ["push_pin", "Pin", "P", 5], ["close", "", "Esc", 2]]
+                        : actions.tools
+                            ? [["document_scanner", "Text", "T", 3], ["colorize", "Color", "C", 4], ["push_pin", "Pin", "P", 5]]
+                            : [["content_copy", "Copy", "Enter", 0], ["save", "Save", "S", 1], ["document_scanner", "Text", "T", 3], ["colorize", "Color", "C", 4], ["push_pin", "Pin", "P", 5], ["close", "", "Esc", 2]]
                     Rectangle {
                         id: act
                         required property var modelData
@@ -679,7 +711,10 @@ Scope {
                         radius: Theme.radiusSm
                         color: actArea.containsMouse ? Theme.raise : Theme.glassStrong
                         border.width: 1
-                        border.color: act.modelData[3] === 0 ? Qt.alpha(Theme.accent, 0.55) : Theme.border
+                        // Hauptaktion bzw. gewähltes Werkzeug (Text/Anpinnen statt Kopieren) mit Akzentrand
+                        readonly property bool chosen: act.modelData[3] === 0
+                            || (actions.tools && (act.modelData[3] === 3 && root.intent === "text" || act.modelData[3] === 5 && root.intent === "pin"))
+                        border.color: chosen ? Qt.alpha(Theme.accent, 0.55) : Theme.border
                         Row {
                             id: actRow
                             anchors.centerIn: parent
@@ -712,12 +747,15 @@ Scope {
                                 const k = act.modelData[3];
                                 if (k === 2)
                                     root.cancel();
-                                else if (k === 3)
-                                    root.chooseAction("text");
-                                else if (k === 4)
+                                else if (k === 3 || k === 5) {
+                                    // vor der Auswahl: nochmal klicken = zurück zu Kopieren
+                                    const what = k === 3 ? "text" : "pin";
+                                    if (actions.tools && root.intent === what)
+                                        root.intent = "copy";
+                                    else
+                                        root.chooseAction(what);
+                                } else if (k === 4)
                                     root.startPick();
-                                else if (k === 5)
-                                    root.chooseAction("pin");
                                 else {
                                     if (k === 1 || k === 0)
                                         root.intent = "copy";
@@ -750,7 +788,7 @@ Scope {
                             ? "Enter record · Arrows move the corner · Ctrl+Arrows move all · Shift 10 px · Drag edges · Esc"
                             : "Select area to record · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc")
                         : root.pickMode
-                            ? "Click or Enter: copy the color · Arrows aim (Shift 10 px) · Shift = fine aim · Esc " + (root.pickOnly ? "cancel" : "back")
+                            ? "Click or Enter: copy the color · Arrows aim (Shift 10 px) · Shift = fine aim · Esc back"
                             : root.mode === "adjust"
                                 ? "Enter " + (root.intent === "text" ? "read text" : root.intent === "pin" ? "pin" : "copy") + " · S save · T text · C color · P pin · Arrows corner · Ctrl+Arrows move · Shift 10 px · Esc cancel"
                                 : (root.intent === "text" ? "Select the text to read" : root.intent === "pin" ? "Select the area to pin" : "Drag to select")
@@ -766,9 +804,10 @@ Scope {
                 id: loupe
                 readonly property int cells: 17
                 readonly property int zoom: 8
-                visible: win.aimHere && (area.containsMouse || root.kbAim) && (root.mode !== "adjust" || area.pressed || root.pickMode)
+                // Pipette: immer am Zielpunkt, auch bevor sich die Maus bewegt
+                visible: win.aimHere && (area.containsMouse || root.kbAim || root.pickMode) && (root.mode !== "adjust" || area.pressed || root.pickMode)
                 width: cells * zoom + 2
-                height: cells * zoom + 2 + 24
+                height: cells * zoom + 2 + (root.pickMode ? 44 : 24)
                 radius: Theme.radiusSm
                 color: Theme.glassStrong
                 border.width: 1
@@ -821,6 +860,67 @@ Scope {
                     color: "transparent"
                     border.width: 1
                     border.color: Theme.accent
+                }
+                // Pipette: Farbe des Pixels (Feld + Hex) über den Koordinaten
+                Row {
+                    visible: root.pickMode
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: zoomed.y + zoomed.height + 6
+                    spacing: 6
+                    Item {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 14
+                        height: 14
+                        // liest den einen Pixel aus dem eingefrorenen Bild (gleiche Stelle wie scripts/snip-color beim Kopieren);
+                        // liegt unter dem Farbfeld, muss aber sichtbar sein, sonst malt Canvas nicht
+                        Canvas {
+                            id: probe
+                            width: 1
+                            height: 1
+                            readonly property string src: root.pickMode && win.aimHere ? "file://" + root.full + "#" + root.shot : ""
+                            readonly property int ix: Math.floor((root.ax + 0.5) * root.px)
+                            readonly property int iy: Math.floor((root.ay + 0.5) * root.px)
+                            property string loaded: ""
+                            property string hex: ""
+                            onSrcChanged: {
+                                hex = "";
+                                if (loaded !== "" && loaded !== src)
+                                    unloadImage(loaded); // großes Bild nicht im Speicher halten
+                                loaded = src;
+                                if (src === "")
+                                    return;
+                                if (isImageLoaded(src))
+                                    requestPaint();
+                                else
+                                    loadImage(src);
+                            }
+                            onImageLoaded: requestPaint()
+                            onIxChanged: requestPaint()
+                            onIyChanged: requestPaint()
+                            onPaint: {
+                                if (src === "" || !isImageLoaded(src))
+                                    return;
+                                const ctx = getContext("2d");
+                                ctx.clearRect(0, 0, 1, 1);
+                                ctx.drawImage(src, ix, iy, 1, 1, 0, 0, 1, 1);
+                                const d = ctx.getImageData(0, 0, 1, 1).data;
+                                hex = "#" + [d[0], d[1], d[2]].map(v => ("0" + v.toString(16)).slice(-2)).join("").toUpperCase();
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 3
+                            color: probe.hex !== "" ? probe.hex : Theme.surfaceSunken
+                            border.width: 1
+                            border.color: Theme.borderStrong
+                        }
+                    }
+                    MonoTxt {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: probe.hex !== "" ? probe.hex : "…"
+                        color: Theme.text
+                        font.pixelSize: 12
+                    }
                 }
                 MonoTxt {
                     anchors.horizontalCenter: parent.horizontalCenter

@@ -131,7 +131,6 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Ctrl + Print` | Screenshot all monitors |
 | `Super + R` | Screen recording |
 | `Super + Shift + T` | Snip text (OCR) |
-| `Super + Shift + C` | Pick color |
 | `Super + Shift + P` | Pin screenshot |
 
 ## System

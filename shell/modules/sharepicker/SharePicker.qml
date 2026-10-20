@@ -17,6 +17,7 @@ import qs.components
 // Bedienung: Pfeile wählen, Tab wechselt den Reiter, Tippen sucht Fenster, Enter teilt, Esc / Klick daneben bricht ab,
 // Doppelklick teilt sofort. Beim Laden der Shell ist nichts sichtbar (LazyLoader nur, solange eine Anfrage offen ist).
 // IPC: qs ipc … call sharepicker open '<json>' | close <token> | alive <token> | status
+// Zweiter Modus „record“ (Snip, Super+R): gleiche Karte ohne Portal und ohne Merken, die Wahl geht per Rückruf an Snip.qml.
 Scope {
     id: root
 
@@ -34,6 +35,9 @@ Scope {
     property string token: ""
     property bool demo: false             // scripts/share-pick --demo: nur anzeigen, xdph bekommt nichts
     property bool allowToken: false       // Haken „Remember this choice“ = Flag r (Restore-Token)
+    // Aufnahme statt Teilen: kein Token, kein Ergebnis-File, nichts gemerkt – recordDone({kind, screen | top}) bekommt die Wahl
+    property bool recordMode: false
+    property var recordDone: null
     property string requester: ""         // wer fragt (scripts/share-pick: Portal-Absender, z. B. „discord“)
     readonly property string requesterName: {
         if (requester === "")
@@ -57,7 +61,7 @@ Scope {
     // Discord fragte in Schleife neu) – scripts/share-pick schickt dann region: false. Region wird nie gemerkt.
     property bool allowRegion: true
     readonly property var tabs: allowRegion ? ["screens", "windows", "region"] : ["screens", "windows"]
-    readonly property bool canRemember: tab !== "region"
+    readonly property bool canRemember: tab !== "region" && !recordMode
     readonly property var shownWindows: {
         const q = query.trim().toLowerCase();
         return q === "" ? windows : windows.filter(w => (title(w) + " " + w.cls).toLowerCase().includes(q));
@@ -135,6 +139,8 @@ Scope {
         allowRegion = req.region !== false;
         requester = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(String(req.app || "")) ? String(req.app) : "";
         demo = req.demo === true;
+        recordMode = false;
+        recordDone = null;
         query = "";
         tab = "screens";
         windowIndex = 0;
@@ -160,6 +166,36 @@ Scope {
         return "ok";
     }
 
+    // Aufnahme (Snip): sichtbare Fenster direkt aus Hyprland (xdph ist nicht beteiligt), Monitor = der fokussierte.
+    // false = Karte ist gerade für eine Teilen-Anfrage offen (die hat Vorrang)
+    function openRecord(done): bool {
+        if (open)
+            return false;
+        const tops = Hypr.toplevels.values.filter(t => Hypr.usable(t) && t.workspace && t.monitor
+            && t.workspace.id === t.monitor.activeWorkspace?.id);
+        const rank = t => {
+            const h = Hypr.ipc(t).focusHistoryID;
+            return typeof h === "number" ? h : 9999;
+        };
+        windows = tops.sort((a, b) => rank(a) - rank(b)).map(t => ({ id: String(t.address), cls: Hypr.appId(t), title: Hypr.title(t), top: t }));
+        screensList = buildScreens();
+        allowToken = false;
+        allowRegion = true;
+        requester = "";
+        demo = false;
+        query = "";
+        tab = "screens";
+        windowIndex = 0;
+        const focused = screensList.findIndex(s => s.name === Hyprland.focusedMonitor?.name);
+        screenIndex = Math.max(0, focused);
+        selecting = false;
+        token = "";
+        recordMode = true;
+        recordDone = done;
+        open = true;
+        return true;
+    }
+
     function writeResult(tok: string, answer: string): void {
         if (!/^[0-9a-f]{16}$/.test(tok))
             return;
@@ -168,6 +204,8 @@ Scope {
     }
     function close(): void {
         open = false;
+        recordMode = false;
+        recordDone = null;
         selecting = false;
         token = "";
         windows = [];
@@ -203,6 +241,20 @@ Scope {
     function share(): void {
         if (!open || selecting)
             return;
+        if (recordMode) {
+            const done = recordDone;
+            const s = screensList[screenIndex];
+            const w = shownWindows[windowIndex];
+            const pick = tab === "region" ? { kind: "region" }
+                : tab === "screens" ? (s ? { kind: "screen", screen: s.screen } : null)
+                : (w && w.top ? { kind: "window", top: w.top } : null);
+            if (!pick)
+                return;
+            close();
+            if (done)
+                done(pick);
+            return;
+        }
         if (tab === "region") {
             startRegion();
             return;
@@ -491,7 +543,7 @@ Scope {
                             color: Theme.accentFill
                             Icon {
                                 anchors.centerIn: parent
-                                name: "screen_share"
+                                name: root.recordMode ? "radio_button_checked" : "screen_share"
                                 size: 24
                                 color: Theme.accentText
                             }
@@ -500,12 +552,12 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 2
                             Txt {
-                                text: "Share your screen"
+                                text: root.recordMode ? "Record your screen" : "Share your screen"
                                 font.pixelSize: 18
                                 font.weight: Font.DemiBold
                             }
                             Txt {
-                                text: root.demo ? "Preview · nothing will be shared" : root.requesterName !== "" ? root.requesterName + " wants to see your screen – choose what it may see" : "Choose what the app is allowed to see"
+                                text: root.recordMode ? "Choose what to record · just this once, nothing is remembered" : root.demo ? "Preview · nothing will be shared" : root.requesterName !== "" ? root.requesterName + " wants to see your screen – choose what it may see" : "Choose what the app is allowed to see"
                                 color: Theme.textFaint
                                 font.pixelSize: 12
                                 font.weight: Font.Normal
@@ -572,7 +624,7 @@ Scope {
                                             root.cancel();
                                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                                         // Shift+Enter = teilen und merken (Tastatur statt Haken)
-                                        if (event.modifiers & Qt.ShiftModifier)
+                                        if ((event.modifiers & Qt.ShiftModifier) && !root.recordMode)
                                             root.allowToken = true;
                                         root.share();
                                     } else if (event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && (event.modifiers & Qt.ShiftModifier))) {
@@ -784,7 +836,7 @@ Scope {
                             Txt {
                                 anchors.centerIn: parent
                                 visible: windowGrid.count === 0
-                                text: root.query !== "" ? "No matching windows" : "No windows to share"
+                                text: root.query !== "" ? "No matching windows" : root.recordMode ? "No visible windows to record" : "No windows to share"
                                 color: Theme.textMuted
                                 font.weight: Font.Normal
                             }
@@ -812,13 +864,13 @@ Scope {
                             }
                             Txt {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Share a part of a screen"
+                                text: root.recordMode ? "Record a part of a screen" : "Share a part of a screen"
                                 font.pixelSize: 16
                                 font.weight: Font.DemiBold
                             }
                             Txt {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Press Select region, then drag a rectangle. Esc goes back."
+                                text: root.recordMode ? "Press Select region, then drag a rectangle or aim with the arrows." : "Press Select region, then drag a rectangle. Esc goes back."
                                 color: Theme.textFaint
                                 font.pixelSize: 13
                                 font.weight: Font.Normal
@@ -831,8 +883,22 @@ Scope {
                         width: parent.width
                         height: 40
 
+                        // Aufnahme: statt „Merken“ ein Satz zur Wahl (Fenster = seine Fläche auf dem Bildschirm)
+                        Txt {
+                            visible: root.recordMode
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - btnRow.width - 24
+                            text: root.tab === "windows" ? "The window's area is recorded – anything on top of it shows up too"
+                                : root.tab === "screens" ? "The whole screen is recorded" : "The frozen screen opens, pick the area there"
+                            color: Theme.textFaint
+                            font.pixelSize: 12
+                            font.weight: Font.Normal
+                            elide: Text.ElideRight
+                        }
                         MouseArea {
                             id: remember
+                            visible: !root.recordMode
                             anchors.left: parent.left
                             anchors.verticalCenter: parent.verticalCenter
                             width: remRow.implicitWidth
@@ -884,6 +950,7 @@ Scope {
                         }
 
                         Row {
+                            id: btnRow
                             anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: root.sp("3", 12) - 2
@@ -903,13 +970,13 @@ Scope {
                                     spacing: 6
                                     Icon {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        name: root.tab === "region" ? "crop_free" : "screen_share"
+                                        name: root.tab === "region" ? "crop_free" : root.recordMode ? "radio_button_checked" : "screen_share"
                                         size: 18
                                         color: Theme.onAccent
                                     }
                                     Txt {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: root.tab === "region" ? "Select region" : "Share"
+                                        text: root.tab === "region" ? "Select region" : root.recordMode ? "Record" : "Share"
                                         color: Theme.onAccent
                                     }
                                 }
@@ -927,7 +994,7 @@ Scope {
 
                     Txt {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Arrows to choose · Tab to switch · Enter to share · Esc to cancel"
+                        text: "Arrows to choose · Tab to switch · Enter to " + (root.recordMode ? "record" : "share") + " · Esc to cancel"
                         color: Theme.textFaint
                         font.pixelSize: 12
                         font.weight: Font.Normal

@@ -65,7 +65,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
   Mail: öffnen in Thunderbird, nur als gelesen markieren oder in den Papierkorb – auch per Tastatur über den Launcher `m ` (↵ / Ctrl+R / Ctrl+D).
 - **F18** Launcher: Apps, Fenster, Projekte ohne Präfix; `#` `=` `:` `;` `/` `@` `pw`, `cal`, `m`, `g`/`yt`/`gh` (mit Leerzeichen), `c` fragt Claude, `?` listet alles ([LAUNCHER.md](knowledge/shell-features.md)).
 - **F19** Zwischenablage (Super+V) als Popup an der Eingabe – Enter fügt direkt ein; Zwischenablage (`;`) und Emoji (Super+.) auch als Launcher-Modi.
-- **F20** Benachrichtigungen: Popups + Verlauf, Snooze, Ruhezeiten, Hover hält an, leiser, dumpfer Einzelton zum Popup; Super+Alt+Z/X ([NOTIFICATIONS.md](knowledge/shell-features.md)).
+- **F20** Benachrichtigungen: Popups + Verlauf (einzeln löschbar, Rückmeldungen nur als Popup), Ruhezeiten, Hover hält an, leiser, dumpfer Einzelton zum Popup; Super+Alt+Z/X ([NOTIFICATIONS.md](knowledge/shell-features.md)).
 - **F21** Kürzel-Übersicht Super+K, erzeugt aus `hypr/binds.conf` plus App-Kürzel.
 - **F22** OSD (Lautstärke, Helligkeit per DDC/CI, Medien) und Power-Menü (Super+Esc, Strg+Alt+Entf).
 - **F23** Morgen-Übersicht: einmal am Morgen Termine, Mails, Wetter, To-dos, Inbox ([MORNING.md](knowledge/shell-features.md)).
@@ -81,7 +81,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
   Gedanken in `~/Notes/inbox.md`; dort abarbeiten (abhaken, zur Aufgabe, ins Projekt-Backlog, löschen) – kein Fenster in der Mitte mehr
   ([shell-features](knowledge/shell-features.md#gedanken-parken--to-dos)).
 - **F30** Leerlauf: alle Monitore langsam abdunkeln, dann aus, danach Sperre ([shell-features](knowledge/shell-features.md#leerlauf-abdunkeln)).
-- **F31** Snip: Bereich (Druck), Text per OCR (Super+Shift+T), Farbe (Super+Shift+C), Anpinnen (Super+Shift+P), Aufnahme (Super+R) ([SNIP.md](knowledge/shell-features.md)).
+- **F31** Snip: Bereich (Druck), Text per OCR (Super+Shift+T), Farbe (Pipette im Snip), Anpinnen (Super+Shift+P), Aufnahme mit Quellwahl Bildschirm/Fenster/Bereich (Super+R) ([SNIP.md](knowledge/shell-features.md)).
 - **F32** Call-Kameras aus Discord als Overlay (Super+C, Ecke mit Super+Alt+Pfeile) über das Plugin `equicord/desktopBridge`.
 
 ### Dev & Projekte

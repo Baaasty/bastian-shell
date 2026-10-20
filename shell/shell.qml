@@ -49,7 +49,9 @@ ShellRoot {
     }
     Popups {}
     MorningCard {}
-    Snip {}
+    Snip {
+        picker: sharePicker   // Super+R: Quellwahl im Teilen-Stil
+    }
     Switcher {}
     WorkBar {}
     Osd {}
@@ -60,7 +62,9 @@ ShellRoot {
     Packages {}
     Passwords {}
     Polkit {}
-    SharePicker {}
+    SharePicker {
+        id: sharePicker
+    }
     Layouts {}
     FilePickerPanel {}
 
