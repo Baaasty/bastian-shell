@@ -24,6 +24,8 @@ Item {
 
     signal dismissed()
     signal activated()
+    // ↓ in der leeren Suche (nur im Dashboard): weiter in die Kacheln
+    signal downFromIdle()
 
     function run(i: int): void {
         launcher.activate(i);
@@ -91,7 +93,12 @@ Item {
                     Keys.onEscapePressed: panelRoot.dismissed()
                     Keys.onReturnPressed: panelRoot.run(launcher.selected)
                     Keys.onEnterPressed: panelRoot.run(launcher.selected)
-                    Keys.onDownPressed: launcher.selected = Math.min(launcher.results.length - 1, launcher.selected + 1)
+                    Keys.onDownPressed: {
+                        if (panelRoot.idle)
+                            panelRoot.downFromIdle();
+                        else
+                            launcher.selected = Math.min(launcher.results.length - 1, launcher.selected + 1);
+                    }
                     Keys.onUpPressed: launcher.selected = Math.max(0, launcher.selected - 1)
                     Keys.onTabPressed: {
                         const i = launcher.modes.findIndex(m => m.prefix === launcher.mode);

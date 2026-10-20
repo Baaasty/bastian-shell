@@ -34,7 +34,7 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] Benachrichtigungen: Mail/Screenshot nur als Popup (nicht im Verlauf), einzeln löschen, Wecker entfernt (2026-10-20)
 - [x] UI-Feinschliff über alles: Tastenkappen (Mittelding Workspace-Modus/Bar), Schriftgrößen (Workspace-Modus etwas kleiner), Karten/Abstände überall angleichen (2026-10-20)
 - [x] Launcher nur noch mit Projects/Calculator/Files/Tabs/Claude, Rest ist Websuche; Emoji als Popup an der Eingabe (Super+.) (2026-10-20)
-- [ ] Dashboard-Benachrichtigungen per Tastatur bedienbar (wählen, öffnen, löschen)
+- [x] Dashboard-Benachrichtigungen per Tastatur bedienbar (wählen, öffnen, löschen) (2026-10-20)
 - [ ] Quickshell stürzt beim Hot-Reload ab (SIGSEGV in QQuickItem::setParentItem aus einem Binding, 4× am 2026-10-20, schon vor dem UI-Umbau) – Ursache finden; danach meldet sich der eigene Polkit-Agent ab
 
 ## Handtest (Bastian) – je Block „ok“ oder z. B. „A3 kaputt“ melden

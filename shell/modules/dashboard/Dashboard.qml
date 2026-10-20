@@ -159,6 +159,7 @@ Scope {
                     y: root.searchY
                     onDismissed: root.open = false
                     onActivated: root.open = false
+                    onDownFromIdle: notifsTile.enter()
                 }
 
                 // 12er-Raster: Rand 80, Lücke 20, drei Zeilen.
@@ -215,6 +216,11 @@ Scope {
                     }
                     NotifsTile {
                         id: notifsTile
+                        onLeave: typed => {
+                            search.input.forceActiveFocus();
+                            if (typed !== "")
+                                search.input.insert(search.input.cursorPosition, typed);
+                        }
                         x: grid.cx(9); y: grid.ry(2); width: grid.cw(3); height: grid.rows[2]
                     }
                     SystemTile {
