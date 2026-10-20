@@ -16,6 +16,11 @@ Ablauf (Protokoll aus xdph 1.4.1, src/shared/ScreencopyShared.cpp – Details: d
     flags: „r“ = Wiederherstellen erlaubt (Restore-Token), sonst leer
   - Abbruch = keine [SELECTION]-Zeile (Exit 1) → xdph bricht das Teilen ab.
 
+Merken (Haken „Remember this choice“ bzw. „Allow a restore token“ = Flag r): Discord schickt xdph nie einen
+Restore-Token zurück (fragt mit persist_mode 0/1, nie mit restore_data), darum merken wir die Auswahl selbst – je App =
+Klasse des aktiven Fensters (xdph gibt die App-ID nicht weiter), in ~/.local/state/desktop/share-picker.json.
+Danach antworten wir ohne Karte (kleine Benachrichtigung). Vergessen: share-pick --forget [app] (scripts/share-picker forget).
+
 Rückfall: läuft die Shell nicht (oder startet sie während der Auswahl neu), übernimmt der Standard-Picker
 hyprland-share-picker (gleiche Argumente und Umgebung, seine Ausgabe geht direkt an xdph).
 
@@ -25,6 +30,8 @@ Testen ohne Portal (Fenster aus hyprctl, Auswahl wird nur angezeigt, nichts gete
     share-pick --demo
 Formatprüfung ohne Shell und ohne UI (simuliertes Ergebnis):
     share-pick --format 'ok r/screen:DP-2'
+Gemerktes zeigen / vergessen:
+    share-pick --remembered      share-pick --forget [app]
 """
 import json
 import os
@@ -48,7 +55,10 @@ NAME = r"[A-Za-z0-9._-]+"
 SEL_RE = re.compile(rf"^(screen:{NAME}|window:\d+|region:{NAME}@-?\d+,-?\d+,\d+,\d+)$")
 
 
-LOG = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop", "share-pick.log")
+STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop")
+LOG = os.path.join(STATE, "share-pick.log")
+MEMORY = os.path.join(STATE, "share-picker.json")
+SELECTION_RE = re.compile(r"\[SELECTION\]([^/\s]*)/(\S+)")
 
 
 def log(msg):
@@ -125,13 +135,115 @@ def format_result(text, windows):
     return f"[SELECTION]{flags}/{sel}\n"
 
 
-def fallback(reason):
+def hypr_json(what):
+    try:
+        r = subprocess.run(["hyprctl", what, "-j"], capture_output=True, text=True, timeout=3, stdin=subprocess.DEVNULL)
+        return json.loads(r.stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def requester():
+    """Wer teilen will: Klasse des aktiven Fensters (Klick auf „Go Live“ fokussiert Discord). "" = unbekannt."""
+    win = hypr_json("activewindow")
+    return str(win.get("class") or "").strip().lower() if isinstance(win, dict) else ""
+
+
+def monitors():
+    mons = hypr_json("monitors")
+    return {m.get("name") for m in mons if isinstance(m, dict)} if isinstance(mons, list) else set()
+
+
+def load_memory():
+    try:
+        with open(MEMORY, encoding="utf-8") as f:
+            mem = json.load(f)
+        return mem if isinstance(mem, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_memory(mem):
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        tmp = MEMORY + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(mem, f, indent=1, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, MEMORY)
+    except OSError as e:
+        log(f"Merken fehlgeschlagen: {e.__class__.__name__}")
+
+
+def memory_entry(sel, windows):
+    """Auswahl → merkbarer Eintrag. Fenster-IDs gelten nur pro Portal-Sitzung → Fenster über die Klasse merken."""
+    if not SEL_RE.match(sel or ""):
+        return None
+    if sel.startswith("window:"):
+        cls = next((w["cls"] for w in windows or [] if w["id"] == int(sel[7:])), "")
+        return {"sel": "window", "cls": cls} if cls else None
+    return {"sel": sel}
+
+
+def recall_line(entry, windows, mons):
+    """Gemerkter Eintrag → xdph-Zeile, nur wenn das Ziel noch eindeutig da ist (sonst None = Karte zeigen)."""
+    if not isinstance(entry, dict):
+        return None
+    sel = str(entry.get("sel") or "")
+    if sel == "window":
+        ids = [w["id"] for w in windows or [] if w["cls"] and w["cls"] == entry.get("cls")]
+        return f"[SELECTION]r/window:{ids[0]}\n" if len(ids) == 1 else None
+    if not SEL_RE.match(sel) or sel.startswith("window:"):
+        return None
+    mon = sel.split(":", 1)[1].split("@", 1)[0]
+    return f"[SELECTION]r/{sel}\n" if mon in mons else None
+
+
+def remember(app, line, windows):
+    """Flag r in der Antwort = „merken“ → Auswahl für diese App speichern."""
+    m = SELECTION_RE.search(line or "")
+    if not app or not m or "r" not in m.group(1):
+        return
+    entry = memory_entry(m.group(2), windows)
+    if entry is None:
+        return
+    entry["at"] = time.strftime("%Y-%m-%d %H:%M")
+    mem = load_memory()
+    mem[app] = entry
+    save_memory(mem)
+    log(f"gemerkt für {app}: {entry['sel']}")
+
+
+def notify(app, line):
+    sel = SELECTION_RE.search(line).group(2)
+    what = "Fenster" if sel.startswith("window:") else sel.split(":", 1)[1].split("@", 1)[0]
+    try:
+        # stdout/stderr nicht erben: xdph liest unsere Pipes bis EOF
+        subprocess.Popen(["notify-send", "-a", "Desktop", "-t", "4000", "Bildschirm teilen",
+                          f"{what} – gemerkt für {app} · vergessen: share-picker forget"],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        pass
+
+
+def fallback(reason, app="", windows=None):
     log(f"{reason} → Standard-Picker")
     if not shutil.which(STOCK):
         log(f"{STOCK} fehlt, abgebrochen")
         sys.exit(1)
     sys.stdout.flush()
-    os.execvp(STOCK, [STOCK, *sys.argv[1:]])
+    # nicht exec: wir brauchen seine Ausgabe zum Merken; sie geht unverändert weiter an xdph
+    try:
+        r = subprocess.run([STOCK, *sys.argv[1:]], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
+    except OSError:
+        log(f"{STOCK} startet nicht, abgebrochen")
+        sys.exit(1)
+    out = r.stdout.decode("utf-8", "replace")
+    sys.stdout.write(out)
+    sys.stdout.flush()
+    remember(app, out, windows)
+    sys.exit(r.returncode)
 
 
 def reopen(req, tries=10):
@@ -216,6 +328,24 @@ def main():
         sys.stdout.write(line)
         return 0
 
+    if args[:1] == ["--remembered"]:
+        mem = load_memory()
+        for app in sorted(mem):
+            e = mem[app] if isinstance(mem[app], dict) else {}
+            what = f"window (Klasse {e.get('cls', '?')})" if e.get("sel") == "window" else e.get("sel", "?")
+            print(f"{app}: {what}  ({e.get('at', '?')})")
+        if not mem:
+            print("nichts gemerkt")
+        return 0
+
+    if args[:1] == ["--forget"]:   # ohne App: alles vergessen
+        mem = load_memory()
+        apps = [a.lower() for a in args[1:]] or list(mem)
+        for app in apps:
+            print(f"vergessen: {app}" if mem.pop(app, None) is not None else f"nichts gemerkt für {app}")
+        save_memory(mem)
+        return 0
+
     if args[:1] == ["--parse"]:    # nur Fensterliste prüfen: share-pick --parse '<XDPH_WINDOW_SHARING_LIST>'
         print(json.dumps(parse_list(args[1] if len(args) > 1 else ""), ensure_ascii=False, indent=1))
         return 0
@@ -224,12 +354,21 @@ def main():
     allow_token = "--allow-token" in args
     windows = demo_list() if demo else parse_list(os.environ.get("XDPH_WINDOW_SHARING_LIST", ""))
 
+    app = "" if demo else requester()
+    if app:
+        line = recall_line(load_memory().get(app), windows, monitors())
+        if line:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            notify(app, line)
+            return 0
+
     state, text = pick(windows, allow_token, demo)
     if state == "fallback":
         if demo:
             log(text)
             return 1
-        fallback(text)
+        fallback(text, app, windows)
     line = format_result(text, windows)
     if line is None:
         return 1
@@ -238,6 +377,7 @@ def main():
         return 0
     sys.stdout.write(line)
     sys.stdout.flush()
+    remember(app, line, windows)
     return 0
 
 

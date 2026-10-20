@@ -15,6 +15,8 @@
 #   share-picker test --gtk [--shot datei.png]   dasselbe mit dem GTK-Picker, optional Screenshot per grim
 #   share-picker build      GTK-Picker aus dem geprüften Stand bauen (cargo + gtk4-devel/gtk4-layer-shell-devel)
 #   share-picker css        Stylesheet des GTK-Pickers neu aus der Palette (kommt auch mit theme/gen/all.py)
+#   share-picker remembered gemerkte Auswahl je App (Haken „Remember this choice“ / Shift+Enter, scripts/share-pick)
+#   share-picker forget [app]  vergessen (ohne App: alles) → nächstes Teilen fragt wieder
 # Das Portal liest xdph.conf nur beim Start. Neustart (nur wenn kein Stream/Call läuft):
 #   systemctl --user restart xdg-desktop-portal-hyprland xdg-desktop-portal
 # Dieses Skript startet das Portal nie neu.
@@ -192,6 +194,7 @@ cmd_status() {
     shell_has_picker && say "Shell (sharepicker): läuft" || say "Shell (sharepicker): nicht erreichbar → share-pick nimmt den Standard-Picker"
     command -v hyprland-share-picker >/dev/null && say "Standard-Picker:   da (Rückfall)" || say "Standard-Picker:   $no"
     command -v slurp >/dev/null && say "slurp (Region):    $ok" || say "slurp (Region):    $no"
+    say "Gemerkt:           $("$PICK" --remembered | paste -sd ';' | sed 's/;/ · /g')"
     [ -x "$BIN" ] && say "GTK-Picker gebaut: $ok ($("$BIN" --version 2>/dev/null | head -1))" || say "GTK-Picker gebaut: $no (Alternative, scripts/share-picker build)"
     local pid; pid=$(systemctl --user show -p MainPID --value xdg-desktop-portal-hyprland 2>/dev/null)
     if [ -n "${pid:-}" ] && [ "$pid" != 0 ]; then
@@ -250,5 +253,7 @@ case "${1:-status}" in
     status) cmd_status ;;
     css) shift; cmd_css "$@" ;;
     test) shift; cmd_test "$@" ;;
-    *) sed -n '2,21p' "$SELF" ;;
+    remembered) "$PICK" --remembered ;;
+    forget) shift; "$PICK" --forget "$@" ;;
+    *) sed -n '2,22p' "$SELF" ;;
 esac

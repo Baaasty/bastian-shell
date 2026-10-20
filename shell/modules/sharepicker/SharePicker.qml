@@ -517,6 +517,9 @@ Scope {
                                         else
                                             root.cancel();
                                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                        // Shift+Enter = teilen und merken (Tastatur statt Haken)
+                                        if (event.modifiers & Qt.ShiftModifier)
+                                            root.allowToken = true;
                                         root.share();
                                     } else if (event.key === Qt.Key_Backtab || (event.key === Qt.Key_Tab && (event.modifiers & Qt.ShiftModifier))) {
                                         root.stepTab(-1);
@@ -815,7 +818,7 @@ Scope {
                                         font.pixelSize: 13
                                     }
                                     Txt {
-                                        text: "The app may share the same source again without asking"
+                                        text: "Next time this app shares it without asking · Shift+Enter"
                                         color: Theme.textFaint
                                         font.pixelSize: 11
                                         font.weight: Font.Normal

@@ -49,6 +49,8 @@ Spiele (`steam_app_<id>`) öffnen auf DP-2 mit `content game`; Vollbild schalten
 - Mausverschiebungen meldet Hyprland nicht: die Bar merkt sie erst beim nächsten Fenster-Ereignis
   (Super+Pfeile melden sich selbst über `qs ipc call hypr refresh`).
 - Super antippen und Super+Tab gehen über `qs ipc` (ein Prozessstart je Taste); wirkt das träge → Quickshell-`GlobalShortcut`.
+- Bildschirm teilen: Discord nutzt keine Portal-Restore-Tokens (Log von xdph: nie `restore_data`) – die Auswahl merkt
+  darum unser Picker selbst je App ([shell-features.md](shell-features.md#bildschirm-teilen), `scripts/share-picker forget`).
 - Monitore nur über `monitors.conf`. Plasma-only bleiben `scripts/rice`, `winrules`, `shellpkg`, `wallpaper set`
   (in Plasma ausführen; die Hyprland-Shell übernimmt neue Wallpaper über `kscreenlockerrc`).
 - **hyprlang (.conf) ist seit 0.55 veraltet** und fällt bald weg → vor einem Update auf 0.57+ Release-Notes lesen,

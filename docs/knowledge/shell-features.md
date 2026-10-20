@@ -75,7 +75,10 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
 - xdph liest seine Config nur beim Start; der Portal-Neustart bricht laufende Streams/Calls ab. Rückweg: `scripts/share-picker off` + Neustart.
 - Protokoll gegen xdph 1.4.1 geprüft (wartet auf stdout **und** stderr, schneidet bei `screen:` ein Zeichen ab) – nach xdph-Updates neu prüfen.
 - Log `~/.local/state/desktop/share-pick.log` (xdph verwirft stderr). Equibop überspringt unter Wayland seine eigene Auswahl → unsere Karte kommt.
-- „Remember this choice“ geht nur, wenn xdph mit `screencopy:allow_token_by_default = true` läuft.
+- Merken (Haken „Remember this choice“ oder Shift+Enter) macht `share-pick` selbst: Discord schickt xdph nie `restore_data`
+  (fragt mit `persist_mode` 0/1), Restore-Tokens bringen also nichts. Gemerkt je App = Klasse des aktiven Fensters
+  (xdph gibt die App-ID nicht weiter) in `~/.local/state/desktop/share-picker.json`; Fenster über die Klasse, nur wenn eindeutig.
+  Danach teilt es ohne Karte (Benachrichtigung). `scripts/share-picker remembered` · `forget [app]`.
 - GTK-Alternative (hyprland-preview-share-picker, Commit `7e11349` geprüft, `PIN` im Skript) braucht sudo-Pakete; Tastatur erst nach Klick.
 
 # Launcher
