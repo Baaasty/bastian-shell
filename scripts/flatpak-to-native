@@ -22,7 +22,7 @@
 # Das Flatpak (/app/lib/thunderbird) hat BD520B11F73A6B64. Das RPM (/usr/lib64/thunderbird) hätte einen anderen Hash,
 # fände keinen Eintrag, und das echte Profil ist vom Flatpak „belegt“ → es würde ein neues Profil angelegt
 # (oder das leere Alt-Profil „default“ mit Default=1 genommen). Darum: alte Install-Abschnitte raus, Abschnitt mit dem
-# RPM-Hash rein, Default=1 aufs echte Profil. ESR 153 → Release 157 ist ein Upgrade, --allow-downgrade braucht es nicht.
+# RPM-Hash rein, Default=1 aufs echte Profil. ESR 153 → Release 158 ist ein Upgrade, --allow-downgrade braucht es nicht.
 set -euo pipefail
 
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/desktop"

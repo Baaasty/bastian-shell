@@ -10,17 +10,22 @@
 # == System
 # ersetzt durch RPM (dnf.txt, 2026-10-18; Daten umziehen + Flatpaks entfernen: scripts/flatpak-to-native):
 #   com.discordapp.Discord → discord · com.spotify.Client → spotify-client (lpf) · org.mozilla.thunderbird_esr → thunderbird
-#   STAND 18.10. abends: die drei Flatpaks sind auf Bastians PC NOCH installiert (Datenumzug offen, spotify-client noch nicht gebaut).
+#   STAND 20.10.: Discord-Flatpak entfernt. Thunderbird umgezogen (~/.thunderbird), Flatpak auf Bastians PC noch zu entfernen.
+#   Spotify: Flatpak noch in Benutzung, spotify-client per lpf noch nicht gebaut (lpf: approve-wait).
+# Regel (2026-10-20, docs/DECISIONS.md): nativ als RPM, wenn es einen Update-Weg gibt (Repo/lpf); sonst Flatpak.
+# Die Flatpaks unten bleiben, weil es kein RPM mit Update-Weg gibt (Stand 2026-10-20).
+# aus der Liste 2026-10-20: com.core447.StreamController (Stream Deck, nie benutzt; auf Bastians PC noch zu deinstallieren)
 #   Auf einem frisch aufgesetzten PC werden sie nicht mehr installiert: Discord/Thunderbird als RPM, Spotify per lpf (bootstrap Schritt 2),
 #   Chat später Equibop (GitHub-RPM, bootstrap Schritt 2). Konten/Logins neu anmelden.
-system flathub com.core447.StreamController    # Stream Deck
-system flathub hu.irl.cameractrls              # Kamera-Regler (Facecam)
+system flathub hu.irl.cameractrls              # Kamera-Regler (Facecam) · kein RPM, nur Flathub oder git
 
 # == User
-user flathub io.podman_desktop.PodmanDesktop   # Podman Desktop
+user flathub io.podman_desktop.PodmanDesktop   # Podman Desktop · offiziell nur Flatpak/tar.gz, COPRs veraltet
 # ersetzt durch RPM (dnf.txt): org.kde.haruna → mpv (Standard-Player) · com.valvesoftware.Steam → steam
 
 # == User, aus .flatpak-Bundles (Storyteller "…craft"-Apps, Quelle: Download, Remotes "<name>-origin" ohne URL)
+# Updates nur über den ArtCraft Launcher (prüft GitHub-Releases, installiert neue Bundles). Es gibt auch .rpm, aber
+# unsigniert, ohne dnf-Repo, Update nur per Launcher mit Passwort-Abfrage bei fast täglichen 0.x-Releases → Flatpak bleibt.
 user bundle ai.storyteller.artcraft-launcher   # ArtCraft Launcher
 user bundle ai.storyteller.cadcraft            # CADCraft
 user bundle ai.storyteller.deckcraft           # DeckCraft

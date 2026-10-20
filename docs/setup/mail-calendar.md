@@ -54,7 +54,10 @@ sudo dnf install thunderbird        # Fedora-RPM (Release, nicht ESR), Profil ~/
 ```
 
 Die Shell und `mail-watch` starten ihn über `scripts/app-run thunderbird` (RPM zuerst, sonst das alte Flatpak
-`org.mozilla.thunderbird_esr`). Altes Flatpak-Profil umziehen: `scripts/flatpak-to-native migrate thunderbird`.
+`org.mozilla.thunderbird_esr`). Altes Flatpak-Profil umziehen: `scripts/flatpak-to-native migrate thunderbird`,
+danach `python3 -I theme/gen/thunderbird.py apply` und das Theme einmal aktivieren (☰ → Add-ons und Themes → Themes →
+„Desktop“). Rückweg: `mv ~/.thunderbird ~/.thunderbird.rpm` (Flatpak-Profil bleibt unangetastet, Sicherung unter
+`~/.local/state/desktop/flatpak-backup/`), dann startet `app-run` wieder das Flatpak.
 
 ## Neue Mails + Einmal-Codes (wie bei Apple)
 
