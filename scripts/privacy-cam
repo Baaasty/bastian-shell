@@ -1,94 +1,205 @@
-#!/usr/bin/env python3
-"""privacy-cam – meldet, welche Programme gerade eine Kamera (/dev/video*) direkt geöffnet haben (für den Privatsphäre-Punkt der Shell).
+#!/usr/bin/python3 -I
+"""privacy-cam – Kamera-Wächter der Shell: wer hat gerade eine Kamera (/dev/video*) offen, und streamt die Facecam?
 
-Läuft als Dauerlauf: eine JSON-Zeile bei jeder Änderung, z. B. {"apps":["chrome"]} (leere Liste = Kamera frei).
-Ereignisgesteuert: `inotifywait` meldet open/close der Kamera-Geräte, erst dann wird /proc nach offenen Dateien durchsucht (ein paar ms).
-Ohne inotifywait: Rückfall auf alle 3 s. Kein Dauer-Polling sonst. Endet, wenn die Shell (Elternprozess) endet.
-Kameras, die nur über PipeWire/das Portal laufen, sieht die Shell selbst (Privacy.qml) – dieses Skript deckt Programme ab, die /dev/video direkt öffnen
-(z. B. Chrome/Electron ohne PipeWire-Kamera). PipeWire/WirePlumber werden hier ignoriert (sie öffnen die Geräte nur zum Prüfen).
+Läuft als Dauerlauf und schreibt bei jeder Änderung eine JSON-Zeile, z. B.
+  {"apps":["chrome"],"device":"/dev/video0","busy":true}
+apps = Programme mit offenem /dev/video* (ohne PipeWire/WirePlumber, die öffnen nur zum Prüfen) → Privatsphäre-Punkt
+device/busy = Facecam-Knoten und ob sie streamt (scripts/camera, Schwelle STREAM_URBS) → Camera.qml (Helligkeit setzen)
 
-  privacy-cam          Dauerlauf (Shell)
+Ereignisgesteuert über inotify (scripts/inotify-watch: Python-stdlib per ctypes, kein inotify-tools nötig): open/close auf den Kamera-Knoten,
+create/delete/attrib in /dev fürs Ein-/Abstecken. Erst dann wird /proc nach offenen Dateien durchsucht (ein paar ms).
+Nur solange jemand die Facecam offen hat, wird `urbnum` jede Sekunde gelesen – ein Stream startet per ioctl, das meldet
+inotify nicht. Sicherheitsnetz: alle 60 s trotzdem einmal nachsehen; ohne inotify alle 5 s. Endet mit der Shell.
+Kameras, die nur über PipeWire laufen, sieht die Shell selbst (Privacy.qml).
+
+  privacy-cam          Dauerlauf (Shell, shell/services/Camera.qml)
   privacy-cam once     einmal prüfen, JSON ausgeben (zum Testen)
-Doku: docs/knowledge/shell-features.md
+Doku: docs/knowledge/shell-features.md (Privatsphäre-Punkte), docs/knowledge/hardware.md (Facecam)
 """
 import glob
+import importlib.machinery
+import importlib.util
 import json
 import os
 import select
-import shutil
-import subprocess
 import sys
 import time
 
-IGNORE = {"pipewire", "wireplumber", "pipewire-pulse", "pipewire-media-", "wp-spa", "xdg-desktop-por"}
+# Mitbenutzer, die keine App sind: PipeWire/WirePlumber/Portal prüfen die Geräte nur (Präfix, comm ist auf 15 Zeichen
+# gekürzt); SELF = unser eigenes scripts/camera (setzt die Helligkeit im Call) – sonst blinkte die Shell selbst als Kamera-App auf
+IGNORE = ("pipewire", "wireplumber", "pipewire-pulse", "pipewire-media-", "wp-spa", "xdg-desktop-por")
+SELF = ("camera",)
+
+SAFETY = 60.0        # Sicherheitsnetz, falls ein Ereignis verloren geht
+FALLBACK = 5.0       # ohne inotify
+SAMPLE = 1.0         # urbnum-Takt, solange die Facecam offen ist
+DEBOUNCE = 0.3       # Öffnen/Schließen kommt oft als Welle (Format-Abfrage)
+
+
+def load(name):
+    """Nachbarskript als Modul: Stream-Schwelle (scripts/camera) und inotify (scripts/inotify-watch) gibt es so nur einmal."""
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), name)
+    loader = importlib.machinery.SourceFileLoader(name.replace("-", "_"), path)
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+cam = load("camera")
+ino_mod = load("inotify-watch")
+M = ino_mod.MASKS
+DEV_MASK = M["OPEN"] | ino_mod.IN_CLOSE
+DIR_MASK = M["CREATE"] | M["DELETE"] | M["ATTRIB"]
+
+
+def is_app(comm):
+    return bool(comm) and comm not in SELF and not any(comm.startswith(i) for i in IGNORE)
 
 
 def scan():
-    apps = set()
+    """(Apps mit offener Kamera, alle offenen /dev/video*-Pfade inkl. PipeWire)."""
+    apps, held = set(), set()
     for pid in os.listdir("/proc"):
         if not pid.isdigit():
             continue
         try:
-            for fd in os.listdir(f"/proc/{pid}/fd"):
-                try:
-                    target = os.readlink(f"/proc/{pid}/fd/{fd}")
-                except OSError:
-                    continue
-                if target.startswith("/dev/video"):
-                    with open(f"/proc/{pid}/comm") as f:
-                        comm = f.read().strip()
-                    if comm and not any(comm.startswith(i) for i in IGNORE):
-                        apps.add(comm)
-                    break
+            fds = os.listdir(f"/proc/{pid}/fd")
         except OSError:
             continue        # Prozess weg oder nicht lesbar (fremder Nutzer)
-    return sorted(apps)
+        mine = set()
+        for fd in fds:
+            try:
+                target = os.readlink(f"/proc/{pid}/fd/{fd}")
+            except OSError:
+                continue
+            if target.startswith("/dev/video"):
+                mine.add(target)
+        if not mine:
+            continue
+        held |= mine
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                comm = f.read().strip()
+        except OSError:
+            continue
+        if is_app(comm):
+            apps.add(comm)
+    return sorted(apps), held
+
+
+def urbs_per_window(delta, seconds):
+    """URBs auf das 250-ms-Fenster von scripts/camera umrechnen (wir messen über ~1 s statt kurz zu schlafen)."""
+    if seconds <= 0:
+        return 0
+    return delta * 0.25 / seconds
+
+
+def read_urbs(usb):
+    try:
+        with open(os.path.join(usb, "urbnum")) as f:
+            return int(f.read())
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+class Watch:
+    """/dev (Ein-/Abstecken, ACL) plus open/close je Kamera-Knoten."""
+
+    def __init__(self):
+        self.ino = ino_mod.Inotify()
+        self.fd = self.ino.fd
+        self.devs = {}       # Pfad → wd
+        if self.ino.add("/dev", DIR_MASK) < 0:
+            raise OSError("inotify_add_watch /dev")
+
+    def sync(self):
+        """Watches auf alle /dev/video* (neu eingesteckt, ACL gerade gesetzt …). True = alle gesetzt."""
+        want = set(glob.glob("/dev/video*"))
+        for p in list(self.devs):
+            if p not in want:
+                self.ino.rm(self.devs.pop(p))
+        ok = True
+        for p in want - set(self.devs):
+            wd = self.ino.add(p, DEV_MASK)
+            if wd >= 0:
+                self.devs[p] = wd
+            else:
+                ok = False     # z. B. udev hat die Nutzer-ACL noch nicht gesetzt → gleich nochmal
+        return ok
+
+    def drain(self):
+        return self.ino.drain()
+
+
+def state(apps, device, busy):
+    return {"apps": apps, "device": device or "", "busy": bool(busy)}
 
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "once":
-        print(json.dumps({"apps": scan()}))
+        dev, usb = cam.find()
+        print(json.dumps(state(scan()[0], dev, bool(usb) and cam.streaming(usb)), separators=(",", ":")))
         return 0
+    ino_mod.die_with_parent()          # zusätzlich zum ppid-Vergleich unten
     parent = os.getppid()
-    have_inotify = shutil.which("inotifywait") is not None
+    try:
+        ino = Watch()
+    except OSError as e:
+        print(f"privacy-cam: inotify geht nicht ({e}), prüfe alle {FALLBACK:.0f} s", file=sys.stderr, flush=True)
+        ino = None
+
     last = None
-    proc = None
-    watched = ()
+    apps, held = [], set()
+    dev, usb = None, None
+    busy = False
+    sample = None          # (Zeit, urbnum) der letzten Messung
+    rescan = True
+    complete = True
+    scanned = 0.0
     try:
         while True:
-            devs = tuple(sorted(glob.glob("/dev/video*")))
-            if have_inotify and (devs != watched or (proc and proc.poll() is not None)):
-                if proc:
-                    proc.kill()
-                    proc.wait()
-                    proc = None
-                watched = devs
-                if devs:
-                    proc = subprocess.Popen(
-                        ["inotifywait", "-m", "-q", "-e", "open", "-e", "close", "--format", "%e", *devs],
-                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            apps = scan()
-            if apps != last:
-                last = apps
-                print(json.dumps({"apps": apps}), flush=True)
-            if proc:
-                r, _, _ = select.select([proc.stdout], [], [], 5)
-                if r:
-                    os.read(proc.stdout.fileno(), 65536)
-                    time.sleep(0.3)                      # entprellen: Öffnen/Schließen kommt oft als Welle
-                    r, _, _ = select.select([proc.stdout], [], [], 0)
-                    while r:
-                        os.read(proc.stdout.fileno(), 65536)
-                        r, _, _ = select.select([proc.stdout], [], [], 0)
+            if rescan:
+                if ino:
+                    complete = ino.sync()
+                dev, usb = cam.find()
+                apps, held = scan()
+                rescan = False
+                scanned = time.monotonic()
+            if dev and dev in held and usb:
+                now, n = time.monotonic(), read_urbs(usb)
+                if sample and n is not None:
+                    busy = cam.is_stream(urbs_per_window(n - sample[1], now - sample[0]))
+                sample = (now, n) if n is not None else None
             else:
-                time.sleep(3)
+                busy, sample = False, None
+            cur = state(apps, dev, busy)
+            if cur != last:
+                last = cur
+                print(json.dumps(cur, separators=(",", ":")), flush=True)
+
+            if not ino:
+                time.sleep(FALLBACK)
+                rescan = True
+            else:
+                timeout = SAFETY
+                if sample:
+                    timeout = SAMPLE
+                elif not complete:
+                    timeout = 2.0
+                r, _, _ = select.select([ino.fd], [], [], timeout)
+                if r:
+                    time.sleep(DEBOUNCE)
+                    evs = ino.drain()
+                    rescan = any(m & (ino_mod.IN_Q_OVERFLOW | ino_mod.IN_IGNORED) or name.startswith("video")
+                                 or wd in ino.devs.values() for wd, m, name in evs)
+                # Sicherheitsnetz (auch während eines Calls) bzw. fehlende Watches nachholen
+                if not complete or time.monotonic() - scanned >= SAFETY:
+                    rescan = True
             if os.getppid() != parent:
                 break
     except (BrokenPipeError, KeyboardInterrupt):
         pass
-    finally:
-        if proc:
-            proc.kill()
     return 0
 
 

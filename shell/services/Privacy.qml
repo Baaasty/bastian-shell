@@ -8,7 +8,7 @@ import Quickshell.Services.Pipewire
 // Quellen – alles ereignisgesteuert, kein Dauer-Polling:
 //  - Mikrofon: PipeWire-Aufnahme-Streams (Stream/Input/Audio) mit Verbindung zu einem echten Mikrofon (nicht zu einem Lautsprecher-Monitor)
 //  - Kamera:   PipeWire-Video-Streams, die an einer Kamera hängen (v4l2/libcamera, media.role Camera), plus Programme, die /dev/video direkt
-//              geöffnet haben (scripts/privacy-cam, inotify)
+//              geöffnet haben (Camera.apps, Wächter scripts/privacy-cam per inotify)
 //  - Teilen:   PipeWire-Video-Streams, die an einer Bildschirm-Quelle hängen (xdg-desktop-portal-hyprland: Discord, Browser, OBS …)
 // Aktualisiert bei Änderungen der PipeWire-Verbindungen (Link-Gruppen) und Eigenschaften. Doku: docs/knowledge/shell-features.md
 Singleton {
@@ -21,8 +21,8 @@ Singleton {
 
     // Test: Einträge von Hand (IPC privacy simulate), ersetzen nichts Echtes
     property var sim: ({ mic: [], cam: [], share: [] })
-    // Kamera direkt über /dev/video (privacy-cam)
-    property var camDirect: []
+    // Kamera direkt über /dev/video – kommt vom Kamera-Wächter in Camera.qml (ein Prozess für beide)
+    readonly property var camDirect: Camera.apps
     // Kamera wirklich in Benutzung (ohne Test-Einträge) – dafür schaltet CamLight.qml das Key Light
     property bool camLive: false
 
@@ -119,6 +119,12 @@ Singleton {
         }
     }
     Connections {
+        target: Camera
+        function onAppsChanged(): void {
+            soon.restart();
+        }
+    }
+    Connections {
         target: Pipewire.linkGroups
         function onValuesChanged(): void {
             soon.restart();
@@ -150,20 +156,6 @@ Singleton {
         objects: (Pipewire.nodes?.values ?? []).filter(n => !/^(alsa_|Midi|bluez_midi|Dummy|Freewheel)/.test(n?.name || ""))
     }
     Component.onCompleted: soon.restart()
-
-    // ---- Kamera direkt über /dev/video (Dauerlauf, ereignisgesteuert; endet mit der Shell) ----
-    Process {
-        running: true
-        command: [Quickshell.shellDir + "/../scripts/privacy-cam"]
-        stdout: SplitParser {
-            onRead: line => {
-                try {
-                    root.camDirect = JSON.parse(line).apps || [];
-                    root.recompute();
-                } catch (e) {}
-            }
-        }
-    }
 
     IpcHandler {
         target: "privacy"

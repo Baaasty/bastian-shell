@@ -93,7 +93,6 @@ Item {
         if (_watching) {
             KeyLight.watch(false);
             Hue.watch(false);
-            Camera.watch(false);
         }
     }
     function sync(): void {
@@ -101,7 +100,6 @@ Item {
             _watching = shown;
             KeyLight.watch(shown);
             Hue.watch(shown);
-            Camera.watch(shown);
         }
     }
 

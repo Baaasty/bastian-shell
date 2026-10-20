@@ -7,20 +7,17 @@ import Quickshell.Io
 // Die Facecam nimmt Einstellungen nur an, solange sie streamt. Darum: Wunsch-Helligkeit merken
 // (~/.local/state/desktop/camera.json) und beim Einschalten der Kamera (z. B. Discord-Call) neu setzen,
 // zusammen mit Auto-Belichtung und Anti-Flimmern 50 Hz. Hintergrund: docs/knowledge/hardware.md
+// Status kommt ereignisgesteuert vom Kamera-Wächter scripts/privacy-cam (inotify, eine Zeile je Änderung) –
+// derselbe Prozess liefert auch die Kamera-Apps für die Privatsphäre-Punkte (apps → Privacy.qml), kein eigenes Polling.
 Singleton {
     id: root
 
     readonly property string script: Quickshell.shellDir + "/../scripts/camera"
 
-    // Zuschauer zählen (Dashboard-Kachel, Licht-Popout): active = mindestens einer sieht zu -> öfter nachsehen
-    property int watchers: 0
-    readonly property bool active: watchers > 0
-    function watch(on: bool): void {
-        watchers = Math.max(0, watchers + (on ? 1 : -1));
-    }
     property bool ready: false
     property bool present: false
     property bool busy: false            // streamt gerade (eine App nutzt sie)
+    property var apps: []                // Programme mit offenem /dev/video* (ohne PipeWire), für Privacy.qml
 
     readonly property int brightnessMin: 0
     readonly property int brightnessMax: 255
@@ -74,37 +71,68 @@ Singleton {
         onTriggered: root.applyAll()
     }
 
-    Timer {
-        interval: root.active ? 2000 : 5000
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: if (!statusProc.running) statusProc.running = true
+    function update(line: string): void {
+        let j;
+        try {
+            j = JSON.parse(line);
+        } catch (e) {
+            return;
+        }
+        if (JSON.stringify(j.apps || []) !== JSON.stringify(apps))
+            apps = j.apps || [];
+        // erste Zeile nach dem (Neu-)Start der Shell zählt nicht als "eingeschaltet":
+        // ein laufender Call behält seine Werte, die Kamera vergisst sie erst beim Abstecken
+        const wasBusy = ready ? busy : j.busy === true;
+        present = !!j.device;
+        busy = j.busy === true;
+        ready = true;
+        if (busy && !wasBusy) {
+            // ohne gespeicherten Wunsch gilt einmal der Kamerawert (nur im Stream lesbar)
+            if (!hasWant && !statusProc.running)
+                statusProc.running = true;
+            applyOnStart.restart();
+        }
     }
 
+    // Kamera-Wächter (Dauerlauf). Stirbt er, Neustart mit Backoff 2 s … 60 s; lief er lange, zählt es neu
+    Process {
+        id: watcher
+        property real startedAt: 0
+        property int failures: 0
+        command: [Quickshell.shellDir + "/../scripts/privacy-cam"]
+        running: true
+        stdout: SplitParser {
+            onRead: line => root.update(line)
+        }
+        stderr: SplitParser {
+            onRead: line => console.warn("camera watcher:", line)
+        }
+        onRunningChanged: if (running) startedAt = Date.now()
+        onExited: (code, status) => {
+            failures = Date.now() - startedAt > 120000 ? 1 : failures + 1;
+            restartWatcher.interval = Math.min(60000, 2000 * Math.pow(2, failures - 1));
+            console.warn("camera watcher exited (" + code + "), restart in " + restartWatcher.interval / 1000 + " s");
+            restartWatcher.start();
+        }
+    }
+    Timer {
+        id: restartWatcher
+        onTriggered: watcher.running = true
+    }
+
+    // nur für den Startwert der Helligkeit (einmal pro Einschalten, wenn noch nichts gespeichert ist)
     Process {
         id: statusProc
         command: [root.script, "status"]
         stdout: StdioCollector {
             onStreamFinished: {
-                let j = {};
                 try {
-                    j = JSON.parse(text);
-                } catch (e) {
-                    return;
-                }
-                // erste Antwort nach dem (Neu-)Start der Shell zählt nicht als "eingeschaltet":
-                // ein laufender Call behält seine Werte, die Kamera vergisst sie erst beim Abstecken
-                const wasBusy = root.ready ? root.busy : j.busy === true;
-                root.present = !!j.device;
-                root.busy = j.busy === true;
-                root.ready = true;
-                if (!root.hasWant && typeof j.brightness === "number") {
-                    root.wantBrightness = j.brightness;
-                    root.hasWant = true;
-                }
-                if (root.busy && !wasBusy)
-                    applyOnStart.restart();
+                    const j = JSON.parse(text);
+                    if (!root.hasWant && typeof j.brightness === "number") {
+                        root.wantBrightness = j.brightness;
+                        root.hasWant = true;
+                    }
+                } catch (e) {}
             }
         }
     }

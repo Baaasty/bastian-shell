@@ -10,6 +10,7 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
 - **Helligkeit** läuft über den normalen UVC-Regler `brightness` (0–255), Auto-Belichtung bleibt an. Eine
   „Exposure Compensation“ gibt es bei der MK.1 nicht (nur Facecam Pro). Gemerkt wird nur die Wunsch-Helligkeit
   (`~/.local/state/desktop/camera.json`); beim Einschalten der Kamera setzt die Shell nach 1,5 s Auto + 50 Hz + Helligkeit.
+  „Eingeschaltet“ meldet der Kamera-Wächter `scripts/privacy-cam` (inotify, kein Polling – siehe shell-features „Privatsphäre-Punkte“).
 - **Setzen geht nur, während die Kamera streamt** (sonst EPIPE). „Streamt“ erkennt das Skript am Anstieg von `urbnum`
   des USB-Geräts, nicht per GET – jedes GET ohne Stream schreibt eine Fehlerzeile ins Kernel-Log.
 - **Warum `v4l2-ctl` die Regler nicht zeigt:** Beim ersten Abfragen nach dem Login streamt die Kamera nicht und beantwortet

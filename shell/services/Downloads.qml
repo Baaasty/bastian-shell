@@ -5,7 +5,7 @@ import Quickshell.Io
 
 // Letzte Downloads für das Downloads-Popout (Rechtsklick auf den Dateimanager-Chip: FilesChip/DownloadsPopout).
 // Liest ~/Downloads (nur oberste Ebene, ohne versteckte Dateien) nach Änderungszeit; neu gelesen nur bei Ereignissen
-// (inotifywait, kein Dauer-Polling). Halbfertige Downloads (.part = Firefox, .crdownload = Chrome/Brave) zählen als „lädt…“,
+// (scripts/inotify-watch, kein Dauer-Polling). Halbfertige Downloads (.part = Firefox, .crdownload = Chrome/Brave) zählen als „lädt…“,
 // ihre Größe wird nur bei offenem Popout alle 1,5 s nachgelesen.
 // Aufräumen: Einträge älter als N Tage per `gio trash` in den Papierkorb (nie löschen), nur nach Bestätigung im Popout.
 // Einstellungen (optional): ~/.config/desktop/downloads.json  { "dir": "~/Downloads", "count": 12, "cleanupDays": 30 }
@@ -167,10 +167,15 @@ Singleton {
     }
 
     // Ereignisse im Ordner (nur Anlegen/Umbenennen/Löschen/Fertigschreiben, keine Schreib-Ereignisse)
+    // inotify-watch statt inotifywait: gleiche Ausgabe, aber nur Python-stdlib (inotify-tools ist nicht installiert).
+    // --ready: erste Zeile „READY“, sobald der Watch steht → normales Neu-Einlesen (debounce) schließt die Lücke
+    // zwischen dem ersten Einlesen beim Start und dem Wächter
     Process {
         id: watcher
+        property real startedAt: 0
+        property int failures: 0
         running: root.dir !== ""
-        command: ["inotifywait", "-m", "-q", "-e", "create,moved_to,moved_from,delete,close_write", "--format", "%e\t%f", root.dir]
+        command: [Quickshell.shellDir + "/../scripts/inotify-watch", "--ready", "-e", "create,moved_to,moved_from,delete,close_write", root.dir]
         stdout: SplitParser {
             onRead: line => {
                 const p = line.split("\t");
@@ -183,12 +188,19 @@ Singleton {
                 debounce.restart();
             }
         }
-        // inotifywait beendet (Ordner weg o. ä.): später erneut
-        onExited: retry.restart()
+        stderr: SplitParser {
+            onRead: line => console.warn("downloads:", line)
+        }
+        onRunningChanged: if (running) startedAt = Date.now()
+        // Wächter beendet (Ordner weg o. ä.): Neustart mit Backoff 2 s … 60 s; lief er lange, zählt es neu
+        onExited: {
+            failures = Date.now() - startedAt > 120000 ? 1 : failures + 1;
+            retry.interval = Math.min(60000, 2000 * Math.pow(2, failures - 1));
+            retry.restart();
+        }
     }
     Timer {
         id: retry
-        interval: 30000
         onTriggered: {
             watcher.running = true;
             root.refresh();
@@ -257,6 +269,8 @@ Singleton {
     // erst nach dem Umbinden der Befehle (sonst liest find noch den alten Ordner)
     onDirChanged: Qt.callLater(() => {
         watcher.running = false;
+        watcher.failures = 0;
+        retry.stop();
         watcher.running = true;
         refresh();
     })
