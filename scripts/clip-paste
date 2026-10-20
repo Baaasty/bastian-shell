@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Zwischenablage einfügen: Fokus ausdrücklich zurück an das Fenster, in dem getippt wurde, warten, bis Hyprland es als
+# aktiv meldet, dann Strg+V per wtype. Aufruf aus shell/services/Clipboard.qml (Doku: docs/knowledge/shell-features.md).
+#
+#   clip-paste <adresse> [term]   adresse = Hyprland-Fensteradresse (0x…), term = Strg+Shift+V statt Strg+V
+#
+# Warum ausdrücklich: schließt ein Layer-Panel mit Tastaturfokus, gibt Hyprland den Fokus nach follow_mouse weiter –
+# oft an das Fenster unter der Maus statt an das vorige. Exit 3 = Fenster nicht mehr da/nicht fokussierbar (nur kopiert).
+set -u
+addr="${1:-}"
+mode="${2:-}"
+[[ "$addr" =~ ^(0x)?[0-9a-fA-F]+$ ]] || { echo "clip-paste: Adresse fehlt" >&2; exit 2; }
+addr="0x${addr#0x}"
+command -v wtype >/dev/null || exit 4
+
+hyprctl dispatch focuswindow "address:$addr" >/dev/null
+ok=0
+for _ in $(seq 1 20); do
+    if hyprctl activewindow -j | grep -q "\"address\": \"$addr\""; then
+        ok=1
+        break
+    fi
+    sleep 0.02
+done
+[[ $ok == 1 ]] || exit 3
+# Die App braucht nach wl_keyboard.enter einen Moment, bevor sie Tasten annimmt
+sleep 0.05
+
+if [[ "$mode" == term ]]; then
+    exec wtype -M ctrl -M shift -k v -m shift -m ctrl
+fi
+exec wtype -M ctrl -k v -m ctrl

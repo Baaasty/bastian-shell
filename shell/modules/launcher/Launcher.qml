@@ -39,11 +39,12 @@ Scope {
         { prefix: "#", label: "Projects", hint: "Start a project workspace or create a new one" },
         { prefix: "=", label: "Calculator", hint: "Calculate · ↵ copies the result" },
         { prefix: ":", label: "Emoji", hint: "Find an emoji · ↵ copies it" },
-        { prefix: ";", label: "Clipboard", hint: "History and pins · ↵ copies · Ctrl+P pins" },
+        { prefix: ";", label: "Clipboard", hint: "History and pins · ↵ pastes · Shift+↵ copies · Ctrl+P pins" },
         { prefix: "/", label: "Files", hint: "Find files by name · ↵ opens" },
         { prefix: "@", label: "Tabs", hint: "Open Helium tabs · ↵ jumps to the tab" },
         { prefix: "pw ", label: "Passwords", hint: "Title, website or user · ↵ copies the password" },
         { prefix: "cal ", label: "Calendar", hint: "Upcoming events · ↵ opens the calendar" },
+        { prefix: "m ", label: "Mail", hint: "Unread mail · ↵ opens it in Thunderbird and marks it read · Ctrl+R marks read · Ctrl+D deletes" },
         { prefix: "c ", label: "Claude", hint: "Ask Claude · ↵ starts a new chat with your text" },
         { prefix: "?", label: "Web search", hint: "Search the web (default engine) · ↵ opens in Helium · ? alone shows this help" }
     ]
@@ -177,7 +178,7 @@ Scope {
         }
         if (mode === ";") {
             for (const p of Clipboard.pins)
-                add({ id: "pin:" + p, glyph: "push_pin", pinText: p, title: p, sub: "Pinned · Ctrl+P to unpin", kind: "Pinned", run: () => Clipboard.copyText(p) }, t ? Fuzzy.score(t, p) : 2);
+                add({ id: "pin:" + p, glyph: "push_pin", pinText: p, title: p, sub: "Pinned · Ctrl+P to unpin", kind: "Pinned", run: copyOnly => Clipboard.copyText(p, !copyOnly, null) }, t ? Fuzzy.score(t, p) : 2);
             for (const c of Clipboard.entries) {
                 if (!c.image && Clipboard.isPinned(c.text))
                     continue;
@@ -187,7 +188,7 @@ Scope {
                     pinText: c.image ? "" : c.text,
                     title: c.image ? "Image · " + c.w + " × " + c.h : c.text,
                     sub: c.image ? c.image.toUpperCase() : "",
-                    kind: "Clipboard", run: () => Clipboard.copy(c.id)
+                    kind: "Clipboard", run: copyOnly => Clipboard.copy(c.id, !copyOnly, null)
                 }, t ? Fuzzy.score(t, c.image ? "image picture bild " + c.image : c.text) : 1);
             }
         }
@@ -236,6 +237,21 @@ Scope {
                 }
                 if (out.length === 0)
                     add({ id: "cal:none", glyph: "event_available", title: t ? "No event matches" : "No upcoming events", sub: "↵ opens the calendar", kind: "Calendar", run: () => Agenda.openClient() }, 1);
+            }
+        }
+        // Ungelesene Mails (Mail-Dienst): ↵ öffnet in Thunderbird + gelesen, Ctrl+R nur gelesen, Ctrl+D Papierkorb (LauncherPanel)
+        if (mode === "m ") {
+            if (!Mail.configured)
+                add({ id: "mail:setup", glyph: "mail_lock", title: "Mail not set up", sub: "See docs/setup/mail-calendar.md", kind: "Mail", run: () => {} }, 1);
+            else {
+                let n = 0;
+                for (const m of Mail.latest) {
+                    const sc = t ? Math.max(Fuzzy.score(t, m.from || ""), Fuzzy.score(t, m.subject || "") - 40) : 1000 - n;
+                    n++;
+                    add({ id: "mail:" + m.accountName + ":" + m.uid + ":" + m.mid, glyph: "mail", title: m.from || "?", sub: (m.subject || "(no subject)") + " · " + Mail.when(m.date), kind: Mail.accounts.length > 1 ? m.account : "Mail", keys: Mail.canMarkRead(m) ? "↵ open · ^R read · ^D delete" : "↵ open", mail: m, run: () => Mail.openMessage(m) }, sc);
+                }
+                if (out.length === 0)
+                    add({ id: "mail:none", glyph: "done_all", title: t ? "No unread mail matches" : "Inbox zero", sub: "↵ opens Thunderbird", kind: "Mail", run: () => Mail.openClient() }, 1);
             }
         }
         // Claude fragen (c <text>): neuer Chat mit dem Text – Claude Desktop, sonst claude.ai in Helium
@@ -303,14 +319,15 @@ Scope {
         _noSearch = false;
     }
 
-    function activate(i: int): void {
+    // copyOnly (Shift+Enter): Zwischenablage-Treffer nur kopieren statt einfügen; andere Treffer ignorieren es
+    function activate(i: int, copyOnly: bool): void {
         const r = results[i];
         if (!r)
             return;
         counts[r.id] = (counts[r.id] || 0) + 1;
         countsFile.setText(JSON.stringify(counts));
         open = false;
-        r.run();
+        r.run(!!copyOnly);
     }
 
     onQueryChanged: if (searching) rebuild()
@@ -345,6 +362,10 @@ Scope {
     Connections {
         target: Agenda
         function onAllEventsChanged() { if (root.searching && root.mode === "cal ") root.rebuild(); }
+    }
+    Connections {
+        target: Mail
+        function onAccountsChanged() { if (root.searching && root.mode === "m ") root.rebuild(); }
     }
     Connections {
         target: Clipboard

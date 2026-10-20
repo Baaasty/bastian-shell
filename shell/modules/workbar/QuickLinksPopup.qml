@@ -163,7 +163,7 @@ PopupWindow {
     // Datenbank & Co. haben keine Weboberfläche: Adresse in die Zwischenablage
     function copyAddr(text: string): void {
         visible = false;
-        Clipboard.copyText(text);
+        Clipboard.copyText(text, false, null);
         Quickshell.execDetached(["notify-send", "-a", "Desktop", "-u", "low", "Copied " + text]);
     }
     function askLink(): void {

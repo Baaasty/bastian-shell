@@ -25,8 +25,8 @@ Item {
     signal dismissed()
     signal activated()
 
-    function run(i: int): void {
-        launcher.activate(i);
+    function run(i: int, copyOnly: bool): void {
+        launcher.activate(i, !!copyOnly);
         activated();
     }
 
@@ -89,8 +89,8 @@ Item {
                     font.pixelSize: 20
                     focus: true
                     Keys.onEscapePressed: panelRoot.dismissed()
-                    Keys.onReturnPressed: panelRoot.run(launcher.selected)
-                    Keys.onEnterPressed: panelRoot.run(launcher.selected)
+                    Keys.onReturnPressed: event => panelRoot.run(launcher.selected, !!(event.modifiers & Qt.ShiftModifier))
+                    Keys.onEnterPressed: event => panelRoot.run(launcher.selected, !!(event.modifiers & Qt.ShiftModifier))
                     Keys.onDownPressed: launcher.selected = Math.min(launcher.results.length - 1, launcher.selected + 1)
                     Keys.onUpPressed: launcher.selected = Math.max(0, launcher.selected - 1)
                     Keys.onDeletePressed: {
@@ -104,6 +104,22 @@ Item {
                         launcher.rebuild();
                     }
                     Keys.onPressed: event => {
+                        // Ctrl+R: Mail als gelesen markieren, Ctrl+D: in den Papierkorb (Modus „m “), Zeile verschwindet.
+                        // Nicht Entf: das löscht im Suchfeld Zeichen, ein Vertipper würde sonst eine Mail wegwerfen.
+                        if ((event.key === Qt.Key_R || event.key === Qt.Key_D) && (event.modifiers & Qt.ControlModifier)) {
+                            const r = launcher.results[launcher.selected];
+                            if (r && r.mail && Mail.canMarkRead(r.mail)) {
+                                const keep = launcher.selected;
+                                if (event.key === Qt.Key_R)
+                                    Mail.markRead(r.mail);
+                                else
+                                    Mail.trash(r.mail);
+                                launcher.rebuild();
+                                launcher.selected = Math.min(keep, Math.max(0, launcher.results.length - 1));
+                            }
+                            event.accepted = true;
+                            return;
+                        }
                         if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) {
                             const r = launcher.results[launcher.selected];
                             if (r && r.pinText) {
@@ -277,7 +293,7 @@ Item {
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
                         width: Math.min(implicitWidth, 220)   // lange Bezeichnungen gekürzt
-                        text: row.modelData.kind + (row.on ? "  ↵" : "")
+                        text: row.modelData.kind + (row.on ? "  " + (row.modelData.keys || "↵") : "")
                         color: row.on ? Theme.accentText : Theme.textFaint
                         font.pixelSize: 12
                         font.weight: Font.Normal
@@ -287,7 +303,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: panelRoot.run(row.index)
+                        onClicked: panelRoot.run(row.index, false)
                     }
                 }
             }
@@ -297,9 +313,10 @@ Item {
                 spacing: 18
                 leftPadding: 6
                 Repeater {
-                    model: launcher.mode === ";" ? [["↵", "copy"], ["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]]
+                    model: launcher.mode === ";" ? (Clipboard.canPaste ? [["↵", "paste"], ["Shift+↵", "copy"]] : [["↵", "copy"]]).concat([["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]])
                          : launcher.mode === "?" && launcher.term ? [["↵", "open in Helium"], ["↑↓", "select"], ["Tab", "mode"], ["Esc", "close"]]
                          : launcher.mode === "c " ? [["↵", "ask Claude"], ["Tab", "mode"], ["Esc", "close"]]
+                         : launcher.mode === "m " ? [["↵", "open + read"], ["Ctrl+R", "mark read"], ["Ctrl+D", "delete"], ["Esc", "close"]]
                          : [["↵", "open"], ["↑↓", "select"], ["Tab", "mode"], ["?", "prefixes"], ["Esc", "close"]]
                     Row {
                         required property var modelData

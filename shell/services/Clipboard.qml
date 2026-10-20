@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.config
 
 // Zwischenablage-Historie über cliphist (lokal, kein Sync). Bilder mit Vorschau, Favoriten (angepinnt).
 Singleton {
@@ -72,12 +73,68 @@ Singleton {
         return "file://" + thumbDir + "/" + id;
     }
 
-    function copy(id: string): void {
+    // paste = danach einfügen (Strg+V, in Terminals Strg+Shift+V) in target = { address, cls } – das Fenster, in dem
+    // vor dem Öffnen getippt wurde. Ohne target: das aktive Fenster (Layer-Panels ändern activeToplevel nicht).
+    function copy(id: string, paste: bool, target: var): void {
         if (/^\d+$/.test(id))
-            Quickshell.execDetached(["sh", "-c", "cliphist decode " + id + " | wl-copy"]);
+            _copy(["sh", "-c", "cliphist decode " + id + " | wl-copy"], paste, target);
     }
-    function copyText(text: string): void {
-        Quickshell.execDetached(["wl-copy", text]);
+    function copyText(text: string, paste: bool, target: var): void {
+        _copy(["wl-copy", "--", text], paste, target);
+    }
+    // aktives Fenster als Einfüge-Ziel
+    function activeTarget(): var {
+        const w = Hypr.activeToplevel;
+        return w && w.address ? { address: String(w.address), cls: Hypr.appId(w) } : null;
+    }
+
+    // ---------- Einfügen über wtype (Wayland virtual-keyboard, kein Dienst nötig) ----------
+    // Fehlt wtype, kopiert Enter nur (eine Info im Log, kein Fehler).
+    property bool canPaste: false
+    // Fensterklassen, die Strg+V selbst belegen und Strg+Shift+V zum Einfügen nehmen
+    readonly property var terminalClasses: ["kitty", "org.kde.konsole", "konsole", "foot", "footclient", "Alacritty", "com.mitchellh.ghostty", "org.wezfurlong.wezterm", "org.gnome.Ptyxis", "org.gnome.Console", "xterm"]
+    // erst wenn das Panel weg ist (Launcher blendet 110 ms aus), holt scripts/clip-paste den Fokus zurück
+    readonly property int pasteDelay: 150
+
+    property var _target: null
+    function _copy(cmd: var, paste: bool, target: var): void {
+        _target = paste && canPaste ? (target ?? activeTarget()) : null;
+        copier.command = cmd;
+        copier.running = true;
+    }
+    Process {
+        id: copier
+        onExited: if (root._target) pasteTimer.restart()
+    }
+    Timer {
+        id: pasteTimer
+        interval: root.pasteDelay
+        onTriggered: {
+            const t = root._target;
+            root._target = null;
+            if (!t)
+                return;
+            const term = root.terminalClasses.indexOf(t.cls) >= 0;
+            paster.command = [Config.repo + "/scripts/clip-paste", t.address].concat(term ? ["term"] : []);
+            paster.running = true;
+        }
+    }
+    Process {
+        id: paster
+        // 3 = Zielfenster weg (nur kopiert, still); alles andere ist ein echter Fehler
+        onExited: (code, status) => {
+            if (code !== 0 && code !== 3)
+                console.warn("Clipboard: clip-paste exited with " + code);
+        }
+    }
+    Process {
+        running: true
+        command: ["sh", "-c", "command -v wtype"]
+        onExited: (code, status) => {
+            root.canPaste = code === 0;
+            if (!root.canPaste)
+                console.info("Clipboard: wtype not found, Enter only copies");
+        }
     }
     function remove(id: string): void {
         if (!/^\d+$/.test(id))

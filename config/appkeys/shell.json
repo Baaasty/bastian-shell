@@ -74,6 +74,8 @@
         { "keys": "↑ ↓", "title": "Pick a result" },
         { "keys": "Enter", "title": "Run / open" },
         { "keys": "Tab", "title": "Next mode (prefix)" },
+        { "keys": "Enter", "title": "Paste clipboard entry", "note": "in ; clipboard mode, into the window you came from (Super+V popup too)" },
+        { "keys": "Shift+Enter", "title": "Copy clipboard entry only", "note": "in ; clipboard mode and the Super+V popup" },
         { "keys": "Ctrl+P", "title": "Pin clipboard entry", "note": "in ; clipboard mode" },
         { "keys": "Esc", "title": "Close" }
       ]

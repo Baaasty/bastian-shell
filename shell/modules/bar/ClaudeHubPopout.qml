@@ -355,7 +355,7 @@ PopupWindow {
                         visible: ac.plain !== ""
                         glyph: ac.copied ? "check" : "content_copy"
                         onClicked: {
-                            Clipboard.copyText(String(ac.a.result || ""));
+                            Clipboard.copyText(String(ac.a.result || ""), false, null);
                             ac.copied = true;
                             acCopied.restart();
                         }
@@ -803,7 +803,7 @@ PopupWindow {
                         label: tr.copied ? "Copied" : "Copy resume"
                         onClicked: {
                             const dir = "'" + String(tr.t.cwd || "").replace(/'/g, "'\\''") + "'";
-                            Clipboard.copyText("cd " + dir + " && claude --resume " + tr.t.session);
+                            Clipboard.copyText("cd " + dir + " && claude --resume " + tr.t.session, false, null);
                             tr.copied = true;
                             copiedReset.restart();
                         }

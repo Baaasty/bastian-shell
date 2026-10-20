@@ -9,6 +9,7 @@ import qs.modules.background
 import qs.modules.bar
 import qs.modules.breaks
 import qs.modules.cams
+import qs.modules.clip
 import qs.modules.claude
 import qs.modules.crash
 import qs.modules.dashboard
@@ -36,6 +37,7 @@ ShellRoot {
     Bar {}
     BreakCard {}
     CamWall {}
+    ClipPopup {}
     Attention {}
     Crash {}
     Dashboard {
