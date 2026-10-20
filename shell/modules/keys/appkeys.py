@@ -7,7 +7,8 @@ Eine Datei pro Programm, von Hand gepflegt (Format: docs/knowledge/hotkeys.md, A
     "sections": [ { "name": "Navigate", "keys": [ { "keys": "Ctrl+K", "title": "Quick switcher", "note": "…" } ] } ] }
 Tasten: "Ctrl+Shift+M" · Alternativen als Liste ["Ctrl+Tab", "Ctrl+PgDn"] · mehrere Tasten nacheinander/zusammen
 mit Leerzeichen ("g g", "Alt+↑ ↓") · "Ctrl+Plus" für + · "(tap)" am Ende = Modifier allein antippen.
-"group": "shell" hängt die Abschnitte an die Shell-Kürzel an; ein Abschnitt mit "auto" wird hier gefüllt:
+"group": "shell" hängt die Abschnitte an die Shell-Kürzel an ("area": "topbar" = in die Gruppe „Topbar“ des Viewers);
+ein Abschnitt mit "auto" wird hier gefüllt:
   barLetters (aus shell/services/BarKeys.qml), launcherPrefixes (aus shell/modules/launcher/Launcher.qml),
   webShortcuts (aus config/launcher/web.json).
 Eine kaputte Datei stoppt nur sich selbst (steht in "errors").
@@ -59,7 +60,8 @@ def rows(keys: list) -> list:
 # ---------- automatisch gefüllte Abschnitte ----------
 def bar_letters() -> list:
     src = (ROOT / "shell/services/BarKeys.qml").read_text()
-    found = re.findall(r'\{\s*key:\s*"([^"]+)",\s*name:\s*"[^"]*",\s*label:\s*"([^"]+)"\s*\}', src)
+    # auch Einträge mit Zusatzfeldern (action: true – Dateien, Browser, Settings)
+    found = re.findall(r'\{\s*key:\s*"([^"]+)",\s*name:\s*"[^"]*",\s*label:\s*"([^"]+)"[^}]*\}', src)
     return [{"title": label, "sub": "", "chords": [{"mods": [], "keys": [key], "tag": ""}]} for key, label in found]
 
 
@@ -101,7 +103,8 @@ def load(path: pathlib.Path) -> dict:
         else:
             r = rows(s.get("keys", []))
         if r:
-            sections.append({"name": str(s["name"]), "note": str(s.get("note", "")), "rows": r})
+            sections.append({"name": str(s["name"]), "note": str(s.get("note", "")), "area": str(s.get("area", "")),
+                             "rows": r})
     return {"id": path.stem, "name": str(d.get("name", path.stem)), "about": str(d.get("about", "")),
             "group": str(d.get("group", "app")), "order": d.get("order", 100),
             "classes": [c.lower() for c in cls], "title": title, "sections": sections}

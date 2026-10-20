@@ -24,7 +24,8 @@ Singleton {
     property bool failed: false
 
     // App-Kürzel (Cheat-Sheet) aus config/appkeys/*.json, gelesen von modules/keys/appkeys.py:
-    // [{ id, name, about, group ("app" | "shell"), classes: [klein], title: Regex, cats: [{ name, note, rows }] }]
+    // [{ id, name, about, group ("app" | "shell"), classes: [klein], title: Regex, cats: [{ name, note, area, rows }] }]
+    // area "topbar" = Anleitung gehört in die Gruppe „Topbar“ des Viewers (Keys.qml)
     // Zeilen haben dasselbe Format wie oben (title, sub, chords, search).
     property var apps: []
     property var appErrors: []
@@ -87,7 +88,7 @@ Singleton {
                     root.apps = d.apps.map(a => ({
                         id: a.id, name: a.name, about: a.about, group: a.group, classes: a.classes, title: a.title,
                         cats: a.sections.map(s => ({
-                            name: s.name, note: s.note, media: false,
+                            name: s.name, note: s.note, area: s.area, media: false,
                             rows: s.rows.map((r, i) => Object.assign({}, r, {
                                 order: i,
                                 search: root.searchOf(r.chords, r.title, r.sub, s.name, a.name + " " + a.id + " " + a.classes.join(" "))

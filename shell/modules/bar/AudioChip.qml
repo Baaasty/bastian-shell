@@ -10,7 +10,7 @@ import qs.components
 // IPC (zum Testen ohne Maus): qs ipc call mixer open|close|toggle|status|setApp <app> <0-100>|muteApp <app> <true|false>
 Chip {
     id: chip
-    hintKey: BarKeys.keyFor("mixer")   // Bar-Modus (Super+B)
+    hintKey: BarKeys.keyFor("mixer")   // Bar-Modus (Super+Leertaste)
 
     property var barWindow: QsWindow.window
 

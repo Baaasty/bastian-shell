@@ -6,6 +6,7 @@ import Quickshell.Wayland
 
 // Fokus: Pomodoro (zeitstempelbasiert, übersteht Neustarts), Jetzt-Aufgabe, Bildschirmzeit,
 // Tagesziel und Pausen-Erinnerung. Zustand in ~/.local/state/desktop/focus.json
+// Fokus ohne Zeit (openEnded): mode "focus" ohne Ende – gleiche Ruhe (Benachrichtigungen, Bar), kein Block-Ende, keine Pause.
 // (Hyperfokus-Wecker: eigener Dienst services/Breaks.qml)
 Singleton {
     id: root
@@ -36,6 +37,8 @@ Singleton {
     property string mode: "idle"      // idle | focus | paused | break
     property real endsAt: 0
     property real pausedMs: 0
+    property bool openEnded: false    // Fokus ohne Zeit: läuft, bis man ihn ausschaltet
+    property real startedAt: 0        // Beginn des offenen Fokus (für „seit“)
     property int block: 1
     property string day: ""
     // Zeiten zählen in ms über Zeitstempel (übersteht Shell-Reloads), nach außen weiter ganze Minuten
@@ -48,15 +51,24 @@ Singleton {
     property real now: Date.now()
 
     readonly property bool active: mode === "focus"
-    readonly property real remaining: (mode === "focus" || mode === "break") ? Math.max(0, endsAt - now)
+    readonly property bool openOn: mode === "focus" && openEnded
+    // offener Fokus: keine Restzeit, kein Fortschritt (Glutlinie bleibt leer), stattdessen elapsed
+    readonly property real elapsed: openOn ? Math.max(0, now - startedAt) : 0
+    readonly property real remaining: openOn ? 0
+        : (mode === "focus" || mode === "break") ? Math.max(0, endsAt - now)
         : mode === "paused" ? pausedMs : preset.min * 60000   // Leerlauf: was „Start“ jetzt starten würde
-    readonly property real progress: mode === "focus" ? 1 - remaining / (blockMin * 60000)
+    readonly property real progress: openOn ? 0
+        : mode === "focus" ? 1 - remaining / (blockMin * 60000)
         : mode === "paused" ? 1 - pausedMs / (blockMin * 60000)
         : mode === "break" ? 1 - remaining / (breakMin * 60000) : 0
 
     function fmt(ms: real): string {
         const s = Math.ceil(ms / 1000);
         return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    // offener Fokus im Chip: ruhig in Minuten („12 min“, „1 h 05“), keine Sekunden
+    function sinceLabel(ms: real): string {
+        return durLabel(Math.floor(ms / 60000));
     }
     function today(): string {
         return Qt.formatDate(new Date(), "yyyy-MM-dd");
@@ -83,6 +95,7 @@ Singleton {
             blockMin = preset.min;
         }
         mode = "focus";
+        openEnded = false;
         endsAt = Date.now() + blockMin * 60000;
         now = Date.now();   // im Leerlauf läuft now nur minütlich (siehe Sekundentakt)
         breakDue = false;
@@ -95,6 +108,7 @@ Singleton {
             return false;
         blockMin = Math.ceil(left / 60000);
         mode = "focus";
+        openEnded = false;
         endsAt = ms;
         now = Date.now();
         breakDue = false;
@@ -198,11 +212,30 @@ Singleton {
 
     function stop(): void {
         mode = "idle";
+        openEnded = false;
         breakDue = false;
         save();
     }
+    // Fokus ohne Zeit: an bis zum Ausschalten. Läuft schon ein Block, wird er offen (Zeit „seit“ ab jetzt).
+    function startOpen(): void {
+        if (openOn)
+            return;
+        openEnded = true;
+        startedAt = Date.now();
+        mode = "focus";
+        now = Date.now();
+        breakDue = false;
+        save();
+    }
+    function setOpen(on: bool): void {
+        if (on)
+            startOpen();
+        else if (openOn)
+            stop();
+    }
+    // ohne Zeit gibt es nichts anzuhalten: Pause = aus (Chip/Popout schalten direkt aus)
     function pause(): void {
-        if (mode !== "focus")
+        if (mode !== "focus" || openEnded)
             return;
         pausedMs = endsAt - Date.now();
         mode = "paused";
@@ -225,6 +258,7 @@ Singleton {
     }
     function startBreak(): void {
         mode = "break";
+        openEnded = false;
         endsAt = Date.now() + breakMin * 60000;
         now = Date.now();
         breakDue = false;
@@ -249,7 +283,7 @@ Singleton {
             const t = Date.now();
             if (root.mode !== "idle" || Math.floor(t / 60000) !== Math.floor(root.now / 60000))
                 root.now = t;
-            if (root.mode === "focus" && root.now >= root.endsAt) {
+            if (root.mode === "focus" && !root.openEnded && root.now >= root.endsAt) {
                 root.mode = "idle";
                 root.block = root.block % root.blocksPerRound + 1;
                 root.breakDue = true;
@@ -314,11 +348,19 @@ Singleton {
         function startFor(text: string): string {
             return root.startText(text);
         }
+        // Fokus ohne Zeit: qs ipc call focus openEnded on|off|toggle
+        function openEnded(state: string): string {
+            const s = String(state).toLowerCase();
+            if (s !== "on" && s !== "off" && s !== "toggle")
+                return "use on, off or toggle";
+            root.setOpen(s === "toggle" ? !root.openOn : s === "on");
+            return root.openOn ? "on" : "off";
+        }
         function task(text: string): void {
             root.setTask(text);
         }
         function status(): string {
-            return JSON.stringify({ mode: root.mode, remaining: root.fmt(root.remaining), task: root.task, focusMin: root.focusMin, screenMin: root.screenMin, idle: idle.isIdle });
+            return JSON.stringify({ mode: root.mode, openEnded: root.openOn, elapsed: root.fmt(root.elapsed), remaining: root.fmt(root.remaining), task: root.task, focusMin: root.focusMin, screenMin: root.screenMin, idle: idle.isIdle });
         }
     }
 
@@ -340,6 +382,8 @@ Singleton {
                 root.recent = Array.isArray(s.recent) ? s.recent.filter(k => typeof k === "string").slice(0, 3) : [];
                 root.endsAt = s.endsAt ?? 0;
                 root.pausedMs = s.pausedMs ?? 0;
+                root.openEnded = s.openEnded === true && root.mode === "focus";
+                root.startedAt = s.startedAt ?? 0;
                 root.block = s.block ?? 1;
                 root.day = s.day ?? "";
                 const same = s.day === root.today();
@@ -373,7 +417,7 @@ Singleton {
     function save(): void {
         if (!ready)
             return;
-        stateFile.setText(JSON.stringify({ task: task, mode: mode, blockMin: blockMin, presetIdx: presetIdx, recent: recent, endsAt: endsAt, pausedMs: pausedMs, block: block, day: day,
+        stateFile.setText(JSON.stringify({ task: task, mode: mode, blockMin: blockMin, presetIdx: presetIdx, recent: recent, endsAt: endsAt, pausedMs: pausedMs, openEnded: openEnded, startedAt: startedAt, block: block, day: day,
             focusMin: focusMin, screenMin: screenMin, focusMs: Math.round(focusMs), screenMs: Math.round(screenMs),
             savedAt: lastTick }, null, 1));
     }

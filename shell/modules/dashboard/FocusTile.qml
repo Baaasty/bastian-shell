@@ -80,13 +80,14 @@ Tile {
             MonoTxt {
                 anchors.horizontalCenter: parent.horizontalCenter
                 // Leerlauf: was Start gerade starten würde (eigene Eingabe oder Vorgabe)
-                text: tile.idle && tile.custom && tile.parsed.ok ? Focus.fmt(tile.parsed.min * 60000) : Focus.fmt(Focus.remaining)
-                font.pixelSize: tile.idle && tile.custom && tile.parsed.ok && tile.parsed.min >= 100 ? 26 : 32
+                text: tile.idle && tile.custom && tile.parsed.ok ? Focus.fmt(tile.parsed.min * 60000) : Focus.openOn ? Focus.sinceLabel(Focus.elapsed) : Focus.fmt(Focus.remaining)
+                font.pixelSize: Focus.openOn || (tile.idle && tile.custom && tile.parsed.ok && tile.parsed.min >= 100) ? 26 : 32
                 font.weight: Font.DemiBold
             }
             Txt {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: Focus.mode === "focus" ? "left" : Focus.mode === "paused" ? "paused" : Focus.mode === "break" ? "break" : "ready"
+                // Fokus ohne Zeit: Minuten seit Start statt Restzeit
+                text: Focus.openOn ? "no timer" : Focus.mode === "focus" ? "left" : Focus.mode === "paused" ? "paused" : Focus.mode === "break" ? "break" : "ready"
                 color: Theme.textFaint
                 font.pixelSize: 12
                 font.weight: Font.Normal
@@ -169,7 +170,7 @@ Tile {
                     onClicked: tile.go()
                 }
                 Button {
-                    visible: Focus.mode === "focus"
+                    visible: Focus.mode === "focus" && !Focus.openOn
                     icon: "pause"
                     text: "Pause"
                     onClicked: Focus.pause()

@@ -21,6 +21,9 @@ Item {
     property Item guard: null          // PopoutGuard: aus, solange per Taste geöffnet
     property string name: ""           // Kennung im Bar-Modus (BarKeys.entries)
     property var openFn: null          // eigenes Öffnen (sonst openWith(true) / open() / toggle())
+    // eigene Tasten vorweg (e) => true = erledigt; gilt auch für die von der Bar weitergereichten (BarKeys.forward),
+    // z. B. Tippen ins Eingabefeld, solange das Popout ohne Fokus-Griff offen ist (TodoPopout.qml)
+    property var preKey: null
     property bool byKeys: false        // per Tastatur geöffnet
     property Item current: null        // markiertes Ziel
     property string currentKind: ""
@@ -280,6 +283,10 @@ Item {
 
     // Tasten vom Popout (Keys.onPressed der Karte); Esc nur als Rückfall (die Popouts schließen selbst)
     function key(e) {
+        if (nav.preKey && nav.preKey(e)) {
+            e.accepted = true;
+            return;
+        }
         const k = e.key;
         const shift = !!(e.modifiers & Qt.ShiftModifier);
         const enter = k === Qt.Key_Return || k === Qt.Key_Enter;

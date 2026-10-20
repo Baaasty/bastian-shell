@@ -8,11 +8,13 @@ _Erzeugt aus `hypr/binds.conf` mit `scripts/hotkeys-md` – nicht von Hand ände
 
 | Taste | Zuständig für |
 |---|---|
-| **Super** | Fenster, Monitore, Shell (Dashboard, Apps) |
-| **Alt** | Workspaces (Alt+1…9, Alt+←/→); dazu Alt+Tab und Alt+F4 wie üblich |
-| **Super+Alt** | Zusatzwerkzeuge der Shell (Zwischenablage, Fokus-Modus) |
+| **Alt** | Workspace-Management (Alt+1…9, Alt+←/→, Alt antippen = Workspace-Modus); dazu Alt+Tab und Alt+F4 wie üblich |
+| **Super** | Fenster-Management (Fokus ←/→, ↑ maximieren → Vollbild, ↓ zurück, Shift verschieben, Strg Größe, Super+Shift+V schweben, Monitore, Maus) |
+| **Super+Alt** | Menüs und Programme öffnen, Topbar: Super+Alt+<Buchstabe> = Bar-Modus, dann derselbe Buchstabe |
+| **Super+Leertaste** | Topbar betreten (Bar-Modus); die häufigsten Topbar-Ziele ohne Alt: Super+F/T/A/E/B/I |
 | **Strg+Alt (+Shift)** | Notbremsen (Not-Aus, Power-Menü ohne Shell) |
 
+Sonst nur Screenshots, Medientasten und ein paar Klassiker (Super+Enter/W/K/O/P/V, Super+L, Super+Esc).
 Super allein antippen öffnet das Dashboard mit Suche (nur, wenn keine andere Taste dazwischen war).
 Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leiste.
 
@@ -20,44 +22,48 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 
 | Modus | Tasten |
 |---|---|
-| **Bar-Modus** (Super+B) | Buchstabe an den Chips öffnet das Popout: S Sound · N Netz · L Licht · R Ressourcen · D Downloads · V Dev · M Musik · C Chat · T Tray · U Updates · H Server · A Claude · O To-dos · F Fokus · Z Benachrichtigungen. Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+B = zu; Esc im Popout = zurück zum Chip |
+| **Bar-Modus** (Super+Leertaste) | Buchstabe an den Chips öffnet das Popout (Direktkürzel in Klammern): F Focus (Super+F) · T Tasks (Super+T) · A Agents (Super+A) · M Music (Super+Alt+M) · C Chat (Super+Alt+C) · V Dev (Super+Alt+V) · H Servers (Super+Alt+H) · R Resources (Super+Alt+R) · L Light (Super+Alt+L) · G Gear (Super+Alt+G) · S Sound (Super+Alt+S) · N Network (Super+Alt+N) · E Files (Super+E) · D Downloads (Super+Alt+D) · B Browser (Super+B) · I Settings (Super+I) · U Updates (Super+Alt+U) · Y Tray (Super+Alt+Y) · Z Notifications (Super+Alt+Z). Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+Leertaste = zu; Esc im Popout = zurück zum Chip |
 | **In Popouts** | Pfeile/Tab wählen (Glut-Rahmen), Enter/Leertaste löst aus, Regler: Enter, dann ←/→, Esc zu. Per Taste geöffnet: Tastaturfokus, schließt nicht durch Weghovern |
-| **Tray** (Bar-Modus T) | ↑↓ Symbol, → zum Menü-Knopf (⋮) oder Auge, Enter; im Menü ↑↓, Enter/→ öffnet Untermenü, ←/Rücktaste zurück |
+| **Tray** (Super+Alt+Y) | ↑↓ Symbol, → zum Menü-Knopf (⋮) oder Auge, Enter; im Menü ↑↓, Enter/→ öffnet Untermenü, ←/Rücktaste zurück |
 | **Benachrichtigungen** (Super+Alt+Z) | ↑↓ Karte, Enter öffnen, 1–3 Knöpfe, S später erinnern (dann 1–4), Entf/X wegklicken, Shift+A alle weg, Esc zu |
 | **Workspace-Modus** (Alt antippen) | 1–9, ←/→, Enter, Entf, N, R, T, Q (Quicklinks + Git der Kachel), Esc |
 
-## Shell
+## Windows
 
 | Taste | Aktion |
 |---|---|
-| `Super + tippen` | Dashboard |
+| `Super + ← / →` | Focus window |
+| `Super + Shift + ←↑↓→` | Move window |
+| `Super + ↑` | Maximize, again = fullscreen |
+| `Super + ↓` | Restore (fullscreen → maximized → normal) |
+| `Super + Ctrl + →` | Resize window: wider |
+| `Super + Ctrl + ←` | Resize window: narrower |
+| `Super + Ctrl + ↓` | Resize window: taller |
+| `Super + Ctrl + ↑` | Resize window: shorter |
 | `Super + Tab`<br>`Alt + Tab` | Next window |
 | `Super + Shift + Tab`<br>`Alt + Shift + Tab` | Previous window |
 | `Super + ^` | Next window of the same app |
 | `Super + Shift + ^` | Previous window of the same app |
-| `Super + V` | Clipboard history |
-| `Super + ·` | Emoji picker |
-| `Super + Alt + F` | Focus mode |
-| `Super + Alt + G` | Game mode (bar off, do not disturb) |
-| `Super + Alt + B` | Wind down (evening routine) |
-| `Super + Alt + R` | Day recap |
-| `Super + Alt + T` | Project time this week |
-| `Super + Alt + N` | Night light on/off |
-| `Super + K` | Keyboard shortcuts |
-| `Super + P` | Package manager |
-| `Super + O` | Passwords |
-| `Super + N` | Park a thought |
-| `Super + B` | Bar mode (letter opens a popout) |
-| `Super + Alt + S` | Sound mixer |
-| `Super + Alt + L` | Light |
-| `Super + Alt + U` | Servers (consoles, upload, files, terminal) |
-| `Super + Alt + Z` | Notifications (keyboard) |
-| `Super + Alt + X` | Dismiss newest notification |
-| `Super + C` | Call cameras on/off |
-| `Super + Ctrl + ←` | Call cameras: dock left |
-| `Super + Ctrl + →` | Call cameras: dock right |
-| `Super + Ctrl + ↑` | Call cameras: dock top |
-| `Super + Ctrl + ↓` | Call cameras: dock bottom |
+| `Super + Shift + V` | Toggle floating |
+| `Super + S` | Toggle split |
+| `Alt + F4` | Close window (quits Discord/Spotify too) |
+| `Super + Q` | Close window (Discord/Spotify: back to the bar) |
+| `Super + Ctrl + Esc` | Kill window |
+| `Super + Shift + Esc` | Release input capture |
+
+## Mouse
+
+| Taste | Aktion |
+|---|---|
+| `Super + Mouse left` | Move window (drag) |
+| `Super + Mouse right` | Resize window (drag) |
+
+## Monitors
+
+| Taste | Aktion |
+|---|---|
+| `Super + 1…3` | Focus monitor 1…3 |
+| `Super + Shift + 1…3` | Move window to monitor 1…3 |
 
 ## Workspaces
 
@@ -70,42 +76,50 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Alt + tippen` | Workspace mode (tap Alt) |
 | `Alt + Esc` | Workspace mode |
 
-## Monitors
+## Topbar
 
 | Taste | Aktion |
 |---|---|
-| `Super + 1…3` | Focus monitor 1…3 |
-| `Super + Shift + 1…3` | Move window to monitor 1…3 |
+| `Super + Space` | Bar mode (letter opens a popout) |
+| `Super + F` | Focus |
+| `Super + T` | Tasks |
+| `Super + A` | Agents (Claude) |
+| `Super + E` | Files |
+| `Super + B / W` | Browser |
+| `Super + I` | Settings |
+| `Super + Alt + M` | Music (Spotify) |
+| `Super + Alt + C` | Chat (Discord) |
+| `Super + Alt + V` | Dev services |
+| `Super + Alt + H` | Servers (consoles, upload, files, terminal) |
+| `Super + Alt + R` | Resources |
+| `Super + Alt + L` | Light |
+| `Super + Alt + G` | Gear (devices) |
+| `Super + Alt + S` | Sound mixer |
+| `Super + Alt + N` | Network |
+| `Super + Alt + D` | Downloads |
+| `Super + Alt + U` | Updates (package manager) |
+| `Super + Alt + Y` | Tray |
+| `Super + Alt + Z` | Notifications (keyboard) |
+| `Super + Alt + X` | Dismiss newest notification |
 
-## Windows
-
-| Taste | Aktion |
-|---|---|
-| `Super + ←↑↓→` | Focus window |
-| `Super + Shift + ←↑↓→` | Move window |
-| `Super + F` | Maximize |
-| `Super + Shift + F` | Fullscreen |
-| `Super + Alt + V` | Toggle floating |
-| `Super + S` | Toggle split |
-| `Alt + F4` | Close window (quits Discord/Spotify too) |
-| `Super + Q` | Close window (Discord/Spotify: back to the bar) |
-| `Super + Ctrl + Esc` | Kill window |
-| `Super + Shift + Esc` | Release input capture |
-| `Super + Mouse left` | Move window (drag) |
-| `Super + Mouse right` | Resize window (drag) |
-| `Super + Alt + →` | Resize window: wider |
-| `Super + Alt + ←` | Resize window: narrower |
-| `Super + Alt + ↓` | Resize window: taller |
-| `Super + Alt + ↑` | Resize window: shorter |
-
-## Apps
+## Apps & menus
 
 | Taste | Aktion |
 |---|---|
+| `Super + tippen` | Dashboard |
 | `Super + Enter` | Terminal |
-| `Super + E` | File manager |
 | `Super + Shift + Enter` | Drop-down terminal |
+| `Super + V` | Clipboard history |
+| `Super + ·` | Emoji picker |
+| `Super + K` | Keyboard shortcuts |
+| `Super + P` | Package manager |
+| `Super + O` | Passwords |
 | `Super + Alt + K` | Layout menu |
+| `Super + C` | Call cameras on/off |
+| `Super + Alt + ←` | Call cameras: dock left |
+| `Super + Alt + →` | Call cameras: dock right |
+| `Super + Alt + ↑` | Call cameras: dock top |
+| `Super + Alt + ↓` | Call cameras: dock bottom |
 
 ## Screenshots
 
@@ -147,7 +161,8 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 ## App-Kürzel und Cheat-Sheet (Super+K)
 
 Super+K ist ein Nachschlagewerk für alles: oben die App, die beim Öffnen fokussiert war (*focused app*; Kitty mit yazi/lazygit
-zeigt beides), dann die Shell (live aus `hypr/binds.conf` + Anleitungen zu Bar, Popouts, Workspace-Modus, Launcher), darunter
+zeigt beides), dann die Topbar (Super+Leertaste, Direktkürzel, Popouts, Benachrichtigungen, Tray), dann die übrige Shell
+(live aus `hypr/binds.conf` + Anleitungen zu Workspace-Modus und Launcher), darunter
 alle Programme. Sofort tippen = Suche über App-Name, Tasten und Beschreibung (`upload`, `discord mute`, `ctrl+shift+u`).
 ↑/↓ und Bild↑/↓ scrollen, Tab/Shift+Tab springt zur nächsten/vorigen App, Esc schließt.
 
@@ -165,7 +180,8 @@ Eine Datei pro Programm in `config/appkeys/<app>.json`, von Hand pflegbar (nach 
   (yazi/lazygit laufen in Kitty). Mehrere Treffer: Titel-Treffer zuerst, dann die App, deren Klassenliste die Klasse weiter vorn hat.
 - Tasten: `Ctrl+Shift+M` · Alternativen als Liste `["Ctrl+Tab", "Ctrl+PgDn"]` · Leerzeichen = mehrere Tasten (`g g`, `Alt+↑ ↓`) ·
   `Ctrl+Plus` für + · `Alt (tap)` = Modifier allein antippen.
-- `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel. Abschnitte mit `"auto"` füllt
+- `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel; `"area": "topbar"` stellt einen Abschnitt in die
+  Gruppe „Topbar“ (zusammen mit dem binds.conf-Abschnitt `Topbar`). Abschnitte mit `"auto"` füllt
   `shell/modules/keys/appkeys.py` selbst: `barLetters` (`shell/services/BarKeys.qml`), `launcherPrefixes`
   (`shell/modules/launcher/Launcher.qml`), `webShortcuts` (`config/launcher/web.json`).
 - Kaputte Datei: nur sie fehlt, der Grund steht im Log (`qs log -p … | grep appkeys`).

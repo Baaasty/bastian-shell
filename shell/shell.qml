@@ -17,8 +17,6 @@ import qs.modules.idle
 import qs.modules.launcher
 import qs.modules.morning
 import qs.modules.notifications
-import qs.modules.recap
-import qs.modules.notes
 import qs.modules.screenshot
 import qs.modules.switcher
 import qs.modules.workbar
@@ -49,9 +47,6 @@ ShellRoot {
     }
     Popups {}
     MorningCard {}
-    RecapCard {}
-    ProjectTimeCard {}
-    NotesWindow {}
     Snip {}
     Switcher {}
     WorkBar {}
@@ -67,8 +62,12 @@ ShellRoot {
     Layouts {}
     FilePickerPanel {}
 
-    // Szenen-Engine (Singleton) beim Start laden: IPC "scene" und Fokus-Kopplung
-    Component.onCompleted: Scenes.init()
+    // Projektzeit und Key-Light-Automatik (Singletons) beim Start laden: Singletons laden erst beim ersten Zugriff,
+    // sie sollen aber auch laufen, solange keine Kachel/kein Popout sie anfasst
+    Component.onCompleted: {
+        ProjectTime.init();
+        CamLight.init();
+    }
 
     // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call shell status
     IpcHandler {

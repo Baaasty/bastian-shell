@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Erzeugt docs/knowledge/hotkeys.md aus hypr/binds.conf (Abschnitte '# ---- Name ----' + Inline-Titel '# Titel').
+"""Erzeugt docs/knowledge/hotkeys.md aus hypr/binds.conf (Abschnitte '# ---- Name ----' + Inline-Titel '# Titel')
+und den Bar-Buchstaben aus shell/services/BarKeys.qml.
 
 Nie von Hand in docs/knowledge/hotkeys.md ändern: Kürzel in hypr/binds.conf ändern, dann `scripts/hotkeys-md`.
 Live ansehen: Super+K (Keybind-Viewer der Shell, liest dieselbe Datei zur Laufzeit).
@@ -10,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CONF = ROOT / "hypr" / "binds.conf"
+BARKEYS = ROOT / "shell" / "services" / "BarKeys.qml"
 OUT = ROOT / "docs" / "knowledge" / "hotkeys.md"
 
 SECTION = re.compile(r"^#\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
@@ -25,7 +27,8 @@ ORDER = ["Super", "Ctrl", "Alt", "Shift"]
 APPKEYS = """## App-Kürzel und Cheat-Sheet (Super+K)
 
 Super+K ist ein Nachschlagewerk für alles: oben die App, die beim Öffnen fokussiert war (*focused app*; Kitty mit yazi/lazygit
-zeigt beides), dann die Shell (live aus `hypr/binds.conf` + Anleitungen zu Bar, Popouts, Workspace-Modus, Launcher), darunter
+zeigt beides), dann die Topbar (Super+Leertaste, Direktkürzel, Popouts, Benachrichtigungen, Tray), dann die übrige Shell
+(live aus `hypr/binds.conf` + Anleitungen zu Workspace-Modus und Launcher), darunter
 alle Programme. Sofort tippen = Suche über App-Name, Tasten und Beschreibung (`upload`, `discord mute`, `ctrl+shift+u`).
 ↑/↓ und Bild↑/↓ scrollen, Tab/Shift+Tab springt zur nächsten/vorigen App, Esc schließt.
 
@@ -43,12 +46,28 @@ Eine Datei pro Programm in `config/appkeys/<app>.json`, von Hand pflegbar (nach 
   (yazi/lazygit laufen in Kitty). Mehrere Treffer: Titel-Treffer zuerst, dann die App, deren Klassenliste die Klasse weiter vorn hat.
 - Tasten: `Ctrl+Shift+M` · Alternativen als Liste `["Ctrl+Tab", "Ctrl+PgDn"]` · Leerzeichen = mehrere Tasten (`g g`, `Alt+↑ ↓`) ·
   `Ctrl+Plus` für + · `Alt (tap)` = Modifier allein antippen.
-- `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel. Abschnitte mit `"auto"` füllt
+- `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel; `"area": "topbar"` stellt einen Abschnitt in die
+  Gruppe „Topbar“ (zusammen mit dem binds.conf-Abschnitt `Topbar`). Abschnitte mit `"auto"` füllt
   `shell/modules/keys/appkeys.py` selbst: `barLetters` (`shell/services/BarKeys.qml`), `launcherPrefixes`
   (`shell/modules/launcher/Launcher.qml`), `webShortcuts` (`config/launcher/web.json`).
 - Kaputte Datei: nur sie fehlt, der Grund steht im Log (`qs log -p … | grep appkeys`).
 - Testen ohne Fokuswechsel: `qs ipc --any-display -p <shell> call keys app discord ""` (tut so, als wäre Discord fokussiert).
 """
+
+
+def bar_letters():
+    """Buchstaben des Bar-Modus aus BarKeys.qml (Reihenfolge = Bar) mit dem Direktkürzel aus binds.conf
+    (erstes `barmode popout <name>`), z. B. "F Focus (Super+F) · …"."""
+    direct = {}
+    for raw in CONF.read_text().splitlines():
+        b = BIND.match(raw.strip())
+        m = re.search(r"barmode popout (\w+)", raw)
+        if b and m and m.group(1) not in direct:
+            parts = [x.strip() for x in b.group(2).split(",", 2)]
+            names, k = combo(parts[0], parts[1])
+            direct[m.group(1)] = "+".join([*names, k])
+    found = re.findall(r'\{\s*key:\s*"([^"]+)",\s*name:\s*"([^"]*)",\s*label:\s*"([^"]+)"[^}]*\}', BARKEYS.read_text())
+    return " · ".join(f"{k} {label}" + (f" ({direct[n]})" if n in direct else "") for k, n, label in found)
 
 
 def key_name(k):
@@ -118,11 +137,14 @@ def main():
         "",
         "| Taste | Zuständig für |",
         "|---|---|",
-        "| **Super** | Fenster, Monitore, Shell (Dashboard, Apps) |",
-        "| **Alt** | Workspaces (Alt+1…9, Alt+←/→); dazu Alt+Tab und Alt+F4 wie üblich |",
-        "| **Super+Alt** | Zusatzwerkzeuge der Shell (Zwischenablage, Fokus-Modus) |",
+        "| **Alt** | Workspace-Management (Alt+1…9, Alt+←/→, Alt antippen = Workspace-Modus); dazu Alt+Tab und Alt+F4 wie üblich |",
+        "| **Super** | Fenster-Management (Fokus ←/→, ↑ maximieren → Vollbild, ↓ zurück, Shift verschieben, Strg Größe, "
+        "Super+Shift+V schweben, Monitore, Maus) |",
+        "| **Super+Alt** | Menüs und Programme öffnen, Topbar: Super+Alt+<Buchstabe> = Bar-Modus, dann derselbe Buchstabe |",
+        "| **Super+Leertaste** | Topbar betreten (Bar-Modus); die häufigsten Topbar-Ziele ohne Alt: Super+F/T/A/E/B/I |",
         "| **Strg+Alt (+Shift)** | Notbremsen (Not-Aus, Power-Menü ohne Shell) |",
         "",
+        "Sonst nur Screenshots, Medientasten und ein paar Klassiker (Super+Enter/W/K/O/P/V, Super+L, Super+Esc).",
         "Super allein antippen öffnet das Dashboard mit Suche (nur, wenn keine andere Taste dazwischen war).",
         "Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leiste.",
         "",
@@ -130,12 +152,11 @@ def main():
         "",
         "| Modus | Tasten |",
         "|---|---|",
-        "| **Bar-Modus** (Super+B) | Buchstabe an den Chips öffnet das Popout: S Sound · N Netz · L Licht · R Ressourcen · D Downloads · "
-        "V Dev · M Musik · C Chat · T Tray · U Updates · H Server · A Claude · O To-dos · F Fokus · Z Benachrichtigungen. "
-        "Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+B = zu; Esc im Popout = zurück zum Chip |",
+        f"| **Bar-Modus** (Super+Leertaste) | Buchstabe an den Chips öffnet das Popout (Direktkürzel in Klammern): {bar_letters()}. "
+        "Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+Leertaste = zu; Esc im Popout = zurück zum Chip |",
         "| **In Popouts** | Pfeile/Tab wählen (Glut-Rahmen), Enter/Leertaste löst aus, Regler: Enter, dann ←/→, Esc zu. "
         "Per Taste geöffnet: Tastaturfokus, schließt nicht durch Weghovern |",
-        "| **Tray** (Bar-Modus T) | ↑↓ Symbol, → zum Menü-Knopf (⋮) oder Auge, Enter; im Menü ↑↓, Enter/→ öffnet Untermenü, ←/Rücktaste zurück |",
+        "| **Tray** (Super+Alt+Y) | ↑↓ Symbol, → zum Menü-Knopf (⋮) oder Auge, Enter; im Menü ↑↓, Enter/→ öffnet Untermenü, ←/Rücktaste zurück |",
         "| **Benachrichtigungen** (Super+Alt+Z) | ↑↓ Karte, Enter öffnen, 1–3 Knöpfe, S später erinnern (dann 1–4), Entf/X wegklicken, Shift+A alle weg, Esc zu |",
         "| **Workspace-Modus** (Alt antippen) | 1–9, ←/→, Enter, Entf, N, R, T, Q (Quicklinks + Git der Kachel), Esc |",
         "",

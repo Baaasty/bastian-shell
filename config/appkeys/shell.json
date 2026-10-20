@@ -1,23 +1,22 @@
 {
   "name": "Desktop shell",
   "group": "shell",
-  "about": "Hyprland keys come live from hypr/binds.conf; these guides from config/appkeys/shell.json",
+  "about": "Hyprland keys come live from hypr/binds.conf; these guides from config/appkeys/shell.json (\"area\": \"topbar\" = group Topbar)",
   "sections": [
     {
       "name": "Bar mode",
+      "area": "topbar",
+      "note": "Super+Space",
       "keys": [
-        { "keys": "Super+B", "title": "Bar mode on / off", "note": "the chips show their letter" },
         { "keys": "← →", "title": "Pick a chip", "note": "Tab / Shift+Tab too" },
         { "keys": "Enter", "title": "Open the picked chip", "note": "↓ or Space too" },
-        { "keys": "Esc", "title": "Leave bar mode" },
-        { "keys": "Super+Alt+S", "title": "Sound mixer directly" },
-        { "keys": "Super+Alt+L", "title": "Light directly" },
-        { "keys": "Super+Alt+Z", "title": "Notifications directly" }
+        { "keys": "Esc", "title": "Leave bar mode" }
       ]
     },
-    { "name": "Bar letters", "auto": "barLetters", "note": "in bar mode, the letter opens the popout" },
+    { "name": "Bar letters", "area": "topbar", "auto": "barLetters", "note": "Super+Space, then the letter" },
     {
       "name": "Popouts",
+      "area": "topbar",
       "keys": [
         { "keys": ["↑ ↓", "Tab"], "title": "Move the highlight" },
         { "keys": "← →", "title": "Adjust a slider", "note": "after Enter on the slider" },
@@ -28,6 +27,7 @@
     },
     {
       "name": "Notifications",
+      "area": "topbar",
       "note": "Super+Alt+Z",
       "keys": [
         { "keys": "↑ ↓", "title": "Pick a notification" },
@@ -40,7 +40,8 @@
     },
     {
       "name": "Tray",
-      "note": "bar mode, T",
+      "area": "topbar",
+      "note": "Super+Alt+Y",
       "keys": [
         { "keys": "↑ ↓", "title": "Pick a tray icon" },
         { "keys": "→", "title": "To its menu button or eye" },

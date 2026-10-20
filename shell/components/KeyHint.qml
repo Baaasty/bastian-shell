@@ -2,7 +2,7 @@ import QtQuick
 import qs.config
 import qs.services
 
-// Buchstabe am Chip, solange der Bar-Modus (Super+B) läuft: kleine Taste unten mittig, ragt etwas aus der Bar
+// Buchstabe am Chip, solange der Bar-Modus (Super+Leertaste) läuft: kleine Taste unten mittig, ragt etwas aus der Bar
 Rectangle {
     id: hint
 

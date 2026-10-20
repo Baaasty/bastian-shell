@@ -8,7 +8,7 @@ import qs.components
 // steht die Temperatur in Amber dahinter (ersetzt Temps.qml). Klick öffnet das Ressourcen-Popout (Reiter, Suche, Prozesse).
 Chip {
     id: chip
-    hintKey: BarKeys.keyFor("resources")   // Bar-Modus (Super+B)
+    hintKey: BarKeys.keyFor("resources")   // Bar-Modus (Super+Leertaste)
 
     property var barWindow: QsWindow.window
 

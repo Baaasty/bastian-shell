@@ -106,6 +106,57 @@ Item {
         }
     }
 
+    // ---------- Hyprland: Hand-Zeiger über den Bar-Chips ----------
+    // Mit Klick-Fang behält das Popout den Zeiger-Fokus, auch über der Bar (Hyprland: „absolute“ xdg_popup-Grabs, die
+    // Bar ist als Layer-Fläche nicht Teil des Grabs). Den Zeiger setzt dann nur das Popout – über den Chips also der
+    // Pfeil des Popouts. Deshalb liegen im Popout-Fenster unsichtbare Flächen genau über den Chips der Bar (außerhalb
+    // des Fensters, das Popout bekommt die Bewegungen dort trotzdem), die nur den Zeiger setzen und keine Klicks nehmen.
+    property var chipRects: []
+    function syncChipCursors(): void {
+        const win = g.popout.anchor ? g.popout.anchor.window : null;
+        if (!g.hypr || !g.popout.visible || !win) {
+            if (chipRects.length)
+                chipRects = [];
+            return;
+        }
+        const out = [];
+        for (const ch of Popouts.chips) {
+            if (ch.hostWindow !== win || !ch.visible || ch.width <= 0)
+                continue;
+            const p = ch.mapToItem(chipCursors, 0, 0);
+            out.push({ x: Math.round(p.x), y: Math.round(p.y), w: Math.round(ch.width), h: Math.round(ch.height) });
+        }
+        if (JSON.stringify(out) !== JSON.stringify(chipRects))
+            chipRects = out;
+    }
+    // Lage des Popouts steht erst nach dem configure des Compositors fest, Chips ändern ihre Breite (Titel, Zähler)
+    Timer {
+        interval: 250
+        repeat: true
+        triggeredOnStart: true
+        running: g.hypr && g.popout.visible
+        onTriggered: g.syncChipCursors()
+        onRunningChanged: if (!running) g.syncChipCursors()
+    }
+    Item {
+        id: chipCursors
+        parent: g.popout.contentItem
+        visible: g.hypr && g.popout.visible
+        Repeater {
+            model: g.chipRects
+            MouseArea {
+                required property var modelData
+                x: modelData.x
+                y: modelData.y
+                width: modelData.w
+                height: modelData.h
+                acceptedButtons: Qt.NoButton
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+            }
+        }
+    }
+
     Timer {
         id: leave
         interval: g.delay

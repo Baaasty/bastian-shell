@@ -27,25 +27,25 @@ Der Rechner läuft unter **Hyprland 0.56 + Quickshell** (Repo `~/Workspace/basti
 1. Login: `scripts/loginscreen install` (sudo), dann `scripts/loginscreen on`
 2. ~~Share-Picker~~ erledigt: Shell-Picker braucht kein sudo, ist aktiv (GTK-Variante nur noch optional)
 3. Discord statt Equibop: in Discord (RPM) anmelden, Call testen; danach Equibop entfernen: `sudo dnf remove equibop` (Daten in `~/.config/equibop` bleiben bis du sie löschst)
-4. Abendwärme: `sudo dnf install hyprsunset`; hypridle neu starten: `pkill hypridle; uwsm app -- hypridle &`
+4. ~~Abendwärme: hyprsunset installieren~~ entfällt (Abendwärme entfernt 2026-10-20)
 5. OCR im Snip: `sudo dnf install tesseract tesseract-langpack-deu tesseract-langpack-eng`
-6. Klicken: Helium `helium://extensions` bei beiden ↻ · VS Code „Developer: Reload Window“ · Hue-App: Szene „Game“ anlegen (Spiele-Modus)
+6. Klicken: Helium `helium://extensions` bei beiden ↻ · VS Code „Developer: Reload Window“
 7. Thunderbird: Datenumzug Flatpak → RPM (`scripts/flatpak-to-native`), danach `python3 -I theme/gen/thunderbird.py apply`
 8. ~~PC-Beleuchtung installieren~~ erledigt 2026-10-19 (OpenRGB 1.1). Noch: hypridle neu starten (`pkill hypridle; uwsm app -- hypridle &`), dann Standby testen – Farbe kommt nach dem Aufwachen zurück
 
-**Testen (fertig gebaut) – zum Abhaken: [Offene Tests](#offene-tests) und „Neu“:** Sound-Popout (Lautsprecher-Chip) · Netz-Popout (Netz-Chip) · Privatsphäre-Punkte in der Bar · Super (Dashboard) · Super+K · Super+P · Super+N (Gedanken) · Super+Return (Kitty) · Super+Shift+Return (Dropdown) · Super+Alt+K (Layouts) · Super+Alt+G/B/N (Spiele-Modus, Feierabend, Abendwärme) · Alt antippen / Alt+Esc (Workspace-Modus) · Alt+1…9 · Super+Shift+Pfeile (Fokus folgt) · Launcher-Präfixe (`?`) · Snip (T, C, P) · Ressourcen-Chip · Passwort-Panel (Super+O) · `pkexec true` · Super+L (GoXLR) · Session-Restore (`docs/knowledge/hyprland.md`) · Quicklinks/Git an den Workspace-Kacheln · Benachrichtigungen (Snooze, Hover-Pause) · Morgen-Übersicht (`morning open`) · Kamin-Idle (`scripts/idle show force`)
+**Testen (fertig gebaut) – zum Abhaken: [Offene Tests](#offene-tests) und „Neu“:** Sound-Popout (Lautsprecher-Chip) · Netz-Popout (Netz-Chip) · Privatsphäre-Punkte in der Bar · Super (Dashboard) · Super+K · Super+P · Super+T (Tasks: Gedanken parken + abarbeiten) · Super+Return (Kitty) · Super+Shift+Return (Dropdown) · Super+Alt+K (Layouts) · Alt antippen / Alt+Esc (Workspace-Modus) · Alt+1…9 · Super+Shift+Pfeile (Fokus folgt) · Launcher-Präfixe (`?`) · Snip (T, C, P) · Ressourcen-Chip · Passwort-Panel (Super+O) · `pkexec true` · Super+L (GoXLR) · Session-Restore (`docs/knowledge/hyprland.md`) · Quicklinks/Git an den Workspace-Kacheln · Benachrichtigungen (Snooze, Hover-Pause) · Morgen-Übersicht (`morning open`) · Leerlauf-Abdunkeln (`scripts/idle dim-test 10`)
 
 ## Neu (2026-10-18 spät, gebaut, wartet auf Test nach dem Stream)
 
-- [ ] **AP 22 Bar-Modus**: Super+B → Buchstaben an den Chips; `S` öffnet Sound mit Tastatur, Pfeile/Tab bewegen den Glut-Rahmen, Enter löst aus, Esc → zurück zum Chip, nochmal Esc = Modus zu; ←/→ + Enter wählt Chips ohne Buchstaben
-- [ ] **AP 22 Direkttasten**: Super+Alt+S (Sound), Super+Alt+L (Licht), Super+Alt+U (Server) – nochmal = zu; Popout schließt nicht durch Weghovern, Esc schließt
+- [ ] **AP 22 Bar-Modus**: Super+Leertaste → Buchstaben an den Chips; `S` öffnet Sound mit Tastatur, Pfeile/Tab bewegen den Glut-Rahmen, Enter löst aus, Esc → zurück zum Chip, nochmal Esc = Modus zu; ←/→ + Enter wählt Chips ohne Buchstaben
+- [ ] **AP 22 Direkttasten**: Super+Alt+<Bar-Buchstabe> für jedes Topbar-Element (S Sound, L Licht, H Server …) – nochmal = zu; Popout schließt nicht durch Weghovern, Esc schließt
 - [ ] **AP 22 Regler**: in Sound/Licht erst Enter auf einem Regler, dann ←/→ (vorher ändern Pfeile nichts)
 - [ ] **AP 22 Benachrichtigungen**: Super+Alt+Z (bei offener Karte): ↑↓, Enter öffnet, 1–3 Knöpfe, S + 1–4 später erinnern, Entf weg, Esc zu · Super+Alt+X klickt die neueste weg
-- [ ] **AP 22 Tray**: Super+B, T → ↑↓, → auf ⋮ (Menü) / Auge, Enter; im Menü ↑↓, Enter/→ Untermenü, ← zurück
+- [ ] **AP 22 Tray**: Super+Alt+Y (Bar-Modus Y) → ↑↓, → auf ⋮ (Menü) / Auge, Enter; im Menü ↑↓, Enter/→ Untermenü, ← zurück
 - [ ] **AP 22 Schließ-Regel**: Spotify-Popout offen, Spotify holen (oder ein Fenster geht auf) → Popout bleibt; zu nur durch Weghovern (nachdem die Maus drin war), Esc, Chip-Klick oder anderes Popout
 - [ ] **Licht-Chip** in der Bar (Birne neben dem Lautsprecher): Key Light, Hue-Szenen, Kamera – `$Q light open`
 - [ ] **Workspace-Modus** jetzt per Alt antippen oder Alt+Esc, Entf löscht, Alt+←/→ markiert im Modus
-- [ ] **Server im Dev-Popout** (`docs/knowledge/shell-features.md`): eigener Server-Chip aufgelöst, Reiter **Server** im Dev-Popout = Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare aus `config/consoles.json`, Klick öffnet Helium) + sshs-Server mit Upload / Files / Terminal; Suche filtert mit; Dev-Chip immer da (Zahl nur, wenn etwas läuft) – Super+Alt+U, `$Q servers open`. Offen: Dokploy-URL in `~/.config/desktop/consoles.json`
+- [ ] **Server im Dev-Popout** (`docs/knowledge/shell-features.md`): eigener Server-Chip aufgelöst, Reiter **Server** im Dev-Popout = Web-Konsolen (Dokploy, Hetzner, INWX, Cloudflare aus `config/consoles.json`, Klick öffnet Helium) + sshs-Server mit Upload / Files / Terminal; Suche filtert mit; Dev-Chip immer da (Zahl nur, wenn etwas läuft) – Super+Alt+H, `$Q servers open`. Offen: Dokploy-URL in `~/.config/desktop/consoles.json`
 
 Testen: `Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"`
 
@@ -54,7 +54,8 @@ Testen: `Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"`
 - [ ] Sound-Popout: oben Routing, dann Kanäle, unten Apps (`docs/knowledge/shell-features.md`)
 - [ ] Netz schlichter (`docs/knowledge/shell-features.md`): Chip nur Symbol; Popout = Status-Zeile, Erreichbarkeit (Internet/Router/GitHub/Discord), Ø-Durchsatz letzte Stunde als Diagramm, Speedtest-Knopf, kein VPN-Bereich mehr; IP/Router unter „Details“ – `$Q net open`
 - [ ] Hyperfokus-Wecker nach 90 min (`docs/knowledge/shell-features.md`) – `$Q breaks test` / `breaks hide`
-- [ ] Projektzeit + Tagesrückblick (`docs/knowledge/shell-features.md`) – Super+Alt+T, Super+Alt+R; Platz im Dashboard danach entscheiden
+- [ ] Projektzeit im Kachelkopf der Workspace-Leiste (heute, Tooltip mit Woche; `docs/knowledge/shell-features.md`) – Projekt-Workspace ein paar Minuten nutzen, Kachel überfahren
+- [x] ~~Tagesrückblick (Super+Alt+R)~~ verworfen, entfernt (Bastian, 2026-10-20)
 - [ ] Update-Chip (`docs/knowledge/shell-features.md`) – `$Q updates fake 5`
 - [ ] Downloads-Popout (`docs/knowledge/shell-features.md`) – `$Q downloads open`
 - [ ] Dev-Dienste-Popout (`docs/knowledge/shell-features.md`) – Test-Server starten, Chip erscheint, `$Q devservices toggle`
@@ -79,8 +80,8 @@ Testen: `Q="qs ipc --any-display -p ~/Workspace/bastian-shell/shell call"`
 Aus der früheren Testliste und dem Fortschritts-Log (2026-10-18/19): gebaut, nur per Befehl/Screenshot geprüft – echte Tasten und Klicks fehlen.
 
 - [ ] Super+Return Kitty · Super+Shift+Return Dropdown (nochmal = weg, Inhalt bleibt; auch auf anderem Monitor)
-- [ ] Super+Pfeile Fokus · Super+Shift+→ Fenster auf den nächsten Monitor, Fokus und Maus gehen mit
-- [ ] Super+Alt+Pfeile Fenstergröße (gekachelt = Teilung, schwebend = Größe, halten wiederholt)
+- [ ] Super+←/→ Fokus, Super+↑/↓ maximieren → Vollbild / zurück · Super+Shift+→ Fenster auf den nächsten Monitor, Fokus und Maus gehen mit
+- [ ] Super+Strg+Pfeile Fenstergröße (gekachelt = Teilung, schwebend = Größe, halten wiederholt)
 - [ ] Alt+1…9 und Alt+←/→ wählen den Workspace, Leiste zeigt kurz, wo man ist
 - [ ] Workspace-Leiste mit der Maus: Klick wählt, Fenster-Kachel holt das Fenster, Ziehen auf eine andere Kachel verschiebt es
 - [ ] Workspace-Kacheln zeigen `xwaylandvideobridge` und den DrKonqi-Dialog als Fenster – ausblenden
@@ -88,22 +89,22 @@ Aus der früheren Testliste und dem Fortschritts-Log (2026-10-18/19): gebaut, nu
 - [ ] Super+Alt+K: Desktop als Layout speichern, auf leerem Desktop wiederherstellen
 - [ ] Spotify-Chip: wegräumen, holen → Spotify rechts 800 px, Chat links
 - [ ] Super+K Kürzel-Übersicht · Super+P Paketmanager: Klick ins Leere schließt
-- [ ] Super+N: direkt tippen, Enter speichert, `t …` wird zusätzlich To-do
+- [ ] Super+T Tasks-Popout: direkt tippen, Enter parkt den Gedanken (Inbox oben), `t …` wird gleich To-do; ↓ in die Inbox, je Gedanke abhaken / zur Aufgabe / ins Backlog / löschen (zweimal); Tippen springt zurück ins Feld
 - [ ] Super+O Passwörter: Logos, keine WLAN-Einträge, „Show“ blendet sie ein
 - [ ] Ressourcen-Chip: Popout, Sortierung nach Memory, Zeile aufklappen, Icons in jeder Zeile
 - [ ] `pkexec true` → eigener Passwort-Dialog, Esc bricht ab
 - [ ] Snip (Druck/Super+Shift+S): Enter kopiert, S speichert, C Farbe, P anpinnen (ziehen, Mausrad, Rechtsklick), T Text (nach tesseract) · Super+Shift+C direkt · Strg+Druck alle Monitore
 - [ ] Benachrichtigung tagsüber (`notify-send -a Test Hallo Text`): Maus drauf → alle bleiben stehen; Uhr per Klick → „10 min“ → kommt wieder; Snooze-Chips im Panel per Klick
 - [ ] Morgen-Übersicht: Esc/Enter schließt (mit Tastaturfokus); echter Morgen-Login
-- [ ] Super+Alt+G Spiele-Modus · Super+Alt+B Feierabend an/aus, live (Chat wegräumen und Musik-Pause noch nie live probiert)
-- [ ] Fokus-Block (Super+Alt+F) → Büro-Licht warm/gedimmt, danach wie vorher
-- [ ] Super+Alt+N Abendwärme (nach hyprsunset) · Kamin-Idle: `scripts/idle show force`, Maus bewegen beendet
+- [x] ~~Spiele-Modus, Feierabend, Fokus-Kopplung (Szenen)~~ verworfen, entfernt (Bastian, 2026-10-20)
+- [ ] Leerlauf-Abdunkeln: `scripts/idle dim-test 10`, Taste/Maus beendet; echte Kette 4:00 → 5:00 aus → 5:05 Sperre
+- [x] ~~Abendwärme (Super+Alt+N)~~ verworfen, entfernt (Bastian, 2026-10-20)
 - [ ] Super+L sperren, Fader verstellen, entsperren → Fader wie vorher, Routing aus
 - [ ] Dolphin, Systemeinstellungen, Datei-Dialog im Schema „Desktop Hearth“ ansehen
 - [ ] GTK-Dialog `zenity --question --text=Test`: warmbraun, kein Blau
 - [ ] GoXLR im Launcher öffnet die GoXLR-Oberfläche in Helium
 - [ ] Session-Restore, erster Test (`docs/knowledge/hyprland.md`: 2–3 Fenster, `scripts/session save`, schließen, `scripts/session restore`)
-- [ ] `qs log`-Befunde aus AP 21 Runde 2 klären: `ProjectTime.qml` Z. 104 „Value is null“, `DevTile.qml` Z. 202 undefined → double, `SnipPin.qml` Z. 19 „Duplicate signal name“ (evtl. schon weg), Polkit „agent already exists“
+- [ ] `qs log`-Befunde aus AP 21 Runde 2 klären: `ProjectTime.qml` „Value is null“ (früher Z. 104, jetzt `current = …` in `account()`), `DevTile.qml` Z. 202 undefined → double, `SnipPin.qml` Z. 19 „Duplicate signal name“ (evtl. schon weg), Polkit „agent already exists“
 
 ## Fertig (39 von 44)
 
@@ -143,10 +144,10 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 - [ ] AP 21 Härten: Konsistenz + Härtetest
 - [x] Idee a Gedanken parken
 - [x] Idee b Dropdown-Terminal
-- [x] Idee c Abendwärme
+- [x] ~~Idee c Abendwärme~~ entfernt 2026-10-20 (Bastian braucht es nicht)
 - [x] Idee d Snip-Erweiterungen
-- [x] Idee e Spiele-Modus
-- [x] Idee f Fokus-Kopplung
+- [x] ~~Idee e Spiele-Modus~~ entfernt 2026-10-20 (Bastian braucht es nicht)
+- [x] ~~Idee f Fokus-Kopplung~~ entfernt 2026-10-20 (lief über die Szenen)
 - [x] Idee g Audio-Mixer
 - [x] Idee h Netz-Popout
 - [x] Idee i Privatsphäre-Punkt
@@ -156,8 +157,8 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 - [x] Idee m Morgen-Übersicht
 - [x] Idee n Quicklinks an Workspaces
 - [x] Idee o Git/CI pro Workspace
-- [x] Idee p Feierabend-Routine
-- [x] Idee q Kamin-Idle
+- [x] ~~Idee p Feierabend-Routine~~ entfernt 2026-10-20 (Bastian braucht es nicht)
+- [x] Idee q Kamin-Idle (2026-10-20 ersetzt durch Leerlauf-Abdunkeln)
 - [x] ~~Idee s Text-Bausteine~~ entfernt (Bastian); die Ersatz-FMHY-Suche (`?`) am 2026-10-19 auch wieder raus
 
 ## Entschieden (Bastian, 2026-10-18)
@@ -233,12 +234,12 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 
 | AP | Idee | Nutzen |
 |---|---|---|
-| 12a | **Gedanken parken** (Super+N): Eingabefeld, Notiz geht in eine Inbox-Datei und optional als To-do | Idee loswerden, ohne den Fokus zu verlieren |
+| 12a | **Gedanken parken** (Super+T, im Tasks-Popout): Eingabefeld, Notiz geht in eine Inbox-Datei, dort abarbeiten oder als To-do | Idee loswerden, ohne den Fokus zu verlieren |
 | 12b | **Dropdown-Terminal** (Kitty auf einer Taste, Hyprland-Spezial-Workspace) | schneller Befehl ohne Fenster-Chaos |
-| 12c | **Abendwärme** (hyprsunset): Bildschirm wird abends automatisch wärmer, passt zum Kaminfeuer; optional Theme-Variante nach Tageszeit | Augen, Stimmung |
+| ~~12c~~ | ~~Abendwärme (hyprsunset)~~ | **entfernt 2026-10-20** (Bastian braucht es nicht) |
 | 12d | **Snip-Erweiterungen**: Text aus Bild (OCR), Farbpipette, Screenshot an den Bildschirm anpinnen | Alltag |
-| 12e | **Spiele-Modus** auf einer Taste: Bar weg, Benachrichtigungen aus, Hue-Szene, Chat leiser | mehr als nur Vollbild-Erkennung |
-| 12f | **Fokus-Kopplung**: Fokus-Timer schaltet Licht-Szene, „Nicht stören“ und Chat-Status mit | Fokus ohne Handarbeit |
+| ~~12e~~ | ~~Spiele-Modus~~ | **entfernt 2026-10-20** (Bastian braucht es nicht) |
+| ~~12f~~ | ~~Fokus-Kopplung~~ | **entfernt 2026-10-20** (lief über die Szenen) |
 | 12g | **Audio-Mixer-Popout**: Lautstärke pro App, Ausgang wechseln (GoXLR-Routing dabei) | ein Ort für Ton |
 | 12h | **Netz-Popout**: LAN/WLAN, Tailscale/WARP an/aus, Ping | passt zu den Vendor-Repos |
 | 12i | **Privatsphäre-Punkt** in der Bar, wenn Kamera, Mikro oder Bildschirmfreigabe aktiv ist | Sicherheit auf einen Blick |
@@ -248,7 +249,7 @@ Wird bei jedem fertigen Paket abgehakt. Reihenfolge: erst Fertiges, dann Offenes
 | 12m | **Morgen-Übersicht** beim ersten Login des Tages: Termine, Mails, Wetter, offene To-dos | guter Start |
 | 12n | **Quicklinks an den Workspaces** (statt Dev-Server-Übersicht): pro Projekt-Workspace ein paar Links/Ports (localhost:3000, Repo, Board), Klick öffnet Helium. Daten stehen in `projects/projects.json`, **von Hand pflegbar** (Datei oder kleiner Editor-Dialog), keine Agenten nötig | Bastian: Features sollen auch ohne KI nutzbar und pflegbar sein |
 | 12o | **Git-/CI-Status pro Projekt-Workspace** in der Workspace-Leiste (Branch, ungespeicherte Änderungen, letzter CI-Lauf) | Projektstand auf einen Blick |
-| 12p | **Feierabend-Routine** auf einer Taste: Fokus aus, warmes Licht, Bildschirm dimmen, Musik an | sauberer Schnitt zwischen Arbeit und Abend |
+| ~~12p~~ | ~~Feierabend-Routine~~ | **entfernt 2026-10-20** (Bastian braucht es nicht) |
 | 12q | **Kamin-Idle**: nach Leerlauf ein ruhiger Kamin-/Glut-Bildschirm (sparsam, kein Dauer-Rendern) statt schwarzem Schirm. **UI freundlich und ruhig, nicht glowy/glassy/dynamisch** | Thema „Holzhütte am Abend“ (Bastian: ja) |
 | 12s | **Text-Bausteine** im Launcher: Floskeln, Adresse, Befehle einfügen | schnelles Tippen, wenig Merken |
 | ~~12t~~ | ~~Kalender-Popout + Wallpaper-Galerie~~ | **gestrichen** (Bastian: Kalender/Mail läuft in Thunderbird) → siehe AP 18 |

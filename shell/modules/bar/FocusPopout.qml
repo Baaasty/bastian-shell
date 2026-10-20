@@ -5,15 +5,16 @@ import qs.config
 import qs.services
 import qs.components
 
-// Popout unter dem Fokus-Chip (Klick im Leerlauf): Vorgaben, zuletzt benutzte eigene Zeiten,
+// Popout unter dem Fokus-Chip (Klick im Leerlauf): oben „Focus without timer“ (an bis zum Ausschalten), Vorgaben, zuletzt benutzte eigene Zeiten,
 // Eingabe für eigene Dauer/Uhrzeit ("40", "1h30", "1:30", "until 14:30"), Aufgabe, Start.
-// Enter startet, Esc schließt, Klick daneben schließt.
+// Enter startet, Esc schließt, Klick daneben schließt. Per Tastatur (Super+F, Super+Leertaste F) steht die Markierung auf dem
+// Schalter ohne Zeit (Enter = an/aus), mit der Maus hat das Zeitfeld den Fokus (gleich tippen).
 PopupWindow {
     id: pop
 
     property var barWindow
     property Item chip
-    readonly property int maxCardHeight: 420
+    readonly property int maxCardHeight: 480
     readonly property int quick: Math.round(Theme.fade * 0.6)
     property real appear: 0             // 0..1, nur beim Öffnen (einmalig, keine Dauer-Animation)
     property real _closedAt: 0
@@ -87,6 +88,16 @@ PopupWindow {
             return;
         }
     }
+    // Fokus ohne Zeit an/aus; danach zu (wie beim Start eines Blocks)
+    function toggleOpen(): void {
+        if (Focus.openOn) {
+            Focus.stop();
+        } else {
+            applyTask();
+            Focus.startOpen();
+        }
+        close();
+    }
     // Enter / Start-Knopf: eigene Eingabe, sonst die gewählte Vorgabe
     function go(): void {
         if (custom) {
@@ -102,7 +113,11 @@ PopupWindow {
             barWindow.openMenus += visible ? 1 : -1;
         if (visible) {
             Popouts.claim("focus");
-            timeField.input.forceActiveFocus();
+            // per Tastatur: kein Feld fokussieren, damit KeyNav beim ersten Ziel (Fokus ohne Zeit) startet
+            if (nav.byKeys)
+                card.forceActiveFocus();
+            else
+                timeField.input.forceActiveFocus();
         } else {
             Popouts.release("focus");
             _closedAt = Date.now();
@@ -262,7 +277,7 @@ PopupWindow {
         id: card
         // offen bis zum Weghovern (PopoutGuard.qml)
         PopoutGuard { id: guard; popout: pop; chip: pop.chip; name: "focus" }
-        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+B, KeyNav.qml)
+        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+Leertaste, KeyNav.qml)
         Keys.onPressed: e => nav.key(e)
         KeyNav { id: nav; root: card; scope: null; popout: pop; guard: guard; name: "focus" }
         width: parent.width
@@ -298,6 +313,66 @@ PopupWindow {
                     color: Theme.textFaint
                     font.pixelSize: 12
                     font.weight: Font.Normal
+                }
+            }
+
+            // Fokus ohne Zeit: erstes Ziel, an bis zum Ausschalten
+            Rectangle {
+                id: openRow
+                width: col.width
+                height: 48
+                radius: Theme.radiusMd
+                color: Focus.openOn ? Theme.accentSoft : openArea.containsMouse ? Qt.alpha(Theme.text, 0.1) : Theme.raise
+                border.width: 1
+                border.color: Focus.openOn ? Qt.alpha(Theme.accent, 0.55) : Theme.border
+                Behavior on color { ColorAnimation { duration: pop.quick } }
+                Icon {
+                    id: openIcon
+                    x: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "all_inclusive"
+                    size: 18
+                    fill: Focus.openOn
+                    color: Focus.openOn ? Theme.accentText : Theme.textMuted
+                }
+                Column {
+                    anchors.left: openIcon.right
+                    anchors.leftMargin: 10
+                    anchors.right: openSwitch.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 1
+                    Txt {
+                        width: parent.width
+                        text: "Focus without timer"
+                        color: Focus.openOn ? Theme.accentText : Theme.text
+                        font.pixelSize: 14
+                        elide: Text.ElideRight
+                    }
+                    Txt {
+                        width: parent.width
+                        text: Focus.openOn ? "On for " + Focus.sinceLabel(Focus.elapsed) + " · Enter turns it off" : "On until you turn it off"
+                        color: Theme.textFaint
+                        font.pixelSize: 12
+                        font.weight: Font.Normal
+                        elide: Text.ElideRight
+                    }
+                }
+                ToggleSwitch {
+                    id: openSwitch
+                    // nur Anzeige: die ganze Zeile ist das Ziel (Klick, Enter)
+                    property bool kbSkip: true
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: Focus.openOn
+                }
+                MouseArea {
+                    id: openArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: pop.toggleOpen()
                 }
             }
 

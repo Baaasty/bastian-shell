@@ -30,9 +30,9 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 ## 5. So wird es benutzt
 
 - **Tastatur zuerst**: Shell, Fenster, Workspaces, Bar und Popouts aus dem Muscle Memory, Maus nur in Browser und Apps.
-- **Super antippen** = Dashboard mit Suche (Launcher) · **Alt antippen** = Workspace-Modus · **Super+B** = Bar-Modus
+- **Super antippen** = Dashboard mit Suche (Launcher) · **Alt antippen** = Workspace-Modus · **Super+Leertaste** = Bar-Modus
   (Buchstabe je Chip öffnet das Popout, darin Pfeile/Enter/Esc).
-- Direkttasten für das Häufige (Super+Alt+S/L/U/Z, Super+N, Super+O, Super+P …), alle live in **Super+K**.
+- Tasten-Schema: Alt = Workspaces, Super = Fenster, Super+Alt = Menüs/Programme und Topbar (Super+Alt+Buchstabe = Bar-Modus-Buchstabe direkt, die häufigsten ohne Alt: Super+F/T/A/E/B/I); dazu Klassiker wie Super+O/P/K, alle live in **Super+K**.
 - Läuft als systemd-User-Dienst mit der Hyprland-Sitzung; Not-Aus Strg+Alt+Shift+Q, Plasma bleibt Rückfall-Sitzung.
 
 ## 6. Kern-Funktionen
@@ -40,12 +40,12 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 ### Bar & Popouts
 
 - **F1** Top-Bar auf DP-2: Desktops, Fokus/To-do/Termin oben links, Uhr, Spotify, Discord-Call, CPU/RAM/GPU, Tray mit eigenem Menü; weicht Vollbild aus.
-- **F2** Bar-Modus Super+B: Buchstabe am Chip öffnet das Popout, alle Popouts mit Pfeilen/Enter/Esc (`KeyNav`).
+- **F2** Bar-Modus Super+Leertaste: Buchstabe am Chip öffnet das Popout, alle Popouts mit Pfeilen/Enter/Esc (`KeyNav`).
 - **F3** Sound-Popout (Super+Alt+S): GoXLR-Routing und -Kanäle, Lautstärke pro App ([MIXER.md](knowledge/shell-features.md)).
-- **F4** Licht-Popout (Super+Alt+L): Key Light, Hue-Szenen mit Farbwähler, Kamera-Belichtung.
+- **F4** Licht-Popout (Super+Alt+L): Key Light, Hue-Szenen mit Farbwähler, Kamera-Belichtung; Key Light geht mit der Kamera an und aus ([shell-features.md](knowledge/shell-features.md)).
 - **F5** Netz-Popout: Status, Erreichbarkeit, Durchsatz der letzten Stunde, Speedtest nur auf Knopfdruck ([NET.md](knowledge/shell-features.md)).
 - **F6** Ressourcen-Popout: Systemkarte und Prozesstabelle (Reiter, Suche, Sortieren, Beenden).
-- **F7** Downloads-Chip + Popout: läuft/fertig, Liste der letzten Downloads ([DOWNLOADS.md](knowledge/shell-features.md)).
+- **F7** Dateimanager- und Browser-Chip (Super+E / Super+B), letzte Downloads als Popout per Rechtsklick auf den Dateimanager ([shell-features.md](knowledge/shell-features.md)).
 - **F8** Update-Chip: zählt dnf/COPR/Flatpak-Updates, öffnet den Paketmanager, installiert nie selbst ([UPDATES.md](knowledge/shell-features.md)).
 - **F9** Spotify- und Discord-Popout: Warteschlange/Library bzw. Call, Mic/Taub/Verlassen, Lautstärke pro Person.
 - **F10** Privatsphäre-Punkte neben der Uhr: Mikrofon, Kamera, Bildschirm teilen – nur solange aktiv ([PRIVACY.md](knowledge/shell-features.md)).
@@ -54,7 +54,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 
 - **F11** Workspace-Leiste unten: Desktops über alle Monitore mit Vorschau, Vorlagen, offene Apps; Alt+1…9, Alt antippen = Workspace-Modus.
 - **F12** Fenster-Wechsler Alt+Tab / Super+Tab (Super+^ = gleiche App).
-- **F13** Fenster per Taste: Super+Pfeile Fokus, Super+Shift+Pfeile verschieben (über Monitore), Super+Alt+Pfeile Größe, Super+1/2/3 Monitor.
+- **F13** Fenster per Taste: Super+←/→ Fokus, Super+↑/↓ maximieren → Vollbild / zurück, Super+Shift+Pfeile verschieben (über Monitore), Super+Strg+Pfeile Größe, Super+Shift+V schweben, Super+1/2/3 Monitor.
 - **F14** Hintergrund-Apps Discord/Spotify: Super+Q räumt weg statt zu beenden, Rausholen über Bar/Workspace-Leiste.
 - **F15** Drop-down-Terminal (Super+Shift+Enter) und Fenster-Layouts speichern/anwenden (Super+Alt+K, [LAYOUTS.md](knowledge/shell-features.md)).
 - **F16** Sitzung wiederherstellen nach Neustart/Absturz über hyprflow ([SESSION.md](knowledge/hyprland.md)).
@@ -72,22 +72,24 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 
 ### Fokus & Alltag
 
-- **F25** Fokus-Timer und Fokus-Modus (Super+Alt+F) mit Jetzt-Aufgabe und To-dos pro Desktop.
+- **F25** Fokus-Timer und Fokus-Modus (Super+F = Fokus-Popout, Enter = Fokus ohne Zeit bis zum Ausschalten) mit Jetzt-Aufgabe und To-dos pro Desktop.
 - **F26** Hyperfokus-Wecker: ruhige Pausen-Karte nach 90 min am Stück ([BREAKS.md](knowledge/shell-features.md)).
-- **F27** Szenen aus `config/scenes.json`: Spiele-Modus (Super+Alt+G), Feierabend (Super+Alt+B), Fokus-Kopplung ([SCENES.md](knowledge/shell-features.md)).
-- **F28** Abendwärme mit hyprsunset (Super+Alt+N, [NIGHTLIGHT.md](knowledge/shell-features.md)).
-- **F29** Gedanken parken (Super+N) nach `~/Notes/inbox.md` ([NOTES.md](knowledge/shell-features.md)).
-- **F30** Kamin-Idle nach 3 min Leerlauf auf DP-2, keine Sperre ([IDLE.md](knowledge/shell-features.md)).
+- **F27** ~~Szenen (Spiele-Modus, Feierabend)~~ – entfernt 2026-10-20 (DECISIONS).
+- **F28** ~~Abendwärme (hyprsunset)~~ – entfernt 2026-10-20 (DECISIONS).
+- **F29** Gedanken parken und To-dos in einem: Super+T öffnet das Tasks-Popout oben links, Feld hat den Fokus, Enter parkt den
+  Gedanken in `~/Notes/inbox.md`; dort abarbeiten (abhaken, zur Aufgabe, ins Projekt-Backlog, löschen) – kein Fenster in der Mitte mehr
+  ([shell-features](knowledge/shell-features.md#gedanken-parken--to-dos)).
+- **F30** Leerlauf: alle Monitore langsam abdunkeln, dann aus, danach Sperre ([shell-features](knowledge/shell-features.md#leerlauf-abdunkeln)).
 - **F31** Snip: Bereich (Druck), Text per OCR (Super+Shift+T), Farbe (Super+Shift+C), Anpinnen (Super+Shift+P), Aufnahme (Super+R) ([SNIP.md](knowledge/shell-features.md)).
-- **F32** Call-Kameras aus Discord als Overlay (Super+C, Ecke mit Super+Strg+Pfeile) über das Plugin `equicord/desktopBridge`.
+- **F32** Call-Kameras aus Discord als Overlay (Super+C, Ecke mit Super+Alt+Pfeile) über das Plugin `equicord/desktopBridge`.
 
 ### Dev & Projekte
 
 - **F33** Projekt-Registry `projects/` (Farbe, Ports, was aufgeht, Links) über `scripts/project` bzw. Skill `/desktop-project`.
 - **F34** Projekt-Desktop aus dem Launcher (`#`): benannter Workspace mit VS Code und Helium-Vorschau.
-- **F35** Quicklinks und Git-/CI-Status an den Projekt-Workspaces ([QUICKLINKS.md](knowledge/shell-features.md)).
-- **F36** Dev-Popout: Dev-Server, Container, Ports pro Projekt starten/stoppen; Reiter Server mit Konsolen und sshs (Super+Alt+U, [DEVSERVICES.md](knowledge/shell-features.md), [SSHS.md](knowledge/shell-features.md)).
-- **F37** Projektzeit pro Workspace (Super+Alt+T) und Tagesrückblick (Super+Alt+R, [PROJECTTIME.md](knowledge/shell-features.md)).
+- **F35** Quicklinks und Git-/CI-Status an den Projekt-Workspaces, dazu Projekt-Stats (Zeit, eigene Commits, Codezeilen) ([QUICKLINKS.md](knowledge/shell-features.md)).
+- **F36** Dev-Popout: Dev-Server, Container, Ports pro Projekt starten/stoppen; Reiter Server mit Konsolen und sshs (Super+Alt+V bzw. Super+Alt+H, [DEVSERVICES.md](knowledge/shell-features.md), [SSHS.md](knowledge/shell-features.md)).
+- **F37** Projektzeit pro Workspace, heute im Kachelkopf der Workspace-Leiste, Woche im Tooltip ([PROJECTTIME.md](knowledge/shell-features.md)); Tagesrückblick entfernt 2026-10-20.
 - **F38** Claude Code auf dem Desktop: Zentrale oben links (Sitzungen, Subagents), Rückfragen/Erlaubnisse als Karten beantworten.
 
 ### System
@@ -98,6 +100,8 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 - **F42** Theming: `theme/palette.json` → Generatoren für Qt/KDE, GTK, Terminals, VS Code, Discord, Browser, Cursor, Wallpaper ([knowledge/theming.md](knowledge/theming.md)).
 - **F43** PC-Beleuchtung per OpenRGB statisch in der Akzentfarbe, auch nach Standby ([hardware.md](knowledge/hardware.md)); Drop ALT ausgenommen.
 - **F44** PC neu aufsetzen: `system/bootstrap` (dry-run, `--apply`), Paketlisten, Dotfiles; Sitzung per `scripts/hypr install|uninstall`.
+- **F45** Gear-Popout (Bar-Modus G): PC-Licht an/aus, Farbe aus der Palette, Sättigung/Helligkeit; Maus G502 X PLUS mit Akku, DPI-Stufen und Farbe ins Onboard-Profil; Akku-Warnung am Chip ([hardware.md](knowledge/hardware.md)).
+- **F46** Einstellungen-Chip neben dem Browser (Bar-Modus I): KDE-Systemeinstellungen, Mittelklick Bluetooth ([shell-features.md](knowledge/shell-features.md)).
 
 ## 7. Nicht-Ziele
 

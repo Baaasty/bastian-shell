@@ -475,7 +475,7 @@ PopupWindow {
         id: card
         // offen bis zum Weghovern (PopoutGuard.qml)
         PopoutGuard { id: guard; popout: pop; chip: pop.chip; name: "resources" }
-        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+B, KeyNav.qml)
+        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+Leertaste, KeyNav.qml)
         Keys.onPressed: e => nav.key(e)
         KeyNav { id: nav; root: card; scope: null; popout: pop; guard: guard; name: "resources" }
         width: pop.cardW

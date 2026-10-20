@@ -103,7 +103,7 @@ Row {
     // Pfeil: alle Symbole, ein-/ausblenden
     Chip {
         id: more
-        hintKey: BarKeys.keyFor("tray")   // Bar-Modus (Super+B): Liste aller Symbole, dort Pfeile/Enter
+        hintKey: BarKeys.keyFor("tray")   // Bar-Modus (Super+Leertaste): Liste aller Symbole, dort Pfeile/Enter
         padding: 4
         active: pop.visible
         onClicked: {

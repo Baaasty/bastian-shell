@@ -203,7 +203,7 @@ PopupWindow {
         id: card
         // offen bis zum Weghovern (PopoutGuard.qml)
         PopoutGuard { id: guard; popout: pop; chip: pop.chip; name: "net" }
-        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+B, KeyNav.qml)
+        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+Leertaste, KeyNav.qml)
         Keys.onPressed: e => nav.key(e)
         KeyNav { id: nav; root: card; scope: keys; popout: pop; guard: guard; name: "net" }
         width: pop.cardW
@@ -376,7 +376,7 @@ PopupWindow {
                         width: parent.width - 28
                         spacing: 8
 
-                        // Ø-Werte
+                        // Ø-Werte (Spitze steht unten in der Achsenzeile: alle drei Werte passen bei 292 px nicht in eine Zeile)
                         Item {
                             width: parent.width
                             height: 20
@@ -393,14 +393,6 @@ PopupWindow {
                                     color: Theme.textFaint
                                     font.pixelSize: 13
                                 }
-                            }
-                            MonoTxt {
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: Net.rxSeries.length > 1
-                                text: "peak " + Net.fmtMbit(Net.rxPeak)
-                                color: Theme.textFaint
-                                font.pixelSize: 11
                             }
                         }
 
@@ -431,6 +423,12 @@ PopupWindow {
                             visible: Net.rxSeries.length > 1
                             MonoTxt {
                                 text: "−" + (Net.rxSeries.length - 1) + " min"
+                                color: Theme.textFaint
+                                font.pixelSize: 10
+                            }
+                            MonoTxt {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "peak ↓ " + Net.fmtMbit(Net.rxPeak)
                                 color: Theme.textFaint
                                 font.pixelSize: 10
                             }

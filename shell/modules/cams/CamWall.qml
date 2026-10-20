@@ -9,12 +9,12 @@ import qs.components
 // Ecke eines wählbaren Monitors (Cams.screen/Cams.corner; oben unter der Bar). Ein Schalter für alle (Kamera-Knopf im
 // Discord-Popout, Super+C). Bedienung:
 //  - Karte ziehen: folgt der Maus, auch auf einen anderen Monitor; beim Loslassen gleitet sie in die nächste Ecke
-//    (Super+Ziehen geht nicht: das nimmt Hyprland für das Fenster darunter). Super+Strg+Pfeile = Ecke per Tastatur.
+//    (Super+Ziehen geht nicht: das nimmt Hyprland für das Fenster darunter). Super+Alt+Pfeile = Ecke per Tastatur.
 //  - Griff an der inneren Ecke (beim Darüberfahren) ziehen = Größe stufenlos; Mausrad = in Schritten.
 //  - Klick auf eine Kachel = nur diese groß, nochmal = alle. Doppelklick = Discord holen.
 // Je Monitor ein bildschirmgroßes, durchsichtiges Fenster, das IMMER gemappt bleibt (Eingaben nur auf der Karte per mask):
 // würde es beim Ausschalten verschwinden, beendet Hyprland den Popup-Grab und das Discord-Popout klappt zu.
-// Liegt auf der Top-Ebene (unter Benachrichtigungen, Popouts und Overlays); im echten Vollbild/Spiele-Modus (Windows.bare)
+// Liegt auf der Top-Ebene (unter Benachrichtigungen, Popouts und Overlays); im echten Vollbild/Spiel (Windows.bare)
 // ist die Karte weg und das Plugin bekommt keine Bilder angefordert. Einstellungen: ~/.config/desktop/cams.json
 Scope {
     id: root

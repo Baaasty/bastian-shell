@@ -6,7 +6,7 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 
 ## Ideen
 
-- **Theme-Variante nach Tageszeit** – hearth abends heller/dunkler, passend zur Abendwärme; „bewusst nicht jetzt“ (Quelle: docs/knowledge/shell-features.md)
+- **Theme-Variante nach Tageszeit** – hearth abends heller/dunkler; „bewusst nicht jetzt“ (Quelle: docs/knowledge/shell-features.md)
 - **Login als Quickshell-Greeter** – greetd mit einem Quickshell-Greeter in einem kleinen Hyprland, Farben aus `palette.json` (`theme/gen/login.py`); nur geplant, nicht gebaut (Quelle: docs/setup/migrate.md)
 - **Bootstrap ohne Plasma** – `system/packages/dnf.txt` und `system/bootstrap` auf greetd + Keep-Liste umstellen, statt Plasma neu zu holen; „eigene Runde“ (Quelle: docs/setup/migrate.md)
 - **KWin-Code aus dem Repo** – `scripts/rice` (außer `theme`/`feeds`), `scripts/shellpkg`, `scripts/winrules`, `bridge/kwin/`, `plasma/` entfernen; „eigene Runde“ (Quelle: docs/setup/migrate.md)
@@ -21,7 +21,6 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 - **Kürzel über GlobalShortcut** – Super antippen und Super+Tab über Quickshell-`GlobalShortcut` statt `qs ipc`, falls der Prozessstart je Taste träge wirkt (Quelle: docs/knowledge/hyprland.md)
 - **Super+Return entprellen** – kleines Skript mit ≥ 0,5 s Sperre gegen Terminal-Fluten (AP 14); Vorschlag (Quelle: docs/ROADMAP-HYPRLAND.md)
 - **Kamera-Status ereignisgesteuert** – `Camera.qml` fragt `scripts/camera status` alle 5 s ab; könnte über `scripts/privacy-cam` (inotify auf `/dev/video`) laufen (Quelle: docs/ROADMAP-HYPRLAND.md)
-- **Abendwärme-Schalter in der Shell** – Anzeige/Schalter für die Abendwärme (z. B. im Licht-Popout) statt nur `scripts/nightlight` + Super+Alt+N; bisher bewusst nicht gebaut (2026-10-18, Quelle: docs/knowledge/shell-features.md)
 - **Mit mir geteilte Passwort-Gruppen** – Gruppen fremder Besitzer (Shared-DB + Teilnehmer-Schlüssel) in icp lesen; eigene Gruppen gehen schon (`~/Apps/icp/icp/sharing`) (2026-10-19, Quelle: Chat)
 
 ## In Ausarbeitung

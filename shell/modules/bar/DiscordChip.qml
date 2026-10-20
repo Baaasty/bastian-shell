@@ -10,7 +10,7 @@ import qs.components
 // Leute, deren Kamera im Kamera-Overlay läuft, fehlen hier (sie sind ja im Overlay zu sehen).
 Chip {
     id: chip
-    hintKey: BarKeys.keyFor("discord")   // Bar-Modus (Super+B)
+    hintKey: BarKeys.keyFor("discord")   // Bar-Modus (Super+Leertaste)
 
     property var barWindow: QsWindow.window
 

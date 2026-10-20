@@ -27,7 +27,8 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
 
 ## RGB (OpenRGB)
 
-`scripts/rgb` setzt alle RGBs im PC **statisch** auf `accent` der aktiven Palette-Variante, für LEDs kräftiger abgeleitet
+`scripts/rgb` setzt alle RGBs im PC **statisch** auf ein Palette-Token der aktiven Variante (Standard `accent`, wählbar im
+Gear-Popout bzw. `rgb set <token|off>`, gemerkt in `rgb.json` `color`/`on`), für LEDs kräftiger abgeleitet
 (gleicher Farbton, volle Sättigung und Helligkeit: hearth `#DB6B4C` → `#FF3700` – LEDs mischen Gedecktes sonst weißlich;
 anpassbar in `rgb.json` `saturation`/`brightness`), kein Effekt.
 Hardware: MSI MPG B550 Gaming Plus (Mystic Light, `1462:7c56`), NZXT Smart Device V2 (`1e71:200f`), RAM über SMBus
@@ -44,6 +45,9 @@ Nicht steuerbar: Drop ALT (`04d8:eed3`) – Stock-Firmware ohne Raw-HID, ginge n
   Den System-Dienst `openrgb.service` nicht einschalten.
 - Wann: beim Login (`hypr/autostart.conf`, `--boot`) und nach Standby (`after_sleep_cmd` in `hypr/hypridle.conf`,
   `--delay 3`, bis USB wieder da ist). Nach `scripts/rice variant` einmal `scripts/rgb apply`, sonst erst beim nächsten Login.
+  Beide nehmen die gemerkte Farbe; steht `on` auf `false`, schalten sie aus (Licht bleibt nach Neustart so, wie zuletzt gewählt).
+- Shell (Gear-Popout): `rgb status --json` scannt nicht, es liest nur `rgb.json` und den letzten Lauf aus
+  `~/.local/state/desktop/rgb-state.json` (`ok`/`total`/`at`, „läuft“ nur, solange die PID lebt).
 - Rechte: die udev-Regel aus dem OpenRGB-RPM (`60-openrgb.rules`) gibt dem Login per `uaccess` Zugriff auf alle `/dev/i2c-*`
   und die USB-Geräte; keine Gruppe nötig. Geräte auslassen: `~/.config/desktop/rgb.json` → `{"skip": ["G502"]}`.
 - Ein gemeinsamer OpenRGB-Aufruf für alle Geräte; hängt er (> 90 s, z. B. ein falsch erkanntes Gerät), setzt `apply` jedes Gerät
@@ -61,5 +65,20 @@ Stolperfallen:
   anpassen, `solaar profiles "G502 X PLUS" a.yaml`. Dazu `onboard_profiles = Profile 1`, `rgb_control = false`.
   Rückweg: Sicherung `~/.local/state/desktop/g502-profiles-backup-2026-10-20.yaml` genauso laden. DPI kommt im
   Profil-Modus aus `resolutions` (1200/1600/2000).
+
+## Maus G502 X PLUS (Solaar)
+
+`scripts/mouse` (Python, ruft die Solaar-CLI) + Gear-Popout: Akku, aktives Profil, DPI-Stufen (`resolutions`, Standardstufe
+`resolution_default_index`) und Logo-Farbe (`lighting[1]`, Static).
+
+- **Schreiben nur ins Onboard-Profil** (Flash, `mouse save`): frischer Dump, nur die Textzeilen der geänderten Felder ersetzt,
+  danach Prüfung, dass sich sonst nichts ändert; Solaar schreibt nur Sektoren, die sich unterscheiden. Vor dem ersten
+  Schreiben einmalig Sicherung `~/.local/state/desktop/g502-profiles.bak.yaml`; zurück mit `scripts/mouse restore`.
+- `rgb_control` bleibt `false`, `rgb.json` `skip: ["G502"]` bleibt – sonst übersteuern Solaar/OpenRGB das Profil „live“.
+- `scripts/mouse` und `scripts/rgb` teilen die Sperre `$XDG_RUNTIME_DIR/desktop-rgb.lock`: nie OpenRGB und Solaar gleichzeitig
+  am Lightspeed-Empfänger. Ist sie belegt, meldet `mouse status` nur `busy` (die Shell behält die alten Werte).
+- Zustände: Solaar fehlt · Maus nicht verbunden · Maus schläft (`solaar profiles` geht dann nicht, Werte grau) · läuft.
+- **Solaar-Autostart aus:** `~/.config/autostart/solaar.desktop` mit `Hidden=true` (überdeckt `/etc/xdg/autostart/solaar.desktop`,
+  2026-10-20) – das Solaar-Fenster im Hintergrund würde sonst parallel am Empfänger hängen. Rückweg: die Datei löschen.
 - Nach Standby falsche Farbe: hypridle mit neuer Config neu starten, sonst `--delay 5`.
   Log: `journalctl --user --since -5min | grep rgb`.

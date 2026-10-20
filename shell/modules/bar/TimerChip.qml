@@ -7,13 +7,14 @@ import qs.components
 // Fokus oben links. Leerlauf: "Focus · 25 min" – Mausrad wählt die Vorgabe (15/25/45/60/90 min oder
 // "until 12:00"), Klick öffnet das Popout (Vorgaben, eigene Zeit, Aufgabe), Doppelklick startet sofort
 // mit der Vorgabe. Läuft: Restzeit, Klick = Pause/Weiter, Rechtsklick oder ■ daneben = beenden.
+// Fokus ohne Zeit: ∞ + Minuten seit Start, gedämpft (kein Glut-Ton, läuft ja unbegrenzt) – Klick = aus.
 Row {
     id: root
 
     property var barWindow: QsWindow.window
 
     readonly property bool idle: Focus.mode === "idle"
-    readonly property color tint: Focus.mode === "break" ? Theme.success : idle ? Theme.textMuted : Theme.accentText
+    readonly property color tint: Focus.mode === "break" ? Theme.success : idle || Focus.openOn ? Theme.textMuted : Theme.accentText
 
     spacing: 2
 
@@ -36,7 +37,8 @@ Row {
     Chip {
         id: chip
         anchors.verticalCenter: parent.verticalCenter
-        hintKey: BarKeys.keyFor("focus")   // Bar-Modus (Super+B)
+        hintKey: BarKeys.keyFor("focus")   // Bar-Modus (Super+Leertaste)
+        tip: "Focus · Super+F"
         active: popout.visible
         onClicked: mouse => {
             if (mouse.button === Qt.RightButton) {
@@ -50,7 +52,9 @@ Row {
                     popout.close();
                 else
                     clickDelay.restart();
-            } else if (Focus.mode === "focus")
+            } else if (Focus.openOn)
+                Focus.stop();
+            else if (Focus.mode === "focus")
                 Focus.pause();
             else if (Focus.mode === "paused")
                 Focus.resume();
@@ -67,17 +71,23 @@ Row {
 
         Icon {
             anchors.verticalCenter: parent.verticalCenter
-            name: Focus.mode === "break" ? "coffee" : Focus.mode === "paused" ? "pause" : "timer"
+            name: Focus.openOn ? "all_inclusive" : Focus.mode === "break" ? "coffee" : Focus.mode === "paused" ? "pause" : "timer"
             size: 15
             fill: !root.idle
             color: root.idle ? Theme.textFaint : root.tint
         }
         MonoTxt {
             anchors.verticalCenter: parent.verticalCenter
-            visible: !root.idle
+            visible: !root.idle && !Focus.openOn
             text: Focus.fmt(Focus.remaining)
             color: root.tint
             font.weight: Font.DemiBold
+        }
+        Txt {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: Focus.openOn
+            text: "Focus · " + Focus.sinceLabel(Focus.elapsed)
+            color: Theme.textMuted
         }
         Txt {
             anchors.verticalCenter: parent.verticalCenter

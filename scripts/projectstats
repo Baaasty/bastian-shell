@@ -1,0 +1,214 @@
+#!/usr/bin/env -S python3 -I
+"""Kennzahlen eines Projekts für das Quicklinks-Popup (Doku: docs/knowledge/shell-features.md → Quicklinks).
+
+  projectstats <repo-ordner> [--project <id>]     JSON auf stdout
+
+  time     Sekunden heute · Woche (Mo–So) · gesamt, aus den Tagesdateien von ProjectTime (nur mit --project)
+  commits  eigene Commits (Autor = git config user.email des Repos, lokale Branches) heute · Woche · gesamt
+  changes  +/− Zeilen eigener Commits seit Mitternacht (Uncommittetes zählt nicht: das zeigt die Git-Zeile als „N changes“)
+  loc      Zeilen je Sprache über git ls-files (ohne Lockfiles, Vendor, Generiertes, Binäres, Daten wie JSON/YAML)
+
+LOC ist teuer und hängt am Commit: Cache je Repo nach HEAD-Hash in ~/.local/state/desktop/projectstats.json.
+"""
+import datetime as dt
+import importlib.machinery
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+STATE = Path.home() / ".local" / "state" / "desktop"
+CACHE = STATE / "projectstats.json"
+
+# Endung -> Sprache (nur Code und Text, den man schreibt; Daten/Config zählen nicht)
+LANGS = {
+    "ts": "TS", "tsx": "TS", "mts": "TS", "cts": "TS",
+    "js": "JS", "jsx": "JS", "mjs": "JS", "cjs": "JS",
+    "py": "Py", "qml": "QML", "css": "CSS", "scss": "CSS", "sass": "CSS", "less": "CSS",
+    "html": "HTML", "htm": "HTML", "vue": "Vue", "svelte": "Svelte", "astro": "Astro",
+    "md": "MD", "mdx": "MD", "sh": "Shell", "bash": "Shell", "zsh": "Shell",
+    "go": "Go", "rs": "Rust", "java": "Java", "kt": "Kotlin", "c": "C", "h": "C", "cpp": "C++", "cc": "C++", "hpp": "C++",
+    "cs": "C#", "php": "PHP", "rb": "Ruby", "lua": "Lua", "sql": "SQL", "prisma": "Prisma", "gd": "GDScript",
+}
+SKIP_DIRS = {"node_modules", "vendor", "third_party", "third-party", "dist", "build", "out", ".next", ".nuxt", ".svelte-kit",
+             "coverage", "__pycache__", ".venv", "venv", "target", "generated", "__generated__", "refs"}
+SKIP_FILES = {"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock", "bun.lockb", "Cargo.lock", "poetry.lock",
+              "composer.lock", "Gemfile.lock", "uv.lock", "go.sum"}
+MAX_BYTES = 1_000_000          # größere Dateien sind fast immer generiert oder Daten
+
+
+def git(repo, *args, timeout=20):
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def lang_of(rel: str, path: Path):
+    name = rel.rsplit("/", 1)[-1]
+    if name in SKIP_FILES or name.endswith((".min.js", ".min.css", ".map", ".d.ts")) or ".generated." in name:
+        return None
+    if any(part in SKIP_DIRS for part in rel.split("/")[:-1]):
+        return None
+    if "." in name.lstrip("."):
+        return LANGS.get(name.rsplit(".", 1)[1].lower())
+    # ohne Endung: Skripte am Shebang erkennen (scripts/ in diesem Repo)
+    try:
+        with open(path, "rb") as f:
+            first = f.readline(200)
+    except OSError:
+        return None
+    if first.startswith(b"#!"):
+        if b"python" in first:
+            return "Py"
+        if any(s in first for s in (b"sh", b"bash", b"zsh")):
+            return "Shell"
+        if b"node" in first:
+            return "JS"
+    return None
+
+
+def count_loc(repo: Path):
+    out = git(repo, "ls-files", "-z", timeout=30)
+    if out is None:
+        return None
+    per = {}
+    for rel in filter(None, out.split("\0")):
+        p = repo / rel
+        lang = lang_of(rel, p)
+        if not lang:
+            continue
+        try:
+            if p.is_symlink() or not p.is_file() or p.stat().st_size > MAX_BYTES:
+                continue
+            data = p.read_bytes()
+        except OSError:
+            continue
+        if b"\0" in data[:8192]:
+            continue        # binär
+        n = data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
+        per[lang] = per.get(lang, 0) + n
+    return [{"lang": k, "lines": v} for k, v in sorted(per.items(), key=lambda x: -x[1])]
+
+
+def loc_cached(repo: Path, head: str):
+    try:
+        cache = json.loads(CACHE.read_text())
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    key = str(repo)
+    hit = cache.get(key)
+    if head and isinstance(hit, dict) and hit.get("head") == head and isinstance(hit.get("loc"), list):
+        return hit["loc"]
+    loc = count_loc(repo)
+    if loc is not None and head:
+        cache[key] = {"head": head, "loc": loc}
+        try:
+            STATE.mkdir(parents=True, exist_ok=True)
+            tmp = CACHE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(cache))
+            tmp.replace(CACHE)
+        except OSError:
+            pass
+    return loc
+
+
+def numstat(text: str):
+    add = rm = 0
+    for line in text.splitlines():
+        f = line.split("\t")
+        if len(f) >= 3 and f[0].isdigit() and f[1].isdigit():     # binär: "-\t-"
+            add += int(f[0])
+            rm += int(f[1])
+    return add, rm
+
+
+def starts(now: dt.datetime):
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    monday = midnight - dt.timedelta(days=midnight.weekday())
+    return midnight.timestamp(), monday.timestamp()
+
+
+def commits(repo: Path, email: str, now: dt.datetime):
+    """eigene Commits heute/Woche/gesamt und +/− eigener Commits seit Mitternacht"""
+    t_day, t_week = starts(now)
+    total = git(repo, "rev-list", "--count", "--branches", "--fixed-strings", f"--author=<{email}>")
+    # --since filtert nach Committer-Datum: großzügig ab Montag holen, gezählt wird nach Autor-Zeit
+    log = git(repo, "log", "--branches", f"--since={int(t_week)}", "--no-merges", "--numstat", "--format=%x00%at%x09%ae") or ""
+    day = week = add = rm = 0
+    for chunk in log.split("\0")[1:]:
+        head, _, rest = chunk.partition("\n")
+        at, _, ae = head.partition("\t")
+        if ae.strip().lower() != email.lower() or not at.strip().isdigit():
+            continue
+        t = int(at)
+        if t >= t_week:
+            week += 1
+        if t >= t_day:
+            day += 1
+            a, r = numstat(rest)
+            add += a
+            rm += r
+    return {"today": day, "week": week, "all": int(total.strip()) if total and total.strip().isdigit() else week}, \
+        {"added": add, "deleted": rm}
+
+
+def load_projecttime():
+    path = Path(__file__).resolve().parent / "projecttime"
+    loader = importlib.machinery.SourceFileLoader("projecttime", str(path))
+    spec = importlib.util.spec_from_loader("projecttime", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def project_time(pid: str, today: dt.date):
+    pt = load_projecttime()
+    mon, _ = pt.week_range(0)
+    out = {"today": 0, "week": 0, "all": 0}
+    for f in sorted(pt.DATA.glob("????-??-??.json")):
+        try:
+            d = dt.date.fromisoformat(f.stem)
+        except ValueError:
+            continue
+        sec = pt.load(d)["total"].get(pid, 0)
+        out["all"] += sec
+        if mon <= d <= today:
+            out["week"] += sec
+        if d == today:
+            out["today"] += sec
+    return out
+
+
+def stats(repo: Path, pid: str = "", now: dt.datetime | None = None):
+    now = now or dt.datetime.now()
+    res = {"repo": str(repo), "time": project_time(pid, now.date()) if pid else None,
+           "email": "", "commits": None, "changes": None, "loc": None}
+    if git(repo, "rev-parse", "--git-dir") is None:
+        return res
+    head = (git(repo, "rev-parse", "HEAD") or "").strip()
+    email = (git(repo, "config", "user.email") or "").strip()
+    res["email"] = email
+    if email and head:
+        res["commits"], res["changes"] = commits(repo, email, now)
+    res["loc"] = loc_cached(repo, head)
+    return res
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0 if argv else 2
+    repo = Path(os.path.expanduser(argv[0])).resolve()
+    pid = argv[argv.index("--project") + 1] if "--project" in argv and argv.index("--project") + 1 < len(argv) else ""
+    print(json.dumps(stats(repo, pid)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -9,8 +9,9 @@ import qs.components
 
 // Keybind-Viewer (Super+K): durchsuchbares Cheat-Sheet für alles.
 //  - oben die App, die beim Öffnen fokussiert war (hervorgehoben; Kitty mit yazi/lazygit: beide)
-//  - dann die Shell: live gebundene Kürzel aus hyprctl binds -j + Kommentare in hypr/binds.conf, dazu die Anleitungen
-//    aus config/appkeys/shell.json (Bar-Modus, Popouts, Workspace-Modus, Launcher-Präfixe automatisch)
+//  - dann die Topbar (Abschnitt „Topbar“ in hypr/binds.conf + Anleitungen mit "area": "topbar" aus shell.json)
+//  - dann die übrige Shell: live gebundene Kürzel aus hyprctl binds -j + Kommentare in hypr/binds.conf, dazu die Anleitungen
+//    aus config/appkeys/shell.json (Workspace-Modus, Launcher, Launcher-Präfixe automatisch)
 //  - darunter alle anderen Programme aus config/appkeys/*.json, nach App gruppiert
 // Tippen sucht überall (App-Name, Tasten, Titel, Beschreibung). Daten und Gruppierung: services/Keybinds.qml
 Scope {
@@ -20,6 +21,8 @@ Scope {
     property string query: ""
     property bool mediaOpen: false
     property string screenName: Config.mainScreen
+    // Abschnittsname in hypr/binds.conf ("# ---------- Topbar ----------"), der in die eigene Gruppe „Topbar“ kommt
+    readonly property string topbarSection: "Topbar"
     // Fenster, das beim Öffnen fokussiert war (der Viewer selbst ist eine Layer-Fläche, ändert das also nicht)
     property string activeClass: ""
     property string activeTitle: ""
@@ -36,7 +39,17 @@ Scope {
         screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         query = "";
         mediaOpen = false;
+        Hypr.panelOpened("keys");
         open = true;
+    }
+
+    // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
+    Connections {
+        target: Hypr
+        function onPanelOpened(name: string): void {
+            if (name !== "keys" && root.open)
+                root.open = false;
+        }
     }
     function toggle(): void {
         if (open)
@@ -97,16 +110,22 @@ Scope {
         const actIds = act.map(a => a.id);
         for (const a of act)
             out.push({ key: "a:" + a.id, title: a.name, about: a.about, active: true, cats: filterCats(a.cats, tk) });
-        // Shell: Hyprland-Kürzel, Anleitungen aus shell.json vor den (eingeklappten) Media keys
+        // Topbar zuerst: binds.conf-Abschnitt „Topbar“ (Super+Leertaste, Super+<Buchstabe>, Super+Alt+<Buchstabe>) + Anleitungen mit area "topbar".
+        // Dann die übrige Shell: Hyprland-Kürzel, Anleitungen aus shell.json vor den (eingeklappten) Media keys
         const guides = [];
+        const barGuides = [];
         let about = "";
         for (const a of Keybinds.apps)
             if (a.group === "shell") {
-                guides.push(...a.cats);
+                for (const c of a.cats)
+                    (c.area === "topbar" ? barGuides : guides).push(c);
                 about = about || a.about;
             }
         const hypr = Keybinds.cats;
-        const shellCats = hypr.filter(c => !c.media).concat(guides, hypr.filter(c => c.media));
+        const isBar = c => c.name === root.topbarSection;
+        const barCats = hypr.filter(isBar).concat(barGuides);
+        out.push({ key: "topbar", title: "Topbar", about: "Super+Space, then a letter – or the key directly", active: false, cats: filterCats(barCats, tk) });
+        const shellCats = hypr.filter(c => !c.media && !isBar(c)).concat(guides, hypr.filter(c => c.media));
         out.push({ key: "shell", title: "Desktop shell", about: about, active: false, cats: filterCats(shellCats, tk) });
         for (const a of Keybinds.apps)
             if (a.group === "app" && !actIds.includes(a.id))

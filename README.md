@@ -10,16 +10,16 @@ location, projects) lives in local, git-ignored files with an `.example` next to
 ## What's in it
 
 - **Top bar** – media (Spotify), Discord call with camera tiles, CPU/RAM/GPU, light, sound mixer (GoXLR channels), network, downloads, updates, dev services, privacy dots, tray with its own menu.
-  **Bar mode** (Super+B) puts a letter on every chip; the letter opens that popout, and every popout works with arrows, Enter and Esc
+  **Bar mode** (Super+Space) puts a letter on every chip; the letter opens that popout, and every popout works with arrows, Enter and Esc
 - **Popouts** – sound, network, light (Hue, Key Light), resources, downloads, dev services, music, chat, tray, updates
-- **Workspace bar** – workspaces across all monitors with live window previews, quick links and git status per workspace; keyboard mode (tap Alt)
+- **Workspace bar** – workspaces across all monitors with live window previews, quick links, git status and today's project time per workspace; keyboard mode (tap Alt)
 - **Dashboard** (tap Super) – clock & weather, agenda, mail, focus, Spotify, Discord, light & sound, notifications
 - **Launcher** – apps, windows and projects without prefix; prefixes for projects (`#`), calculator (`=`), emoji (`:`),
   clipboard (`;`), files (`/`), browser tabs (`@`), passwords (`pw `), calendar (`cal `) and web searches (`g `, `yt `, `gh ` …, `?` lists them all)
 - **Cheat sheet** – Super+K shows every keybinding, generated from the Hyprland config
 - **Lock screen** – the shell locks itself (ext-session-lock, PAM), hyprlock as fallback; a matching Plasma lock screen package lives in `plasma/`
 - **Own dialogs** – polkit agent, screen-share picker, file picker, crash card, "app not responding"
-- **Focus & breaks** – focus mode, break reminder, project time, daily recap, scenes (game mode, evening routine), night light
+- **Focus & breaks** – focus mode, break reminder, project time
 - **Theming** – one palette (`theme/palette.json`) feeds generators in `theme/gen/` for Qt/KDE, Kvantum, GTK, Kitty, Konsole,
   Starship, VS Code, Discord, the browser, Thunderbird, yazi, lazygit, the cursor and the wallpaper
 - **Projects** – per-project color, ports and workspace layout (`projects/`, see `docs/knowledge/projects.md`)
@@ -55,7 +55,7 @@ Keybindings: press **Super+K** in the session, or read [docs/knowledge/hotkeys.m
 |---|---|
 | `shell/` | Quickshell config (`shell.qml`, `services/`, `components/`, `modules/`) |
 | `hypr/` | Hyprland config (binds, rules, monitors) |
-| `config/` | app configs and shell settings (launcher, scenes, night light, Kitty, zsh, yazi) |
+| `config/` | app configs and shell settings (launcher, breaks, Kitty, zsh, yazi) |
 | `theme/` | palette and generators for all apps |
 | `scripts/` | helpers called by the shell and keybindings |
 | `docs/` | feature docs (mostly German) |

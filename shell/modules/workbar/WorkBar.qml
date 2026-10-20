@@ -697,6 +697,10 @@ Scope {
                                 readonly property bool hovered: tileHover.hovered
                                 // Projekt dieses Workspaces (Name = Projekt in projects.json), sonst null: Quicklinks, Git/CI
                                 readonly property var proj: GitInfo.projectFor(Desktops.list[index] ? Desktops.list[index].name : "")
+                                // Projektzeit heute (ProjectTime zählt, solange dieser Workspace aktiv ist); erst ab 1 min,
+                                // auf schmalen Kacheln (viele Workspaces) nicht, damit der Name lesbar bleibt
+                                readonly property int projSec: proj ? (ProjectTime.total[proj.id] || 0) : 0
+                                readonly property bool showTime: projSec >= 60 && win.deskPw >= 150
                                 // Fenster dieses Workspaces (ohne minimierte), für „leer“-Hinweis und Tooltip
                                 readonly property int winCount: {
                                     root.version;
@@ -785,6 +789,8 @@ Scope {
                                     interval: 500
                                     onTriggered: desk.tipShown = true
                                 }
+                                // Wochenzeit für den Tooltip frisch rechnen lassen (scripts/projecttime)
+                                onTipShownChanged: if (tipShown && proj) ProjectTime.refreshWeek()
 
                                 Column {
                                     id: tileCol
@@ -815,7 +821,7 @@ Scope {
                                         Txt {
                                             id: nameO
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: Math.min(implicitWidth, win.deskPw - 24 - 8 - (desk.proj ? 32 : 0) - (deskDots.visible ? 30 : 0))
+                                            width: Math.min(implicitWidth, win.deskPw - 24 - 8 - (desk.proj ? 32 : 0) - (deskDots.visible ? 30 : 0) - (deskTime.visible ? deskTime.implicitWidth + 8 : 0))
                                             text: desk.name
                                             color: desk.isCurrent ? Theme.onAccent : Theme.text
                                             font.pixelSize: 16
@@ -955,6 +961,20 @@ Scope {
                                     y: tileCol.y
                                 }
 
+                                // Projektzeit heute, leise rechts im Kopf vor den Git/CI-Punkten (Woche steht im Tooltip)
+                                Txt {
+                                    id: deskTime
+                                    visible: desk.showTime && !desk.dragging
+                                    z: 14
+                                    x: desk.width - implicitWidth - win.tilePad - 28 - 4 - (deskDots.visible ? deskDots.width + 4 : 0)
+                                    y: tileCol.y
+                                    height: 24
+                                    verticalAlignment: Text.AlignVCenter
+                                    text: ProjectTime.short(desk.projSec)
+                                    color: desk.isCurrent ? Qt.alpha(Theme.onAccent, 0.75) : Theme.textFaint
+                                    font.pixelSize: 14
+                                }
+
                                 // Quicklinks (nur Projekt-Workspaces): kleiner Knopf rechts im Kopf, immer sichtbar
                                 Rectangle {
                                     visible: !!desk.proj && !desk.dragging && !win.wdActive
@@ -992,7 +1012,7 @@ Scope {
                                     x: 0
                                     y: -height - 12
                                     z: 20
-                                    width: Math.max(tipTitle.implicitWidth, tipHint.implicitWidth, tipGit.visible ? tipGit.implicitWidth : 0) + 28
+                                    width: Math.max(tipTitle.implicitWidth, tipHint.implicitWidth, tipGit.visible ? tipGit.implicitWidth : 0, tipTime.visible ? tipTime.implicitWidth : 0) + 28
                                     height: tipCol.implicitHeight + 18
                                     radius: Theme.radiusSm
                                     color: Theme.surfaceRaised
@@ -1012,6 +1032,14 @@ Scope {
                                         QuickLinksTip {
                                             id: tipGit
                                             proj: desk.proj
+                                        }
+                                        Txt {
+                                            id: tipTime
+                                            readonly property int weekSec: desk.proj ? ProjectTime.weekSecOf(desk.proj.id) : 0
+                                            visible: !!desk.proj && (desk.projSec >= 60 || weekSec >= 60)
+                                            text: "Project time: " + ProjectTime.fmt(desk.projSec) + " today  ·  " + ProjectTime.fmt(weekSec) + " this week"
+                                            color: Theme.textMuted
+                                            font.pixelSize: 14
                                         }
                                         Txt {
                                             id: tipHint

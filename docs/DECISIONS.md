@@ -40,6 +40,8 @@ aufrollen. Große Entscheidungen mit abgewogenen Optionen: eigene Datei `decisio
 - 2026-10-17 · Nicht einengen: freie Desktops als Basis, Vorlagen nur zusätzlich, jede Automatik abschaltbar · alte SPEC §0 · angenommen
 - 2026-10-18 · Workspaces: nur größere Leiste, kein Overlay · gut sichtbar, klarer aktiver Workspace, bequem wählbar (ROADMAP-HYPRLAND „Entschieden“) · angenommen
 - 2026-10-19 · Tastatur zuerst: Shell komplett per Kürzel, Maus nur in Browser und Apps; ohne Kürzel und Tastaturbedienung gilt ein Feature als nicht fertig · Bedienung aus dem Muscle Memory (ROADMAP-HYPRLAND „Leitlinie“) · angenommen
+- 2026-10-20 · Abendwärme (hyprsunset), Szenen (Spiele-Modus, Feierabend) und Tagesrückblick entfernt; Projektzeit bleibt, heute im Kachelkopf der Workspace-Leiste statt eigener Karte · Bastian braucht es nicht · angenommen
+- 2026-10-20 · Tasten-Schema: Alt = Workspaces, Super = Fenster, Super+Alt = Menüs/Programme und Topbar (Super+Leertaste = Bar-Modus, Super+Alt+Buchstabe = Bar-Modus + Buchstabe, die häufigsten Super+F/T/A/E/B/I ohne Alt; Super+↑/↓ = maximieren/Vollbild bzw. zurück); Kürzel nur dafür plus Notfälle, Screenshots, Medientasten und Klassiker · Muscle Memory: ein Modifier je Bereich, ein Buchstabe je Bar-Chip (`hypr/binds.conf`, `shell/services/BarKeys.qml`) · angenommen
 
 ## Betrieb
 
@@ -47,3 +49,5 @@ aufrollen. Große Entscheidungen mit abgewogenen Optionen: eigene Datei `decisio
 - 2026-10-17 · Shell als systemd-User-Dienst mit `Restart=on-failure` · bekannte Quickshell-Abstürze bei Suspend/Resume und Monitorwegfall (NVIDIA, alte SPEC §4) · angenommen
 - 2026-10-18 · Features dateibasiert (`projects.json`, `config/*`, `palette.json`), kurz in `docs/` beschrieben, von Hand änderbar · Bastian: Features sollen auch ohne KI nutzbar und pflegbar sein (ROADMAP-HYPRLAND) · angenommen
 - 2026-10-19 · Commits als Conventional Commits (bis 2026-10-19 `bastian-shell: …`), vorher `scripts/check` per pre-commit-Hook mit Secrets-Sperre · Bastians Standard (CLAUDE.md „Konventionen“, „Qualität“) · angenommen
+- 2026-10-20 · Apps nativ als RPM, wenn es einen Update-Weg gibt (Fedora/RPM Fusion/COPR-Repo oder lpf), sonst Flatpak · Bastian: „alles, was nativ geht, nicht über Flatpak“; ein RPM ohne Repo veraltet still. Craft-Apps, Podman Desktop, cameractrls bleiben deshalb Flatpak (`system/packages/flatpak.txt`) · angenommen
+- 2026-10-20 · Qt-Apps mit Kvantum-Stil „DesktopHearth“ statt Breeze (Pakete `kvantum`, `kvantum-qt5`) · alle KDE-Grundapps im desktop-Look ohne Eigenbau; Breeze-Menüs lassen sich per Farbschema nicht anpassen · angenommen (Rückweg `scripts/kvantum-theme off`)

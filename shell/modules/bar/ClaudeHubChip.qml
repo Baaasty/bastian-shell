@@ -11,7 +11,8 @@ import qs.components
 // Klick = Popout mit allen aktiven Projekten.
 Chip {
     id: chip
-    hintKey: BarKeys.keyFor("claudehub")   // Bar-Modus (Super+B)
+    hintKey: BarKeys.keyFor("claudehub")   // Bar-Modus (Super+Leertaste)
+    tip: "Agents · Super+A"
 
     property var barWindow: QsWindow.window
 

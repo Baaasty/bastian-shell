@@ -10,7 +10,7 @@ import qs.components
 // IPC (zum Testen ohne Maus): qs ipc call net open|close|toggle|refresh|status
 Chip {
     id: chip
-    hintKey: BarKeys.keyFor("net")   // Bar-Modus (Super+B)
+    hintKey: BarKeys.keyFor("net")   // Bar-Modus (Super+Leertaste)
 
     property var barWindow: QsWindow.window
 

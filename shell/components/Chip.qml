@@ -13,7 +13,9 @@ Rectangle {
     default property alias content: row.data
     property int padding: 10
     property bool alignLeft: false   // in Menüs: Inhalt linksbündig
-    property string hintKey: ""      // Bar-Modus (Super+B): Buchstabe, der dieses Popout öffnet (BarKeys.qml)
+    property string hintKey: ""      // Bar-Modus (Super+Leertaste): Buchstabe, der dieses Popout öffnet (BarKeys.qml)
+    property string tip: ""          // Tooltip beim Verweilen (ChipTip.qml); leer = keiner
+    property bool _tipOff: false     // nach einem Klick bis zum Verlassen keiner mehr
     signal clicked(var mouse)
     signal doubleClicked(var mouse)
 
@@ -35,12 +37,22 @@ Rectangle {
         key: chip.hintKey
     }
 
+    LazyLoader {
+        active: chip.tip !== "" && area.containsMouse && !chip.active && !chip._tipOff && !BarKeys.modeOn
+        ChipTip {
+            chip: chip
+            text: chip ? chip.tip : ""
+        }
+    }
+
     MouseArea {
         id: area
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         cursorShape: Qt.PointingHandCursor
+        onPressed: chip._tipOff = true
+        onContainsMouseChanged: if (!containsMouse) chip._tipOff = false
         onClicked: mouse => {
             // schon von PopoutGuard ausgelöst (Hyprland hatte den Klick geschluckt) – nicht doppelt
             if (Popouts.synthChip === chip && Date.now() - Popouts.synthAt < 700)

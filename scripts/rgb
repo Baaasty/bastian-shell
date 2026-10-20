@@ -1,10 +1,14 @@
 #!/usr/bin/env -S python3 -I
 """PC-Beleuchtung: alle RGB-Geräte (Mainboard, NZXT, RAM …) fest auf eine Farbe. Doku: docs/knowledge/hardware.md
 
-  rgb apply [--boot] [--delay S]   Primärfarbe der aktiven Palette-Variante (accent in theme/palette.json), statisch
+  rgb apply [--boot] [--delay S]   gemerkte Farbe (Palette-Token in rgb.json „color“, Standard accent), statisch;
+                       steht rgb.json „on“ auf false, schaltet apply alles aus (Boot und Standby gleich)
+  rgb set <token|off>  Token merken (accent, error, warning, woodLight, success) und setzen; off = merken „aus“ und aus
+  rgb tune <sat> <bri> LED-Sättigung/-Helligkeit merken (0–1 oder 0–100) und setzen (nur wenn an)
   rgb color <hex>      einmalig eine andere Farbe (z. B. rgb color ff8800), bis zum nächsten apply
-  rgb off              alles aus
+  rgb off              alles aus (einmalig, ohne zu merken)
   rgb status           gefundene Geräte, Modi und die Farbe, die apply setzen würde
+  rgb status --json    ohne Scan: gemerkte Einstellung + letzter Lauf (für die Shell, Gear-Popout)
   rgb plan [<hex>]     nur zeigen, was gesetzt würde (scannt, ändert nichts)
 
 Technik: OpenRGB ohne Server (--noautoconnect). Erst ein Scan (-l), dann pro Gerät der erste passende Modus
@@ -22,6 +26,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -37,6 +42,10 @@ ONE_TIMEOUT = 45  # Sekunden für ein einzelnes Gerät (Scan ~12 s + Setzen)
 # Geräte, die OpenRGB beim Setzen aufhängen (z. B. G915 über Lightspeed): werden einzeln und zuletzt gesetzt,
 # damit sie den Rest nie mehr blockieren. Wird selbst gepflegt (hängt → rein, klappt wieder → raus).
 SLOW = Path.home() / ".local" / "state" / "desktop" / "rgb-slow.json"
+# letzter Lauf {color, ok, total, at, running, pid} – die Shell liest das per `status --json`, ohne zu scannen
+STATE = Path.home() / ".local" / "state" / "desktop" / "rgb-state.json"
+# Palette-Tokens, die als LED-Farbe taugen (warme, klar verschiedene Farbtöne; Creme/Holz würden bei voller Sättigung Orange)
+TOKENS = ("accent", "error", "warning", "woodLight", "success")
 INSTALL_HINT = "openrgb fehlt. Installieren: sudo dnf install openrgb openrgb-udev-rules (Doku: docs/knowledge/hardware.md)"
 
 # Reihenfolge der Modi: statisch zuerst (bleibt in der Hardware), Direct nur als Rückfall
@@ -59,23 +68,50 @@ def norm_hex(value):
     return v.upper()
 
 
-def palette_accent():
-    """accent der aktiven Variante (defaultTheme), nicht geraten."""
+def palette_theme():
     data = json.loads(PALETTE.read_text())
     variant = data.get("defaultTheme")
     theme = (data.get("themes") or {}).get(variant)
     if not isinstance(theme, dict) or "accent" not in theme:
         raise ValueError(f"palette.json: Variante {variant!r} ohne accent")
+    return variant, theme
+
+
+def palette_accent():
+    """accent der aktiven Variante (defaultTheme), nicht geraten."""
+    variant, theme = palette_theme()
     return variant, norm_hex(theme["accent"])
 
 
-def led_color(hex6):
+def palette_token(name):
+    """Token der aktiven Variante; unbekannt oder keine #RRGGBB-Farbe → accent."""
+    variant, theme = palette_theme()
+    try:
+        return variant, name, norm_hex(theme[name])
+    except (KeyError, ValueError):
+        return variant, "accent", norm_hex(theme["accent"])
+
+
+def wanted_token(cfg=None):
+    tok = str((cfg if cfg is not None else load_config()).get("color") or "accent")
+    return tok if tok in TOKENS else "accent"
+
+
+def tuning(cfg=None):
+    cfg = cfg if cfg is not None else load_config()
+    try:
+        sat = min(1.0, max(0.0, float(cfg.get("saturation", 1.0))))
+        val = min(1.0, max(0.0, float(cfg.get("brightness", 1.0))))
+    except (TypeError, ValueError):
+        sat, val = 1.0, 1.0
+    return sat, val
+
+
+def led_color(hex6, cfg=None):
     """LEDs mischen gedeckte Farben (Grün/Blau-Anteil) fast weißlich: gleicher Farbton, aber Sättigung und Helligkeit
     hoch (Standard 1.0 / 1.0, anpassbar in rgb.json „saturation“/„brightness“). Die Palette bleibt die Quelle."""
     import colorsys
-    cfg = load_config()
-    sat = min(1.0, max(0.0, float(cfg.get("saturation", 1.0))))
-    val = min(1.0, max(0.0, float(cfg.get("brightness", 1.0))))
+    sat, val = tuning(cfg)
     h, _, _ = colorsys.rgb_to_hsv(*(int(hex6[i:i + 2], 16) / 255 for i in (0, 2, 4)))
     return "".join(f"{round(c * 255):02X}" for c in colorsys.hsv_to_rgb(h, sat, val))
 
@@ -86,6 +122,69 @@ def load_config():
     except (OSError, ValueError):
         return {}
     return cfg if isinstance(cfg, dict) else {}
+
+
+def save_config(changes):
+    """Felder in rgb.json ändern, Rest (skip …) bleibt; atomar, damit Boot nie eine halbe Datei liest."""
+    cfg = load_config()
+    cfg.update(changes)
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CONFIG.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(cfg, indent=2) + "\n")
+    os.replace(tmp, CONFIG)
+    return cfg
+
+
+def load_state():
+    try:
+        st = json.loads(STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+    return st if isinstance(st, dict) else {}
+
+
+def write_state(**fields):
+    st = load_state()
+    st.update(fields)
+    try:
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = STATE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(st))
+        os.replace(tmp, STATE)
+    except OSError:
+        pass
+
+
+def pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+    except (TypeError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def status_json():
+    """Ohne Scan und ohne Sperre (die Shell fragt alle paar Sekunden): Einstellung + letzter Lauf."""
+    cfg = load_config()
+    out = {"installed": bool(openrgb_bin()), "on": cfg.get("on", True) is not False}
+    sat, val = tuning(cfg)
+    out["saturation"], out["brightness"] = round(sat, 3), round(val, 3)
+    try:
+        variant, tok, hex6 = palette_token(wanted_token(cfg))
+        out.update(variant=variant, color=tok, hex="#" + hex6, led="#" + led_color(hex6, cfg))
+        out["tokens"] = [{"name": n, "hex": "#" + palette_token(n)[2], "led": "#" + led_color(palette_token(n)[2], cfg)}
+                         for n in TOKENS if palette_token(n)[1] == n]
+    except (OSError, ValueError) as e:
+        out.update(color="accent", tokens=[], error=str(e))
+    st = load_state()
+    running = bool(st.get("running")) and pid_alive(st.get("pid"))
+    out["last"] = {"color": st.get("color", ""), "ok": int(st.get("ok", 0) or 0), "total": int(st.get("total", 0) or 0),
+                   "at": int(st.get("at", 0) or 0), "running": running,
+                   # abgebrochen (Zeitlimit, SIGTERM) oder Prozess weg, ohne fertig zu melden
+                   "aborted": bool(st.get("aborted")) or (bool(st.get("running")) and not running)}
+    return out
 
 
 def load_skip():
@@ -242,6 +341,7 @@ def apply(color, off=False, dry=False):
     if not todo:
         say("kein Gerät mit passendem Modus")
         return 1
+    write_state(total=len(todo))
     slow = load_slow()
     fast = [p for p in todo if p[0]["name"] not in slow]
     late = [p for p in todo if p[0]["name"] in slow]
@@ -256,13 +356,20 @@ def apply(color, off=False, dry=False):
             ok += set_each(fast, slow)
     ok += set_each(late, slow)
     save_slow(slow)
+    write_state(ok=ok, total=len(todo), at=int(time.time()), running=False, aborted=False)
     say(("aus" if off else f"#{color}") + f" auf {ok} von {len(todo)} Gerät(en) gesetzt")
     return 0 if ok == len(todo) else 1
 
 
 # ---------- Ablauf ----------
 
+def on_term(signum, frame):
+    # SIGTERM (Shell-Neustart beendet ihren Lauf, systemd): wie ein Abbruch behandeln, damit finally den Zustand aufräumt
+    raise SystemExit(1)
+
+
 def main(argv):
+    signal.signal(signal.SIGTERM, on_term)
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__.strip())
         return 0
@@ -279,9 +386,36 @@ def main(argv):
             return 0 if boot else 2
         del rest[i:i + 2]
 
-    if cmd not in ("apply", "color", "off", "status", "plan"):
+    if cmd not in ("apply", "color", "off", "status", "plan", "set", "tune"):
         say(f"unbekannt: {cmd} (rgb --help)")
         return 2
+    if cmd == "status" and "--json" in rest:
+        print(json.dumps(status_json()))
+        return 0
+
+    # set/tune: erst merken (rgb.json), dann wie apply – Boot und after_sleep setzen danach dieselbe Farbe
+    if cmd == "set":
+        if not rest or (rest[0] != "off" and rest[0] not in TOKENS):
+            say(f"set braucht ein Token ({', '.join(TOKENS)}) oder off")
+            return 2
+        save_config({"on": False} if rest[0] == "off" else {"on": True, "color": rest[0]})
+        cmd, rest = "apply", []
+    elif cmd == "tune":
+        try:
+            sat, val = (float(v) for v in rest[:2])
+        except ValueError:
+            sat = None
+        if len(rest) < 2 or sat is None:
+            say("tune braucht Sättigung und Helligkeit, z. B. rgb tune 1 0.8")
+            return 2
+        sat, val = (min(1.0, max(0.0, v / 100 if v > 1 else v)) for v in (sat, val))
+        cfg = save_config({"saturation": round(sat, 3), "brightness": round(val, 3)})
+        if cfg.get("on", True) is False:
+            say("gemerkt (Licht ist aus, nichts gesetzt)")
+            return 0
+        cmd, rest = "apply", []
+    if cmd == "apply" and load_config().get("on", True) is False:
+        cmd = "off"
 
     try:
         if cmd == "color" or (cmd == "plan" and rest):
@@ -290,9 +424,9 @@ def main(argv):
                 return 2
             color, source = norm_hex(rest[0]), "von Hand"
         else:
-            variant, accent = palette_accent()
-            color = led_color(accent)
-            source = f"accent #{accent} der Variante {variant}, für LEDs kräftiger"
+            variant, tok, hex6 = palette_token(wanted_token())
+            color = led_color(hex6)
+            source = f"{tok} #{hex6} der Variante {variant}, für LEDs kräftiger"
     except (OSError, ValueError) as e:
         say(str(e))
         return 0 if boot else 2
@@ -320,6 +454,8 @@ def main(argv):
             if cmd == "plan":
                 print(f"Farbe: #{color} ({source}) – nur Vorschau")
                 return apply(color, dry=True)
+            # „läuft“ sofort (der Scan allein dauert ~12 s), die Shell zeigt dann den Spinner
+            write_state(color="off" if cmd == "off" else "#" + color, ok=0, total=0, running=True, pid=os.getpid(), started=int(time.time()))
             if cmd == "off":
                 rc = apply(color, off=True)
             else:
@@ -332,6 +468,10 @@ def main(argv):
         except (OSError, RuntimeError) as e:
             say(str(e))
             return 0 if boot else 1
+        finally:
+            # Abbruch mitten im Lauf: nicht ewig „läuft“ melden
+            if load_state().get("running") and load_state().get("pid") == os.getpid():
+                write_state(running=False, at=int(time.time()), aborted=True)
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ PopupWindow {
     property real _closedAt: 0
 
     property string tab: "services"                    // services | containers | ports | server
-    // Reiter fürs nächste Öffnen (Super+Alt+U, IPC servers); sonst öffnet es immer auf Services (Bastian: nicht merken)
+    // Reiter fürs nächste Öffnen (Super+Alt+H, IPC servers); sonst öffnet es immer auf Services (Bastian: nicht merken)
     property string nextTab: ""
     property string query: ""
     property var confirm: null                         // { key, kind: server|container, title, hint, warn, item }
@@ -102,7 +102,7 @@ PopupWindow {
         if (tab === "server" && visible)
             Servers.refresh();
     }
-    // Super+Alt+U / Bar-Modus H: gleich auf den Reiter Server (BarKeys.aliases)
+    // Super+Alt+H / Bar-Modus H: gleich auf den Reiter Server (BarKeys.aliases)
     Connections {
         target: BarKeys
         function onTabRequested(name, t) {
@@ -876,7 +876,7 @@ PopupWindow {
         id: card
         // offen bis zum Weghovern (PopoutGuard.qml)
         PopoutGuard { id: guard; popout: pop; chip: pop.chip; name: "devservices" }
-        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+B, KeyNav.qml)
+        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+Leertaste, KeyNav.qml)
         Keys.onPressed: e => nav.key(e)
         KeyNav { id: nav; root: card; scope: null; popout: pop; guard: guard; name: "devservices" }
         width: pop.cardW

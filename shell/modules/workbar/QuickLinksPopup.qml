@@ -14,6 +14,8 @@ import qs.components
 // .code-workspace (soulwick → soulwick-platform) liefern Ports, Container und Repo-Links dazu.
 // Tastatur (Workspace-Modus, Q): ↑↓ wählen, Enter öffnet, 1–9 direkt, A Link ergänzen, Entf zweimal entfernt, Esc zurück.
 // Dann ohne eigenen Fokus-Grab: die Tasten liefert die Leiste (WorkBar.modeKey → key()), sie behält die Tastatur.
+// Trotzdem fängt keyTrap Tasten selbst ab: Hyprland gibt einem Popup die Tastatur, sobald die Maus darüber steht
+// (Elternfläche Exclusive) oder es mit Grab aufgeht (Klick, IPC quickLinks) – ohne eigenen Handler waren sie dann tot.
 PopupWindow {
     id: pop
 
@@ -117,6 +119,8 @@ PopupWindow {
     // ---------- Tastatur ----------
     property bool kb: false             // per Taste geöffnet (Workspace-Modus)
     property bool kbBack: false         // mit Esc zu: zurück in den Workspace-Modus (sonst endet er)
+    property bool typed: false          // per Maus geöffnet, dann Taste gedrückt: Markierung und Ziffern zeigen
+    readonly property bool marks: kb || typed
     property int sel: 0
     property int armed: -1              // Zeile, deren Link nach dem ersten Entf auf „Remove?“ steht
     // Zeilen in Bildschirm-Reihenfolge: Ports, Container, Repo-Links, Repo (git remote), übrige Links, Add link
@@ -136,7 +140,7 @@ PopupWindow {
         return out;
     }
     function hintFor(i: int): string {
-        return kb && i < 9 ? String(i + 1) : "";
+        return marks && i < 9 ? String(i + 1) : "";
     }
     function run(i: int): void {
         const it = items[i];
@@ -174,6 +178,13 @@ PopupWindow {
             sel = n - 1;        // Link inzwischen entfernt
         if (k !== Qt.Key_Delete && k !== Qt.Key_Backspace)
             armed = -1;
+        const nav = [Qt.Key_Up, Qt.Key_Down, Qt.Key_K, Qt.Key_J, Qt.Key_Tab, Qt.Key_Backtab].includes(k);
+        // per Maus geöffnet: erste Pfeiltaste zeigt nur die Markierung (Zeile 1), statt unsichtbar weiterzuspringen
+        if (!marks && k !== Qt.Key_Escape) {
+            typed = true;
+            if (nav)
+                return true;
+        }
         if (k === Qt.Key_Escape) {
             kbBack = true;
             visible = false;
@@ -222,6 +233,9 @@ PopupWindow {
     function openFor(id: string): void {
         deskId = id;
         kb = false;
+        typed = false;
+        sel = 0;
+        armed = -1;
         visible = true;
     }
     // aus dem Workspace-Modus: ohne Grab, erste Zeile markiert
@@ -229,6 +243,7 @@ PopupWindow {
         deskId = id;
         kb = true;
         kbBack = false;
+        typed = false;
         sel = 0;
         armed = -1;
         visible = true;
@@ -237,6 +252,7 @@ PopupWindow {
     onVisibleChanged: {
         host.openMenus += visible ? 1 : -1;
         if (visible) {
+            keyTrap.forceActiveFocus();
             scan.running = true;
             DevServices.refresh();
         } else {
@@ -326,6 +342,16 @@ PopupWindow {
         strong: true
         radius: Theme.radiusMd
 
+        // Tasten, wenn das Popup selbst die Tastatur hat (siehe Kopf); sonst kommen sie über WorkBar.modeKey
+        Item {
+            id: keyTrap
+            focus: true
+            Keys.onPressed: e => {
+                pop.key(e);
+                e.accepted = true;
+            }
+        }
+
         Column {
             id: col
             x: 6
@@ -353,6 +379,13 @@ PopupWindow {
                 height: visible ? 24 : 0
                 proj: pop.proj
             }
+            QuickLinksStats {
+                x: 10
+                width: col.width - 20
+                bottomPadding: 6
+                proj: pop.proj
+                active: pop.visible
+            }
 
             // localhost
             Label {
@@ -367,7 +400,7 @@ PopupWindow {
                 QuickLinksRow {
                     required property var modelData
                     required property int index
-                    kbMark: pop.kb && pop.sel === index
+                    kbMark: pop.marks && pop.sel === index
                     hint: pop.hintFor(index)
                     width: col.width
                     icon: "language"
@@ -394,7 +427,7 @@ PopupWindow {
                     required property var modelData
                     required property int index
                     readonly property int idx: pop.ports.length + index
-                    kbMark: pop.kb && pop.sel === idx
+                    kbMark: pop.marks && pop.sel === idx
                     hint: pop.hintFor(idx)
                     width: col.width
                     icon: "deployed_code"
@@ -421,7 +454,7 @@ PopupWindow {
                     required property var modelData
                     required property int index
                     readonly property int idx: pop.nLocal + index
-                    kbMark: pop.kb && pop.sel === idx
+                    kbMark: pop.marks && pop.sel === idx
                     kbConfirm: pop.armed === idx
                     hint: pop.hintFor(idx)
                     width: col.width
@@ -440,7 +473,7 @@ PopupWindow {
                 visible: pop.repoUrl !== ""
                 height: visible ? 36 : 0
                 width: col.width
-                kbMark: visible && pop.kb && pop.sel === idx
+                kbMark: visible && pop.marks && pop.sel === idx
                 hint: visible ? pop.hintFor(idx) : ""
                 icon: "code"
                 title: "Repository"
@@ -462,7 +495,7 @@ PopupWindow {
                     required property var modelData
                     required property int index
                     readonly property int idx: pop.nLocal + pop.repoLinks.length + (pop.repoUrl !== "" ? 1 : 0) + index
-                    kbMark: pop.kb && pop.sel === idx
+                    kbMark: pop.marks && pop.sel === idx
                     kbConfirm: pop.armed === idx
                     hint: pop.hintFor(idx)
                     width: col.width
@@ -495,7 +528,7 @@ PopupWindow {
                 width: col.width
                 alignLeft: true
                 height: 36
-                readonly property bool kbMark: pop.kb && pop.sel === pop.items.length - 1
+                readonly property bool kbMark: pop.marks && pop.sel === pop.items.length - 1
                 active: kbMark
                 border.width: kbMark ? 2 : 0
                 border.color: Theme.accent
@@ -510,7 +543,7 @@ PopupWindow {
                     text: "Add link"
                 }
                 MonoTxt {
-                    visible: pop.kb
+                    visible: pop.marks
                     anchors.verticalCenter: parent.verticalCenter
                     text: "A"
                     color: Theme.accentText
@@ -521,12 +554,12 @@ PopupWindow {
 
             // Tastenzeile (nur im Tastatur-Betrieb)
             Row {
-                visible: pop.kb
+                visible: pop.marks
                 x: 10
                 height: visible ? 28 : 0
                 spacing: 12
                 Repeater {
-                    model: [["↑↓", "select"], ["Enter", "open"], ["1–9", "direct"], ["Del", "remove"], ["Esc", "back"]]
+                    model: [["↑↓", "select"], ["Enter", "open"], ["1–9", "direct"], ["Del", "remove"], ["Esc", pop.kb ? "back" : "close"]]
                     Row {
                         required property var modelData
                         anchors.verticalCenter: parent.verticalCenter

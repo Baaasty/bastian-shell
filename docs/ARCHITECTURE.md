@@ -15,7 +15,7 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 | `shell/assets/`, `shell/data/` | PAM-Datei der Sperre (`pam.d/desktop-lock`), Emoji-Liste |
 | `scripts/` | Hilfsprozesse (Python `-I`, Bash) für alles, was QML nicht kann; Tests in `scripts/tests/`, Gesamtcheck `scripts/check` |
 | `hypr/` | Hyprland-Konfig (`hyprland.conf` + Teile), `binds.conf` → `qs ipc`, `hypridle.conf`, `autostart.conf` |
-| `config/` | Konfig im Repo (`scenes.json`, `breaks.json`, `consoles.json`, `notifications.json`, `launcher/web.json`, App-Konfigs) |
+| `config/` | Konfig im Repo (`breaks.json`, `consoles.json`, `notifications.json`, `launcher/web.json`, App-Konfigs) |
 | `theme/` | `palette.json` → `theme/gen/*.py` → `theme/out/` (+ Installation nach `~/.local`), siehe `theme/README.md` |
 | `systemd/` | User-Units: Shell (`desktop-shell-hyprland.service`), Mail, Agenda, Session-Save, GoXLR, Key Light |
 | `system/` | PC neu aufsetzen: Paketlisten, Dotfiles, `bootstrap` (dry-run, `--apply`), siehe `system/README.md` |
@@ -32,7 +32,7 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 - **Shell → Hyprland**: Befehle über `Hypr.qml` (`hyprctl`-Dispatch/Batch); Apps nur über `services/Launch.qml` (`uwsm app --`).
 - **Kürzel → Shell**: `hypr/binds.conf` ruft `$IPC <ziel> <funktion>` (`$IPC = qs ipc --any-display -p $DESKTOP/shell call`,
   `hypr/hyprland.conf`). Ziele = `IpcHandler { target: … }` in den Modulen/Services (z. B. `dashboard`, `launcher`,
-  `barmode`, `workbar`, `snip`, `lock`, `scene`); Liste: `grep -rh 'target:' shell`. Kommentare `# …` hinter den
+  `barmode`, `workbar`, `snip`, `lock`); Liste: `grep -rh 'target:' shell`. Kommentare `# …` hinter den
   Binds speisen Super+K (`modules/keys/keybinds.py`) und `docs/knowledge/hotkeys.md` (`scripts/hotkeys-md`).
 - **Hilfsprozesse**: QML startet `scripts/*` als `Process`; Antwort als JSON auf stdout (einmalig oder als
   JSON-Zeilen im Dauerlauf, `SplitParser`), Befehle bei Bedarf über stdin (z. B. `scripts/procs watch`,
@@ -57,7 +57,7 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
   unter Plasma hält `ExecCondition` sie an. Plasma-Gegenstück: `desktop-shell.service` (`scripts/rice on|off`).
 - Ein Pfad überall (`~/Workspace/bastian-shell/shell`): Quickshell unterscheidet Instanzen nach Pfad, sonst findet
   `qs ipc` sie nicht. Testen: `qs -p ~/Workspace/bastian-shell/shell`.
-- Weitere Hintergrund-Starts (hypridle, Polkit-Agent, Session-Restore, Abendwärme, RGB): `hypr/autostart.conf`.
+- Weitere Hintergrund-Starts (hypridle, Polkit-Agent, Session-Restore, RGB): `hypr/autostart.conf`.
 
 ## Secrets
 

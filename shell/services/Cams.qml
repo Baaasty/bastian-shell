@@ -221,7 +221,7 @@ Singleton {
         function toggle(): void {
             root.toggleShow();
         }
-        // Overlay in eine Richtung andocken: left|right wechselt die Seite, up|down oben/unten (Super+Strg+Pfeile)
+        // Overlay in eine Richtung andocken: left|right wechselt die Seite, up|down oben/unten (Super+Alt+Pfeile)
         function move(dir: string): void {
             const v = root.corner.split("-");
             if (dir === "left" || dir === "right")

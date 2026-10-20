@@ -12,7 +12,7 @@ import qs.config
 // Speichert alle 15 s ~/.local/state/desktop/projecttime/YYYY-MM-DD.json (Gesamt + Zeitspannen, Unix-Sekunden),
 // übersteht Shell-Neustarts. Auswertung: scripts/projecttime. Einstellungen (optional, live):
 // ~/.config/desktop/projecttime.json  { "enabled": true, "idleSec": 300 }
-// IPC "projecttime": open|hide|toggle (Wochen-Karte), status, today, week, flush.
+// Anzeige: Kachelkopf der Workspace-Leiste (heute, Tooltip mit Woche). IPC "projecttime": status, today, week, flush.
 Singleton {
     id: root
 
@@ -36,13 +36,13 @@ Singleton {
     readonly property var deskProject: GitInfo.projectForId(Desktops.current)
     readonly property bool counting: ready && enabled && !!deskProject && !idle.isIdle && !locked
 
-    // Wochen-Karte (shell/modules/recap/ProjectTimeCard.qml)
-    property bool open: false
-
     // heute je Projekt, größte zuerst: [{ id, name, color, sec }]
     readonly property var todayList: Object.keys(total).map(id => ({ id: id, name: nameOf(id), color: colorOf(id), sec: total[id] }))
         .filter(p => p.sec >= 30).sort((a, b) => b.sec - a.sec)
     readonly property int todaySec: Object.keys(total).reduce((n, id) => n + total[id], 0)
+
+    // Aufruf aus shell.qml: Singletons werden erst beim ersten Zugriff geladen
+    function init(): void {}
 
     function today(): string {
         return Qt.formatDate(new Date(), "yyyy-MM-dd");
@@ -61,10 +61,15 @@ Singleton {
         const m = Math.round(sec / 60);
         return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + String(m % 60).padStart(2, "0") + " min" : "");
     }
-    // 4520 s -> "1:15"
-    function hm(sec: real): string {
+    // knapp für den Kachelkopf: 4520 s -> "1 h 15", 7200 -> "2 h", 600 -> "10 min"
+    function short(sec: real): string {
         const m = Math.round(sec / 60);
-        return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0");
+        return m < 60 ? m + " min" : Math.floor(m / 60) + " h" + (m % 60 ? " " + String(m % 60).padStart(2, "0") : "");
+    }
+    // Sekunden eines Projekts in der laufenden Woche (letzter Stand von refreshWeek, mindestens heute)
+    function weekSecOf(id: string): int {
+        const p = week && Array.isArray(week.projects) ? week.projects.find(x => x.id === id) : null;
+        return Math.max(p ? p.sec : 0, total[id] || 0);
     }
 
     // ---------- Zählen ----------
@@ -224,10 +229,9 @@ Singleton {
         onLoadFailed: root.lockText = ""
     }
 
-    // ---------- Woche (für Kachel/Karte, gerechnet von scripts/projecttime) ----------
+    // ---------- Woche (für den Kachel-Tooltip, gerechnet von scripts/projecttime) ----------
     // { from, to, today, total, days: [{ day, total, projects }], projects: [{ id, name, sec }] }
     property var week: null
-    property int weekOffset: 0
     property bool _again: false
     function refreshWeek(): void {
         save();
@@ -235,12 +239,8 @@ Singleton {
             _again = true;
             return;
         }
-        weekProc.command = [root.script, "week", "--json", "--offset", String(weekOffset)];
+        weekProc.command = [root.script, "week", "--json"];
         weekProc.running = true;
-    }
-    function shiftWeek(dir: int): void {
-        weekOffset = Math.min(0, weekOffset + dir);
-        refreshWeek();
     }
     Process {
         id: weekProc
@@ -260,19 +260,6 @@ Singleton {
     IpcHandler {
         target: "projecttime"
 
-        // Wochen-Karte zeigen („show“ kann qs ipc nicht aufrufen)
-        function open(): void {
-            root.weekOffset = 0;
-            root.open = true;
-        }
-        function hide(): void {
-            root.open = false;
-        }
-        function toggle(): void {
-            if (!root.open)
-                root.weekOffset = 0;
-            root.open = !root.open;
-        }
         function status(): string {
             return JSON.stringify({ enabled: root.enabled, counting: root.counting, project: root.deskProject ? root.deskProject.id : null,
                 idle: idle.isIdle, idleSec: root.idleSec, locked: root.locked, todaySec: root.todaySec });
@@ -280,7 +267,7 @@ Singleton {
         function today(): string {
             return JSON.stringify(root.todayList.map(p => ({ id: p.id, name: p.name, sec: p.sec })));
         }
-        // Woche neu rechnen lassen; Antwort = letzter Stand (zum Prüfen ohne Karte)
+        // Woche neu rechnen lassen; Antwort = letzter Stand
         function week(): string {
             root.refreshWeek();
             return JSON.stringify(root.week);

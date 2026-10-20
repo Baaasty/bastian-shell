@@ -141,6 +141,13 @@ Singleton {
         if (usesBacklog(path))
             _run({ args: ["promote", path, id] });
     }
+    // Gedanke aus der Inbox (Notes.qml) als Idee ins docs/BACKLOG.md eines Repos; ok() erst nach Erfolg
+    // (Workspace/kein Git: scripts/backlog lehnt ab, der Gedanke bleibt dann in der Inbox)
+    function backlogAdd(path: string, text: string, ok: var): void {
+        const t = text.trim();
+        if (_repoPath(path) && t)
+            _run({ args: ["add", path, t], ok: ok });
+    }
     // lokale Ideen einmalig ins BACKLOG (mit ihrem Datum); lokal gelöscht wird jede erst nach Erfolg
     function moveIdeasToBacklog(list: string, path: string): void {
         if (!usesBacklog(path))
@@ -264,6 +271,14 @@ Singleton {
         }
         function list(): string {
             return JSON.stringify({ current: root.current, items: root.currentItems });
+        }
+        // Punkt mit genau diesem Text aus der Liste des aktuellen Desktops löschen (zum Testen)
+        function remove(text: string): string {
+            const t = root.currentItems.find(x => x.text === text.trim());
+            if (!t)
+                return "not found";
+            root.remove(root.current, t.id);
+            return "ok";
         }
     }
 }

@@ -9,7 +9,7 @@ import qs.components
 // IPC: qs ipc call updates status|check|refresh|open|fake <n>   Doku: docs/knowledge/shell-features.md
 Chip {
     id: chip
-    hintKey: BarKeys.keyFor("updates")   // Bar-Modus (Super+B)
+    hintKey: BarKeys.keyFor("updates")   // Bar-Modus (Super+Leertaste)
 
     visible: Updates.count > 0
     padding: 8

@@ -43,7 +43,7 @@ PanelWindow {
     // immer Overlay: ein Ebenenwechsel erst beim Hervorholen greift nicht rechtzeitig, dann bliebe sie
     // unter Vollbild-Fenstern. Versteckt ist sie unsichtbar und ohne Klickfläche (mask), stört also nicht.
     WlrLayershell.layer: WlrLayer.Overlay
-    // Tastatur nur im Bar-Modus (Super+B) und solange ein per Taste geöffnetes Popout offen ist (BarKeys.qml)
+    // Tastatur nur im Bar-Modus (Super+Leertaste) und solange ein per Taste geöffnetes Popout offen ist (BarKeys.qml)
     WlrLayershell.keyboardFocus: BarKeys.wantsKeys ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
     // Koordinaten selbst ausrechnen statt "item:": Region rechnet die Lage eines Items nur neu, wenn sich das
@@ -82,7 +82,7 @@ PanelWindow {
         }
     }
 
-    // ---------- Bar-Modus (Super+B): Buchstabe öffnet das Popout des Chips, Esc/nochmal = zu ----------
+    // ---------- Bar-Modus (Super+Leertaste): Buchstabe öffnet das Popout des Chips, Esc/nochmal = zu ----------
     Item {
         id: modeKeys
         focus: BarKeys.wantsKeys
@@ -369,6 +369,12 @@ PanelWindow {
                     visible: !rightZone.quiet
                     barWindow: win
                 }
+                // Gear-Chip: Klick öffnet das Gear-Popout (PC-Licht, Maus, System); Akku-Warnung der Maus
+                GearChip {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !rightZone.quiet
+                    barWindow: win
+                }
                 // Lautsprecher-Chip: Klick öffnet den Audio-Mixer (Idee g)
                 AudioChip {
                     anchors.verticalCenter: parent.verticalCenter
@@ -381,11 +387,20 @@ PanelWindow {
                     visible: !rightZone.quiet
                     barWindow: win
                 }
-                // Downloads: leises Symbol, nach einem neuen Download kurz im Glut-Ton – Klick öffnet die letzten Downloads
-                DownloadsChip {
+                // Dateimanager (Rechtsklick: letzte Downloads, ersetzt den Downloads-Chip) und Browser
+                FilesChip {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !rightZone.quiet
                     barWindow: win
+                }
+                BrowserChip {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !rightZone.quiet
+                }
+                // KDE-Systemeinstellungen (startet etwas statt Menü, wie Files/Browser)
+                SettingsChip {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !rightZone.quiet
                 }
                 // Updates (dnf + Flatpak): nur sichtbar, wenn welche da sind – Klick öffnet den Paketmanager
                 UpdatesChip {

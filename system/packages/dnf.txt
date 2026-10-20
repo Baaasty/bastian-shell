@@ -31,7 +31,6 @@ xdg-desktop-portal-hyprland    # Bildschirm teilen (Picker: scripts/share-picker
 xdg-desktop-portal-kde         # Dateidialog (hypr/portals.conf)
 hypridle                       # Leerlauf: dimmen, sperren, Monitore aus (hypr/hypridle.conf)
 hyprlock                       # Notfall-Sperre, wenn die Shell nicht läuft (scripts/lock)
-hyprsunset                     # Abendwärme (scripts/nightlight); COPR sdegler/hyprland – bei Bastian noch nicht installiert (Stand 18.10.)
 grim                           # Ausschneiden (Snip)
 slurp                          # Bereichsauswahl (Abhängigkeit von hyprland, wird genutzt)
 wf-recorder                    # Bereich als Video (scripts/screenrec)
@@ -68,6 +67,8 @@ pipewire-utils
 plasma-workspace               # plasma-apply-colorscheme, plasma-changeicons, kwriteconfig6 (rice theme on)
 plasma-integration             # Qt-Plattformtheme „kde“
 plasma-breeze                  # Widget-Stil Breeze
+kvantum                        # Qt-Stil Kvantum „DesktopHearth“ (Menüs mit Radien, ruhiger Hover): scripts/kvantum-theme on|off
+kvantum-qt5                    # dasselbe für Qt5-Apps
 breeze-icon-theme              # Basis für „Desktop-Icons“
 kde-gtk-config
 kdialog                        # Dialoge (Abmelden-Rückfrage, scripts/hypr power)
@@ -82,7 +83,7 @@ code                           # VS Code nativ (Repo vscode)
 
 # == Apps als RPM (bis 2026-10-18 Flatpaks; Daten umziehen: scripts/flatpak-to-native, Start: scripts/app-run)
 discord                        # RPM Fusion nonfree · Bar-Chip, discord-bridge (Socket $XDG_RUNTIME_DIR/discord-ipc-0); geht erst weg, wenn Equibop funktioniert
-lpf-spotify-client             # RPM Fusion nonfree · baut spotify-client lokal (bootstrap: Gruppe pkg-build + lpf update)
+lpf-spotify-client             # RPM Fusion nonfree · baut spotify-client lokal (bootstrap: Gruppe pkg-build + lpf update) · Update: docs/setup/spotify.md
 thunderbird                    # Fedora, Release statt ESR · Profil ~/.thunderbird, Theme aus theme/gen/thunderbird.py
 steam                          # RPM Fusion nonfree · Bibliothek ~/Data/Games/SteamLibrary (in Steam hinzufügen)
 mpv                            # Standard-Videoplayer · system/copies/.config/mimeapps.list

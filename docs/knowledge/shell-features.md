@@ -18,10 +18,25 @@ Code: `scripts/netinfo` (Test `scripts/tests/netinfo-test.py`), `shell/services/
 - Durchsatz-Verlauf liegt nur im Speicher: nach Shell-Neustart leer, erster Punkt nach 1 min.
 - Kein VPN-Bereich mehr (Tailscale deinstalliert 2026-10-19).
 
-## Downloads
-Code: `shell/services/Downloads.qml`, `shell/modules/bar/DownloadsChip.qml`, `DownloadsPopout.qml` · Konfig: `~/.config/desktop/downloads.json` (optional)
-- Eigener Chip, weil kein Popout thematisch passt und „neu“ (15 min) einen Platz in der Bar braucht; im Fokus-Modus ausgeblendet.
+## Dateimanager, Browser & Downloads
+Code: `shell/modules/bar/FilesChip.qml`, `BrowserChip.qml`, `DownloadsPopout.qml`, `shell/services/Downloads.qml` · Konfig: `~/.config/desktop/downloads.json` (optional)
+- Downloads-Chip 2026-10-20 raus (zu laut): die Liste hängt jetzt als Rechtsklick am Dateimanager-Chip (Bar-Modus `D`), „neu“ zeigt kein Chip mehr. Beide Chips im Fokus-Modus ausgeblendet.
+- Dateimanager fest Dolphin (wie Super+E): `xdg-mime` für `inode/directory` zeigt auf `kitty-open`. Browser-Chip erkennt Helium an der Fensterklasse; Super+B (alt: Super+W) startet ohne Shell Helium direkt.
 - Aufräumen nur per `gio trash`, nie löschen. `gio trash` geht nicht auf tmpfs → Tests mit einem Ordner unter `~` (`downloads testDir`).
+
+## Gear (PC-Licht, Maus)
+Code: `shell/modules/bar/GearChip.qml`, `GearPopout.qml`, `shell/services/Devices.qml`, Backends `scripts/rgb`, `scripts/mouse` (Tests `scripts/tests/rgb-test.py`, `mouse-test.py`) · Konfig: `~/.config/desktop/rgb.json`, Zustand `~/.local/state/desktop/rgb-state.json`
+- PC-Licht: jede Änderung ist ein voller OpenRGB-Lauf (~25 s); Balken gehen erst 1,5 s nach der letzten Bewegung raus, was während eines Laufs kommt, läuft danach (nur das Letzte). Farbe = Token in `rgb.json`, Boot/Standby nehmen dieselbe.
+- Maus: alles Entwurf bis „Save to mouse“ – das schreibt ins Onboard-Profil (Flash, begrenzte Schreibzyklen), darum nie bei jeder Bewegung. DPI-Balken 100–6400 (Maus kann bis 25600, per `scripts/mouse save`).
+- Abfragen nur bei offenem Popout (rgb 5 s, Maus 60 s), sonst Maus alle 10 min für die Akku-Warnung (< 15 %, nicht am Laden). Schläft die Maus, bleiben die letzten Werte grau stehen.
+- Einstellungen-Chip (`SettingsChip.qml`): startet `systemsettings.desktop` (Override in `config/applications/` mit `SDL_HIDAPI_LIBUSB=0`, sonst 15–17 s Hänger), Seiten mit derselben Umgebung. KScreen (Display) braucht KWin → keine Display-Seite.
+
+## Spotify
+Code: `shell/services/SpotifyApi.qml`, `shell/modules/bar/Spotify*.qml`, Backend `scripts/spotify-api` · Cache: `~/.cache/desktop/spotify/` (`now.json` letzter Stand, `ratelimit.json` Budget/Pause, `blocked-until` Sperre der Shell; löschen = zurücksetzen)
+- Vorladen nur bei laufendem Spotify: 10 s nach Shell-Start, dann still bei Songwechsel (1,2 s warten, höchstens alle 20 s, beim Durchskippen nur einmal); Popout zeigt sofort `now.json` und lädt nur nach, wenn älter als 10 s oder anderer Song.
+- „Als Nächstes“ ab dem aktuellen Song; Songwechsel schneidet sofort per MPRIS ab. Ohne Shuffle: Warteschlange nur selbst Eingereihtes; mit Shuffle: Gehörtes (Sitzung + recently-played, 5 min Cache) raus.
+- Budget im Skript für alle Aufrufe: 20 Anfragen / 60 s; nach 429 Pause = Retry-After, mind. 30 s, verdoppelt bis 15 min, Erfolg setzt zurück. Playlist-Kopf 5 min gecacht.
+- Ein `now` kostet meist 2 Anfragen (Warteschlange + Player), Seiten nur bei neuer `snapshot_id`. Spotify-eigene Playlists kommen über die Einbett-Seite (max. ~100 Songs, aktueller Song fehlt dann evtl.).
 
 ## Update-Chip
 Code: `shell/services/Updates.qml`, `shell/modules/bar/UpdatesChip.qml`, Backend `scripts/pkg` · Zustand: `~/.local/state/desktop/updates.json` (löschen = beim nächsten Start neu prüfen)
@@ -32,6 +47,13 @@ Code: `shell/services/Privacy.qml`, `shell/modules/bar/PrivacyDot.qml`, `scripts
 - Bleiben bewusst auch im Fokus-Modus sichtbar.
 - Discord hält das Mikro nach Call/Mikrotest offen: gemeldet wird es nur im Sprachkanal (`Discord.inVoice`). Andere Apps mit „idle“ gehaltenem Aufnahme-Stream zeigen den Punkt trotzdem.
 - Unsichtbar bleiben Kamera-Zugriffe ohne PipeWire und ohne offenes `/dev/video` (z. B. fremde Benutzer).
+
+## Key Light mit der Kamera
+Code: `shell/services/CamLight.qml` (Logik `camlight.js`, Test `scripts/tests/camlight-test.js`) · Konfig: `~/.config/desktop/keylight.json` `{"autoCamera": false}` = aus (fehlt = an) · IPC `camlight status|enable|disable|toggle`
+- Quelle ist die Kamera-Erkennung der Privatsphäre-Punkte (`Privacy.camLive`, ohne `privacy simulate`): 1,5 s Kamera an → Licht an, 5 s aus → Licht aus.
+- Aus schaltet sie nur, was sie selbst eingeschaltet hat – und nur, wenn Helligkeit/Kelvin noch so sind wie beim Einschalten. War es schon an oder hat Bastian es geschaltet/verstellt (Popout, Elgato-App, Taste), bleibt es.
+- Gesperrt oder ≥ 4 min Leerlauf: kein Einschalten. „Gehört der Automatik“ steht in `$XDG_RUNTIME_DIR/desktop-camlight.json` (übersteht `scripts/hypr restart`).
+- Licht offline: eine Logzeile `camlight: Key Light not reachable`, sonst nichts (Abfrage max. 2 × 3 s).
 
 # Workspaces & Fenster
 
@@ -62,15 +84,25 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
 Code: `shell/modules/launcher/Launcher.qml` (`sources`, `parse()`, `rebuild()`), `shell/services/LauncherSources.qml`, `WebShortcuts.qml` · Konfig: `config/launcher/web.json`, Zähler `~/.local/state/desktop/launcher.json` (nur IDs, nie Suchtexte)
 - `web.json`: das erste Kürzel ist das Standard-Kürzel (`?<text>`, „Search the web“); `url` braucht `http(s)://` + `{q}`; `pw`, `cal`, `c` sind reserviert. Kaputte Einträge → „Config problem“ unter `?`.
 - `c `: `claude://` an Claude Desktop (distrobox „ubuntu“), wenn `xdg-mime query default x-scheme-handler/claude` einen Handler hat, sonst claude.ai in Helium; geprüft einmal pro Shell-Start.
-- `pw ` lädt Metadaten höchstens alle 5 min (neue Einträge: `scripts/passwords sync`). `@` braucht Helium mit Erweiterung „Desktop“ (`scripts/chrome-ext status`).
+- `pw ` lädt Metadaten höchstens alle 5 min (Tresor selbst: Timer `desktop-passwords`, alle 15 min). `@` braucht Helium mit Erweiterung „Desktop“ (`scripts/chrome-ext status`).
 - Verworfen (nicht wieder einbauen): Text-Bausteine `s ` und FMHY-Suche.
 
 # Fokus & Alltag
 
-## Gedanken parken
-Code: `shell/services/Notes.qml`, `shell/modules/notes/NotesWindow.qml` · Konfig: `~/.config/desktop/notes.json` · Daten: `~/Notes/inbox.md`
-- Gezählt werden nur Zeilen, die mit `- [ ] ` beginnen; erledigt = von Hand `[x]` oder Zeile löschen.
-- Schlägt das Schreiben fehl, bleibt das Fenster mit Entwurf offen („Could not save“).
+## Fokus ohne Zeit
+Code: `shell/services/Focus.qml` (`openEnded`), `shell/modules/bar/FocusPopout.qml`, `TimerChip.qml` · IPC: `focus openEnded on|off|toggle` (`focus toggle` bleibt Timer mit Vorgabe)
+- Timer und Fokus-Modus sind eins (`mode "focus"`): ohne Zeit ist nur das Ende weg – Benachrichtigungen, stille Bar, später Abdunkeln/Sperre wie im Block.
+- Hyperfokus-Wecker kommt trotzdem (`Breaks.silentWhy` schweigt nur im Block mit Ende), sonst würde er gerade beim Endlos-Fokus nie greifen.
+- Keine Pause, kein Block-Zähler, kein Pausen-Banner; zählt aber zu den Fokus-Minuten des Tages. Übersteht Shell-Neustarts.
+- Per Tastatur (Super+F) steht die Markierung im Popout auf dem Schalter, per Maus hat das Zeitfeld den Fokus.
+
+## Gedanken parken & To-dos
+Code: `shell/modules/bar/TodoPopout.qml`, `TodoChip.qml`, `shell/services/Notes.qml` (Text-Logik `inbox.js`, Test `node scripts/tests/inbox-test.js`), `Todos.qml` · Konfig: `~/.config/desktop/notes.json` (`path`, `todoPrefixes`, `todoList`) · Daten: `~/Notes/inbox.md`, `~/.local/state/desktop/todos.json` · IPC: `inbox add|list|count|done|remove`, `todos add|list|remove`
+- Ein Popout für beides (Super+T): oben das Feld, darunter Inbox (neueste oben), To-dos des Desktops, General. Das alte Notizfenster (Super+N, IPC `notes`) ist weg.
+- Offen = Zeile beginnt mit `- [ ] `. „Abhaken“ schreibt `[x]` (bleibt als Verlauf), „Löschen“ (zweimal drücken) entfernt den Eintrag samt eingerückter Folgezeilen. Einträge werden über Kopfzeile + Vorkommen gefunden – Datei darf von Hand geändert werden.
+- `t …`/`! …` geht nur in die To-dos (früher zusätzlich in die Inbox). „Zur Aufgabe“ hakt den Gedanken ab.
+- „Ins Backlog“ (Glühbirne) nur bei Repo-Projekt: Projekt des Desktops, sonst das VS-Code-Projekt (`Context`); abgehakt erst nach Erfolg von `scripts/backlog add`.
+- Per Super+T ohne Fokus-Griff reicht die Bar die Tasten weiter: Tippen/Rücktaste/Enter landen trotzdem im Feld (`KeyNav.preKey`).
 
 ## Benachrichtigungen
 Code: `shell/services/NotifRules.qml`, `timewin.js` (Test `node scripts/tests/timewin-test.js`), `Notifs.qml`, `shell/modules/notifications/` · Konfig: `config/notifications.json`, eigene Werte `~/.config/desktop/notifications.json` (ersetzt je Hauptschlüssel ganz)
@@ -90,26 +122,13 @@ Code: `shell/services/Breaks.qml`, `shell/modules/breaks/BreakCard.qml` · Konfi
 - `respectInhibitors: false` (Standard): auch ein Video ohne Eingabe zählt als Pause.
 - Der alte Hyperfokus-Teil des Fokus-Timers (`Focus.hyperDue`) ist entfernt – nicht wiederbeleben.
 
-## Szenen
-Code: `shell/services/Scenes.qml`, `scripts/scene` (`check`, `--dry-run`) · Konfig: `config/scenes.json` · Zustand: `~/.local/state/desktop/scenes.json`
-- `cmd`-Schritte nur aus der Positivliste `commands` (Wortliste, kein Shell-Text).
-- Hue wird pro Raum zurückgesetzt (Einzellampen ohne Szene landen auf einer gemeinsamen Helligkeit); Key-Light-Kelvin auf 50 K genau; Lesen bis ~4 s, wenn ein Gerät schweigt.
-- Nach Shell-Neustart werden nur „Bar weg“ und „Nicht stören“ aktiver Szenen neu gesetzt. Hängt eine Szene: `scripts/scene off NAME`, zur Not Zustandsdatei löschen + Shell neu laden.
-- Fokus-Kopplung: Timer-„Pause“ ändert nichts, Pausen-Block schaltet aus; `focusLink: false` trennt. Hue-Szene „Game“ fehlt noch in der Bridge (Schritt wird übersprungen).
-- Neue Szene mit Kürzel: Zeile in `hypr/binds.conf` mit Titel nach `#`, dann `python3 -I scripts/hotkeys-md`.
-
-## Abendwärme
-Code: `scripts/nightlight` (Daemon über `hypr/autostart.conf`) · Konfig: `config/nightlight.json`, Ort sonst aus Secrets-Schlüssel `location` (wie Wetter), sonst Berlin · Zustand: `~/.local/state/desktop/nightlight.json`
-- Braucht `hyprsunset` (COPR sdegler/hyprland, sudo); ohne Paket beendet sich der Daemon still.
-- hyprsunset wirkt über `hyprland-ctm-control` auf alle Monitore gemeinsam – pro Monitor geht nicht.
-- Not-Aus: `scripts/nightlight off` oder `pkill -x hyprsunset`. Bewusst kein Schalter in der Shell (nur CLI + Super+Alt+N).
-
-## Kamin-Idle
-Code: `shell/modules/idle/` (`Idle.qml`, `Fireplace.qml`, `Flame.qml`), `scripts/idle` · Konfig: `hypr/hypridle.conf` (Listener `timeout = 180`, im Fokus-Block 780; löschen = aus)
-- Keine Sperre – die Lock-Kette liegt darüber. Inhibit (Video/Spiel) hält hypridle an, dann kommt auch kein Kamin.
-- hypridle liest die Datei nur beim Start: `pkill hypridle; uwsm app -- hypridle &`.
-- IPC-Ziel heißt `fireplace` (`idle` gehört der Lock-Kette).
-- Wegen 360 Hz kein Dauer-Animieren: Flammen springen per Timer (~6 Bilder/s, ~0,5 % eines Kerns).
+## Leerlauf-Abdunkeln
+Code: `shell/modules/idle/Idle.qml` (IPC `dim`), `scripts/idle` · Konfig: `hypr/hypridle.conf` (Zeiten; Ablauf dort im Kopf)
+- Keine Sperre – die Lock-Kette (`scripts/lock`) liegt darüber. Inhibit (Video/Spiel/Call) hält hypridle an.
+- Monitore gehen **vor** der Sperre aus: die helle Sperre würde das Dunkel sonst kurz aufreißen.
+- Overlay ist klickdurchlässig (leere Maske); weg geht es über hypridle-Resume, Rückfall: eigener `IdleMonitor`.
+- `OpacityAnimator` statt Timer-Schritten (Render-Thread, ruckelfrei auf 360 Hz); schreibt die Deckkraft erst am Ende zurück.
+- Ausprobieren: `scripts/idle dim-test 10`, `scripts/idle black-test 3`. hypridle liest die Datei nur beim Start: `pkill hypridle; uwsm app -- hypridle &`.
 
 ## Snip
 Code: `shell/modules/screenshot/` (`Snip.qml`, `SnipPin.qml`, `SnipToast.qml`), `scripts/snip-ocr`, `scripts/snip-color`
@@ -130,7 +149,7 @@ Code: `scripts/devservices` (`show` = Test ohne Shell), `shell/services/DevServi
 - Geteilte Altports (3000, 5432 …) ordnen nichts zu – dafür Port-Blöcke (`projects/README.md`).
 - Start als Unit `devserver-<projekt>` (überlebt Shell-Neustart); startet nicht, wenn der erste App-Port schon belegt ist.
 - Von systemd/Quadlet verwaltete Container ohne Projekt (z. B. `systemd-anisette`) zählen nicht im Chip; Stoppen kann systemd rückgängig machen.
-- Chip-Klick öffnet immer den Reiter Services; Server nur per Super+Alt+U / Bar-Modus `H`.
+- Chip-Klick öffnet immer den Reiter Services; Server nur per Super+Alt+H / Bar-Modus `H`.
 
 ## Server (sshs)
 Code: `shell/services/Servers.qml`, Reiter in `DevPopout.qml`, `scripts/sshs`, `config/sshs/sshs_watcher.py`, `config/sshs/remote/` · Konfig: `config/consoles.json`, private Adressen in `~/.config/desktop/consoles.json` (gleiche `id` ersetzt Felder) · Terminal-Seite: [theming.md → sshs](theming.md#sshs)
@@ -140,14 +159,23 @@ Code: `shell/services/Servers.qml`, Reiter in `DevPopout.qml`, `scripts/sshs`, `
 - Der Watcher gibt nach 3 min ohne Prompt auf.
 
 ## Quicklinks & Git/CI
-Code: `shell/modules/workbar/QuickLinksPopup.qml`, `QuickLinksDots.qml`, `QuickLinksTip.qml`, `shell/services/GitInfo.qml` (`projectFor`, `gitEvery`/`ciEvery`), `scripts/gitinfo` · Konfig: `projects/projects.json` (nur über `scripts/project link …`)
+Code: `shell/modules/workbar/QuickLinksPopup.qml`, `QuickLinksDots.qml`, `QuickLinksTip.qml`, `QuickLinksStats.qml`, `shell/services/GitInfo.qml` (`projectFor`, `gitEvery`/`ciEvery`), `scripts/gitinfo` · Konfig: `projects/projects.json` (nur über `scripts/project link …`)
 - Projekt-Workspace = eigener Workspace-Name gleich Projekt-ID oder Anzeigename; „Workspace 2“ ohne Namen hat kein Projekt.
 - Globale Links (`scripts/project link global …`) erscheinen hier nicht.
 - CI braucht angemeldetes `gh` und ein github.com-Remote; Fehler bleiben still (kein Punkt).
+- Tastatur: Popup hat eigenen Handler (`keyTrap`), denn Hyprland gibt ihm die Tastatur bei Grab (Klick) und sobald die Maus darüber steht; im Workspace-Modus (Q) reicht sonst die Leiste die Tasten weiter.
+- Stats (`QuickLinksStats.qml`, `scripts/projectstats`): nur Hauptprojekt, nur beim Öffnen; Commits = Autor `user.email` des Repos auf lokalen Branches, +/− nur eigene Commits seit Mitternacht (Uncommittetes = „N changes“ der Git-Zeile); LOC ohne Lockfiles/Vendor/JSON/YAML, Cache nach HEAD in `~/.local/state/desktop/projectstats.json`.
 
-## Projektzeit & Tagesrückblick
-Code: `shell/services/ProjectTime.qml`, `Recap.qml`, `shell/modules/recap/`, `shell/modules/dashboard/ProjectTimeTile.qml`, `scripts/projecttime`, `scripts/recap` · Konfig: `~/.config/desktop/projecttime.json`, `~/.config/desktop/recap.json` · Daten: `~/.local/state/desktop/projecttime/YYYY-MM-DD.json`
+## Projektzeit
+Code: `shell/services/ProjectTime.qml`, Anzeige im Kachelkopf `shell/modules/workbar/WorkBar.qml`, `scripts/projecttime` · Konfig: `~/.config/desktop/projecttime.json` · Daten: `~/.local/state/desktop/projecttime/YYYY-MM-DD.json`
+- Kachel zeigt **heute** (ab 1 min, nicht auf Kacheln schmaler als 150 px); Woche nur im Tooltip – heute ist die Zahl, nach der man handelt, die Woche ändert sich kaum.
+- Wochenwert rechnet `scripts/projecttime week` beim Öffnen des Tooltips; ältere Wochen/Monate nur per CLI.
 - Von Hand korrigieren: `total` ändern (zählt überall); `spans` ist nur Verlauf.
 - Ein Inhibitor (Video/Call) lässt trotz Leerlauf weiterzählen.
-- `ProjectTimeTile` hängt noch nicht im Dashboard (Raster 12 × 3 voll): vierte Reihe oder eine 3er-Kachel ersetzen.
-- Recap zählt nur Commits mit Autor = `git config user.email` des Repos; abgehakte To-dos merkt es sich selbst (Todos kennt keine Zeit).
+
+## Externe Dienste: Drosselung
+Regel: nie im Sekunden-/Minutentakt gegen fremde APIs; bei Fehlern wachsender Abstand, `Retry-After` gilt.
+- Passwörter (icp): Timer 15 min + beim Öffnen ab 5 min alt; icp selbst ≥ 5 min Abstand, Backoff 5 min → 6 h, `~/.config/icp/state.json`.
+- Wetter (`Weather.qml`): 15 min; Fehler → 1, 2, 4 … 15 min. Mail 2 min / Kalender 5 min (eigene Timer), stats.fm ≥ 30 min, nach 429 30 min Pause.
+- GitHub-CI (`scripts/gitinfo`) je Projekt ≥ 5 min; Hue ist lokal (Bridge, 15 s nur bei offenem Popout); Favicons nur auf Abruf, Cache 30/7 Tage.
+- Spotify: siehe Abschnitt Spotify.

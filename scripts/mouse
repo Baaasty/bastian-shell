@@ -1,0 +1,362 @@
+#!/usr/bin/env -S python3 -I
+"""Maus G502 X PLUS über die Solaar-CLI (Gear-Popout der Shell). Doku: docs/knowledge/hardware.md
+
+  mouse status --json          Akku, Profil, DPI (solaar show; ~1 s)
+  mouse profile dump --json    aktives Onboard-Profil: DPI-Stufen, Standardstufe, Farbe (solaar profiles)
+  mouse save <json>            Änderungen ins aktive Onboard-Profil schreiben (Flash), z. B.
+                               mouse save '{"resolutions": [1200, 1600, 2000], "defaultIndex": 0, "color": "#FF3700"}'
+                               nur angegebene Felder; vorher einmalig Sicherung (g502-profiles.bak.yaml)
+  mouse restore                Sicherung zurückschreiben
+
+Geschrieben wird nur die Textstelle der geänderten Felder im frischen Dump (Rest bleibt Byte für Byte), danach prüft das
+Skript, dass sich sonst nichts geändert hat. Solaar schreibt nur Sektoren, die sich wirklich unterscheiden.
+Sperre wie scripts/rgb ($XDG_RUNTIME_DIR/desktop-rgb.lock): nie OpenRGB und Solaar gleichzeitig am Empfänger.
+"""
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+DEVICE = "G502 X PLUS"
+RUN = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+LOCK = RUN / "desktop-rgb.lock"
+STATE_DIR = Path.home() / ".local" / "state" / "desktop"
+BACKUP = STATE_DIR / "g502-profiles.bak.yaml"
+DPI_MIN, DPI_MAX = 100, 25600
+COLOR_SLOT = 1  # lighting[1] = Logo im aktiven Modus (dort steht die Farbe seit 2026-10-20)
+
+
+class Busy(Exception):
+    pass
+
+
+# ---------- Solaar ----------
+
+def solaar(args, timeout=30):
+    """-> (rc, stdout, stderr); stderr wird nur zum Einordnen gelesen, nie ausgegeben (Wayland-Warnungen)."""
+    exe = shutil.which("solaar")
+    if not exe:
+        return 127, "", "solaar fehlt"
+    try:
+        r = subprocess.run([exe, *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, "", "timeout"
+    return r.returncode, r.stdout, r.stderr
+
+
+class locked:
+    """Gemeinsame Sperre mit scripts/rgb; wait = Sekunden, die man warten will (sonst Busy)."""
+
+    def __init__(self, wait):
+        self.wait = wait
+
+    def __enter__(self):
+        RUN.mkdir(parents=True, exist_ok=True)
+        self.f = open(LOCK, "w")
+        end = time.monotonic() + self.wait
+        while True:
+            try:
+                fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except BlockingIOError:
+                if time.monotonic() >= end:
+                    self.f.close()
+                    raise Busy()
+                time.sleep(0.25)
+
+    def __exit__(self, *exc):
+        self.f.close()
+
+
+# ---------- Parser ----------
+
+def classify_error(rc, out, err):
+    text = (out + "\n" + err).lower()
+    if rc == 127:
+        return "nosolaar"
+    if "offline" in text:
+        return "asleep"
+    if "no device found" in text or "no online device" in text or "receiver not found" in text or "no supported device" in text:
+        return "absent"
+    return "error"
+
+
+def parse_show(text):
+    """Ausgabe von `solaar show <Gerät>` -> dict (ohne Seriennummern/IDs)."""
+    out = {"state": "ok", "name": DEVICE, "battery": None, "charging": False, "profile": None, "mode": "", "dpi": None}
+    if re.search(r"device is offline|^\s*Device is offline", text, re.I | re.M):
+        out["state"] = "asleep"
+    m = re.search(r"^\s*Battery:\s*(\d+)%(?:,\s*(?:BatteryStatus\.)?([A-Za-z_]+))?", text, re.M)
+    if m:
+        out["battery"] = int(m.group(1))
+        out["charging"] = (m.group(2) or "").upper() in ("RECHARGING", "ALMOST_FULL", "FULL", "SLOW_RECHARGE")
+    m = re.search(r"^\s*Onboard Profiles\s+:\s*(.+?)\s*$", text, re.M)
+    if m:
+        p = re.match(r"Profile\s+(\d+)", m.group(1))
+        out["profile"] = int(p.group(1)) if p else 0      # 0 = Onboard-Profile aus (Host-Modus)
+    m = re.search(r"^\s*Device Mode:\s*(.+?)\s*$", text, re.M)
+    if m:
+        out["mode"] = m.group(1)
+    m = re.search(r"^\s*Sensitivity \(DPI\)\s+:\s*(\d+)", text, re.M)
+    if m:
+        out["dpi"] = int(m.group(1))
+    m = re.search(r"^\s*Codename\s*:\s*(.+?)\s*$", text, re.M)
+    if m:
+        out["name"] = m.group(1)
+    return out
+
+
+def yaml_load(text):
+    """Solaars Dump mit eigenen Tags (!OnboardProfile, !Button …) als einfache dicts lesen – ohne Solaar-Module."""
+    import yaml
+
+    class Loader(yaml.SafeLoader):
+        pass
+
+    def any_tag(loader, suffix, node):
+        if isinstance(node, yaml.MappingNode):
+            return loader.construct_mapping(node, deep=True)
+        if isinstance(node, yaml.SequenceNode):
+            return loader.construct_sequence(node, deep=True)
+        return loader.construct_scalar(node)
+
+    Loader.add_multi_constructor("!", any_tag)
+    return yaml.load(text, Loader=Loader)
+
+
+def profile_info(data, num):
+    prof = (data or {}).get("profiles", {}).get(num)
+    if not isinstance(prof, dict):
+        raise ValueError(f"Profil {num} fehlt im Dump")
+    res = [int(r) for r in prof.get("resolutions", [])]
+    stages = [r for r in res if r > 0]
+    light = prof.get("lighting") or []
+    slot = light[COLOR_SLOT] if len(light) > COLOR_SLOT and isinstance(light[COLOR_SLOT], dict) else {}
+    color = slot.get("color") if slot.get("ID") == 1 else None
+    return {
+        "profile": num,
+        "profileName": prof.get("name") or "",
+        "resolutions": stages,
+        "slots": len(res),
+        "defaultIndex": int(prof.get("resolution_default_index", 0)),
+        "color": f"#{int(color):06X}" if isinstance(color, int) else "",
+    }
+
+
+# ---------- Patch (nur die Textstellen der geänderten Felder) ----------
+
+def _block(lines, num):
+    start = next((i for i, l in enumerate(lines) if re.match(rf"^  {num}: !OnboardProfile\s*$", l)), None)
+    if start is None:
+        raise ValueError(f"Profil {num} nicht im Dump gefunden")
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r"^ {0,2}\S", lines[i])), len(lines))
+    return start, end
+
+
+def _list_after(lines, start, end, key):
+    i = next((i for i in range(start, end) if lines[i].rstrip("\n") == f"    {key}:"), None)
+    if i is None:
+        raise ValueError(f"{key} nicht im Profil gefunden")
+    items = []
+    j = i + 1
+    while j < end and lines[j].startswith("    - "):
+        items.append(j)
+        j += 1
+    return items
+
+
+def patch_profile(text, num, resolutions=None, default_index=None, color=None):
+    lines = text.splitlines(keepends=True)
+    start, end = _block(lines, num)
+    if resolutions is not None:
+        idx = _list_after(lines, start, end, "resolutions")
+        if len(resolutions) > len(idx) or not resolutions:
+            raise ValueError(f"{len(resolutions)} DPI-Stufen, Profil hat {len(idx)} Plätze")
+        vals = list(resolutions) + [0] * (len(idx) - len(resolutions))
+        for j, v in zip(idx, vals):
+            lines[j] = f"    - {int(v)}\n"
+    if default_index is not None:
+        j = next((j for j in range(start, end) if re.match(r"^    resolution_default_index: \d+\s*$", lines[j])), None)
+        if j is None:
+            raise ValueError("resolution_default_index nicht gefunden")
+        lines[j] = f"    resolution_default_index: {int(default_index)}\n"
+    if color is not None:
+        idx = _list_after(lines, start, end, "lighting")
+        if len(idx) <= COLOR_SLOT:
+            raise ValueError("lighting zu kurz")
+        j = idx[COLOR_SLOT]
+        c = int(color.lstrip("#"), 16)
+        if re.search(r"\bID: 1\b", lines[j]) and re.search(r"color: 0x[0-9a-fA-F]{6}", lines[j]):
+            lines[j] = re.sub(r"color: 0x[0-9a-fA-F]{6}", f"color: 0x{c:06x}", lines[j])
+        else:
+            lines[j] = f"    - !LEDEffectSetting {{ID: 1, color: 0x{c:06x}, ramp: 2}}\n"
+    return "".join(lines)
+
+
+def changed_paths(a, b, path=""):
+    """Unterschiede zweier geladener Dumps als Pfadliste (zur Kontrolle, dass nur Gewolltes geändert ist)."""
+    if type(a) is not type(b):
+        return [path]
+    if isinstance(a, dict):
+        out = []
+        for k in set(a) | set(b):
+            out += changed_paths(a.get(k), b.get(k), f"{path}/{k}") if k in a and k in b else [f"{path}/{k}"]
+        return out
+    if isinstance(a, list):
+        if len(a) != len(b):
+            return [path]
+        out = []
+        for i, (x, y) in enumerate(zip(a, b)):
+            out += changed_paths(x, y, f"{path}/{i}")
+        return out
+    return [] if a == b else [path]
+
+
+def validate(req, info):
+    """Anfrage prüfen -> (resolutions, default_index, color) mit None für „nicht ändern“."""
+    res = req.get("resolutions")
+    if res is not None:
+        if not isinstance(res, list) or not res or len(res) > info["slots"]:
+            raise ValueError(f"resolutions: 1–{info['slots']} Stufen")
+        res = [int(v) for v in res]
+        if any(v < DPI_MIN or v > DPI_MAX for v in res):
+            raise ValueError(f"DPI {DPI_MIN}–{DPI_MAX}")
+    di = req.get("defaultIndex")
+    if di is not None:
+        di = int(di)
+        n = len(res if res is not None else info["resolutions"])
+        if not 0 <= di < n:
+            raise ValueError(f"defaultIndex 0–{n - 1}")
+    col = req.get("color")
+    if col is not None:
+        col = str(col).strip()
+        if not re.fullmatch(r"#?[0-9a-fA-F]{6}", col):
+            raise ValueError("color: #RRGGBB")
+        col = "#" + col.lstrip("#").upper()
+    # nur, was sich wirklich ändert
+    if res is not None and res == info["resolutions"]:
+        res = None
+    if di is not None and di == info["defaultIndex"]:
+        di = None
+    if col is not None and col == info["color"]:
+        col = None
+    return res, di, col
+
+
+# ---------- Befehle ----------
+
+def show():
+    rc, out, err = solaar(["show", DEVICE], timeout=20)
+    if rc != 0 and not out.strip():
+        return {"state": classify_error(rc, out, err)}
+    if rc != 0 and "Codename" not in out:
+        return {"state": classify_error(rc, out, err)}
+    return parse_show(out)
+
+
+def dump(st=None):
+    st = st or show()
+    if st.get("state") != "ok":
+        return st, None, None
+    if not st.get("profile"):
+        return {**st, "state": "noprofile"}, None, None
+    rc, out, err = solaar(["profiles", DEVICE], timeout=30)
+    if rc != 0 or "!OnboardProfiles" not in out:
+        return {**st, "state": classify_error(rc, out, err)}, None, None
+    data = yaml_load(out)
+    return {**st, **profile_info(data, st["profile"])}, out, data
+
+
+def cmd_status():
+    with locked(3):
+        return show()
+
+
+def cmd_dump():
+    with locked(3):
+        info, _, _ = dump()
+        return info
+
+
+def write_profiles(text):
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", prefix="g502-", dir=RUN, delete=False) as f:
+        f.write(text)
+        path = f.name
+    try:
+        rc, out, err = solaar(["profiles", DEVICE, path], timeout=90)
+    finally:
+        os.unlink(path)
+    m = re.search(r"Wrote (\d+) sectors", out)
+    if not m:
+        line = next((l for l in out.splitlines() if "not written" in l.lower() or "different" in l.lower() or "missing" in l.lower()), "")
+        raise RuntimeError(line or f"solaar profiles endete mit {rc}")
+    return int(m.group(1))
+
+
+def cmd_save(raw):
+    req = json.loads(raw)
+    if not isinstance(req, dict):
+        raise ValueError("JSON-Objekt erwartet")
+    with locked(90):
+        info, text, data = dump()
+        if text is None:
+            return info
+        res, di, col = validate(req, info)
+        if res is None and di is None and col is None:
+            return {**info, "written": 0, "note": "nichts geändert"}
+        # Sicherung einmalig vor dem ersten Schreiben (vom Zustand, den die Maus vorher hatte)
+        if not BACKUP.exists():
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            BACKUP.write_text(text)
+        new = patch_profile(text, info["profile"], res, di, col)
+        diff = changed_paths(data, yaml_load(new))
+        allowed = re.compile(rf"^/profiles/{info['profile']}/(resolutions/\d+|resolution_default_index|lighting/{COLOR_SLOT}(/.*)?)$")
+        bad = [p for p in diff if not allowed.match(p)]
+        if bad:
+            raise RuntimeError("Patch würde mehr ändern als gewollt: " + ", ".join(bad[:5]))
+        written = write_profiles(new)
+        after, _, _ = dump()
+        return {**after, "written": written}
+
+
+def cmd_restore():
+    if not BACKUP.exists():
+        raise RuntimeError(f"keine Sicherung ({BACKUP})")
+    with locked(90):
+        written = write_profiles(BACKUP.read_text())
+        after, _, _ = dump()
+        return {**after, "written": written}
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+    try:
+        if argv[0] == "status":
+            out = cmd_status()
+        elif argv[:2] == ["profile", "dump"]:
+            out = cmd_dump()
+        elif argv[0] == "save" and len(argv) > 1:
+            out = cmd_save(argv[1])
+        elif argv[0] == "restore":
+            out = cmd_restore()
+        else:
+            print(f"mouse: unbekannt: {' '.join(argv)} (mouse --help)", file=sys.stderr)
+            return 2
+    except Busy:
+        out = {"state": "busy"}
+    except (ValueError, RuntimeError, OSError) as e:
+        out = {"state": "error", "error": str(e)}
+    print(json.dumps(out))
+    return 0 if out.get("state") in ("ok", "busy", "asleep", "absent", "nosolaar", "noprofile") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

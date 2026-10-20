@@ -6,6 +6,7 @@ import Quickshell.Io
 // Elgato Key Light Air per HTTP (Port 9123, kein Key). Adresse aus secrets.json: keylight.host (mDNS-Name)
 // und keylight.ip (Fallback, falls mDNS scheitert). Beides leer = nicht eingerichtet (kein Polling).
 // Polling alle 10 s nur, solange active (watch(): Dashboard-Kachel oder Licht-Popout offen).
+// Automatik mit der Kamera: CamLight.qml (schaltet über autoSetOn, liest über query; Bedienung meldet userChanged).
 Singleton {
     id: root
 
@@ -53,25 +54,42 @@ Singleton {
             return;
         }
         if (Object.keys(pending).length === 0)
-            request("GET", null, false);
+            request("GET", null, false, null);
     }
+    // Bedienung durch Bastian (Popout, Kachel): CamLight gibt das Licht dann frei
+    signal userChanged
+
     function toggle(): void {
-        change({ on: on ? 0 : 1 });
-        on = !on;
+        setOn(!on);
     }
     function setOn(v: bool): void {
-        change({ on: v ? 1 : 0 });
-        on = v;
+        autoSetOn(v);
+        userChanged();
     }
     function setBrightness(p: real): void {
         const b = Math.max(3, Math.min(100, Math.round(p)));
         change({ brightness: b });
         brightness = b;
+        userChanged();
     }
     function setKelvin(k: real): void {
         const m = toMired(k);
         change({ temperature: m });
         kelvin = toKelvin(m);
+        userChanged();
+    }
+    // Schalten ohne userChanged (CamLight); das Licht behält dabei Helligkeit und Kelvin
+    function autoSetOn(v: bool): void {
+        change({ on: v ? 1 : 0 });
+        on = v;
+    }
+    // einmal lesen, unabhängig vom Polling: cb(ok, { on, brightness, kelvin }); nie länger als 2 × 3 s (Timeout + Rückfall-IP)
+    function query(cb: var): void {
+        if (!configured) {
+            cb(false, null);
+            return;
+        }
+        request("GET", null, false, cb);
     }
 
     // Änderung merken, gebündelt senden (Slider feuert oft)
@@ -92,7 +110,7 @@ Singleton {
         root.ready = true;
     }
 
-    function request(method: string, body: var, retried: bool): void {
+    function request(method: string, body: var, retried: bool, cb: var): void {
         if (!configured)
             return;
         const xhr = new XMLHttpRequest();
@@ -103,17 +121,23 @@ Singleton {
             if (xhr.status === 200) {
                 root.online = true;
                 // Poll-Antwort ignorieren, wenn gerade jemand am Regler ist
-                if (method === "PUT" || Date.now() - root.lastChange > 1500) {
-                    try {
-                        root.apply(JSON.parse(xhr.responseText));
-                    } catch (e) {}
-                }
+                let d = null;
+                try {
+                    d = JSON.parse(xhr.responseText);
+                } catch (e) {}
+                if (d && (method === "PUT" || Date.now() - root.lastChange > 1500))
+                    root.apply(d);
+                const l = d && d.lights && d.lights[0];
+                if (cb)
+                    cb(!!l, l ? { on: l.on === 1, brightness: l.brightness, kelvin: root.toKelvin(l.temperature) } : null);
             } else if (!retried && !root.useIp && root.fallbackIp !== "") {
                 root.useIp = true;
-                root.request(method, body, true);
+                root.request(method, body, true, cb);
             } else {
                 root.online = false;
                 root.ready = true;
+                if (cb)
+                    cb(false, null);
             }
         };
         xhr.open(method, root.url);
@@ -132,7 +156,7 @@ Singleton {
             const p = root.pending;
             root.pending = {};
             if (Object.keys(p).length > 0)
-                root.request("PUT", { numberOfLights: 1, lights: [p] }, false);
+                root.request("PUT", { numberOfLights: 1, lights: [p] }, false, null);
         }
     }
 

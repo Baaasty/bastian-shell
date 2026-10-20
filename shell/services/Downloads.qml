@@ -3,7 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Letzte Downloads für den Downloads-Chip in der Bar (DownloadsChip/DownloadsPopout).
+// Letzte Downloads für das Downloads-Popout (Rechtsklick auf den Dateimanager-Chip: FilesChip/DownloadsPopout).
 // Liest ~/Downloads (nur oberste Ebene, ohne versteckte Dateien) nach Änderungszeit; neu gelesen nur bei Ereignissen
 // (inotifywait, kein Dauer-Polling). Halbfertige Downloads (.part = Firefox, .crdownload = Chrome/Brave) zählen als „lädt…“,
 // ihre Größe wird nur bei offenem Popout alle 1,5 s nachgelesen.

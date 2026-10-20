@@ -23,6 +23,8 @@ Singleton {
     property var sim: ({ mic: [], cam: [], share: [] })
     // Kamera direkt über /dev/video (privacy-cam)
     property var camDirect: []
+    // Kamera wirklich in Benutzung (ohne Test-Einträge) – dafür schaltet CamLight.qml das Key Light
+    property bool camLive: false
 
     // eigene Prozesse nicht melden (die Shell selbst nimmt weder auf noch teilt sie)
     readonly property var ignore: ["quickshell", "qs"]
@@ -68,6 +70,7 @@ Singleton {
         }
         for (const n of camDirect)
             add(c, n);
+        const live = c.length > 0;
         for (const n of sim.mic)
             add(m, n);
         for (const n of sim.cam)
@@ -78,6 +81,8 @@ Singleton {
             mics = m;
         if (JSON.stringify(c) !== JSON.stringify(cams))
             cams = c;
+        if (live !== camLive)
+            camLive = live;
         if (JSON.stringify(s) !== JSON.stringify(shares))
             shares = s;
     }

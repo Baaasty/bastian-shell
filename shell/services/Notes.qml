@@ -2,11 +2,14 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "inbox.js" as Inbox
 
-// Gedanken parken (Super+N): Notizen landen als Markdown-Zeilen in einer Inbox-Datei (Standard ~/Notes/inbox.md).
-//   - [ ] 2026-10-18 20:15 Text #projekt        (weitere Zeilen eingerückt; "t "/"!" am Anfang = zusätzlich To-do)
-// Einstellungen von Hand in ~/.config/desktop/notes.json (path, todoPrefixes, todoList, savedMs) – siehe docs/knowledge/shell-features.md.
-// Kein Netz, keine KI. Entwurf bleibt in ~/.local/state/desktop/notes-draft.txt, bis er gespeichert wird.
+// Gedanken parken: das Eingabefeld oben im To-dos-Popout (TodoPopout.qml) schreibt Gedanken als Markdown-Zeilen in
+// eine Inbox-Datei (Standard ~/Notes/inbox.md), dort werden sie auch abgearbeitet (abhaken, zur Aufgabe, ins Backlog, löschen).
+//   - [ ] 2026-10-18 20:15 Text #projekt        (weitere Zeilen eingerückt; erledigt = "- [x]", bleibt als Verlauf)
+// "t "/"!" am Anfang = gleich eine Aufgabe (To-dos des aktuellen Desktops), landet dann nicht in der Inbox.
+// Einstellungen von Hand in ~/.config/desktop/notes.json (path, todoPrefixes, todoList) – siehe docs/knowledge/shell-features.md.
+// Text-Logik (Lesen, Abhaken, Löschen) in inbox.js, Test: scripts/tests/inbox-test.js. Kein Netz, keine KI.
 Singleton {
     id: root
 
@@ -16,10 +19,11 @@ Singleton {
     readonly property string path: expand(typeof cfg.path === "string" && cfg.path ? cfg.path : "~/Notes/inbox.md")
     readonly property var todoPrefixes: Array.isArray(cfg.todoPrefixes) ? cfg.todoPrefixes.filter(p => typeof p === "string" && p) : ["t ", "!"]
     readonly property string todoList: typeof cfg.todoList === "string" && cfg.todoList ? cfg.todoList : "current"   // "current" = Liste des aktuellen Desktops
-    readonly property int savedMs: cfg.savedMs > 0 ? cfg.savedMs : 1000
 
-    property string draft: ""     // Entwurf (bleibt bis zum nächsten Öffnen)
-    property int openCount: 0     // offene Zeilen "- [ ]" in der Inbox (nur lesen)
+    property var entries: []   // alle Einträge der Datei (inbox.js parse)
+    // offene Gedanken, neueste zuerst: der gerade geparkte steht direkt unter dem Eingabefeld
+    readonly property var items: entries.filter(e => !e.done).reverse()
+    readonly property int openCount: items.length
 
     signal saved(bool todo)
     signal failed
@@ -27,47 +31,76 @@ Singleton {
     function expand(p: string): string {
         return p === "~" ? home : p.startsWith("~/") ? home + p.slice(1) : p;
     }
-
-    // "t einkaufen" / "!einkaufen" -> { todo: true, body: "einkaufen" }
     function parse(text: string): var {
-        const t = text.trim();
-        const low = t.toLowerCase();
-        for (const p of todoPrefixes) {
-            if (low.startsWith(p.toLowerCase()) && t.slice(p.length).trim())
-                return { todo: true, body: t.slice(p.length).trim() };
-        }
-        return { todo: false, body: t };
+        return Inbox.parsePrefix(text, todoPrefixes);
+    }
+    function _todoTarget(): string {
+        return root.todoList === "current" ? Todos.current : root.todoList;
     }
 
-    // Eintrag als Markdown: erste Zeile mit Kästchen + Zeitstempel, Folgezeilen eingerückt
-    function format(body: string, todo: bool): string {
-        const lines = body.split("\n").map(l => l.replace(/\s+$/, ""));
-        const stamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd HH:mm");
-        let out = "- [ ] " + stamp + " " + lines[0] + (todo ? " #todo" : "");
-        for (const l of lines.slice(1))
-            out += "\n" + (l ? "    " + l : "");
-        return out;
-    }
-
-    // speichern: an die Inbox anhängen (Datei und Ordner werden bei Bedarf angelegt), danach saved/failed
+    // Enter im Eingabefeld: Gedanke an die Inbox anhängen (Datei und Ordner werden bei Bedarf angelegt) – mit Präfix
+    // direkt als Aufgabe. Danach saved/failed.
     function add(text: string): bool {
         const r = parse(text);
         if (!r.body)
             return false;
-        const job = { entry: format(r.body, r.todo), todo: r.todo, body: r.body };
-        _queue = _queue.concat([job]);
-        _next();
+        if (r.todo) {
+            Todos.add(_todoTarget(), r.body.replace(/\s*\n\s*/g, " "));
+            root.saved(true);
+            return true;
+        }
+        _run({ entry: Inbox.format(r.body, Qt.formatDateTime(new Date(), "yyyy-MM-dd HH:mm")) });
         return true;
     }
 
+    // ---------- Abarbeiten (Eintrag = Objekt aus items) ----------
+    function done(e: var): void {
+        _run({ edit: t => Inbox.markDone(t, e.key, e.nth) });
+    }
+    function remove(e: var): void {
+        _run({ edit: t => Inbox.remove(t, e.key, e.nth) });
+    }
+    // wird Aufgabe (To-dos des aktuellen Desktops), in der Inbox abgehakt
+    function toTodo(e: var): void {
+        Todos.add(_todoTarget(), e.text.replace(/\s*\n\s*/g, " "));
+        done(e);
+    }
+    // wird Idee im docs/BACKLOG.md des Projekts (scripts/backlog); abgehakt erst, wenn das geklappt hat
+    function toBacklog(e: var, projectPath: string): void {
+        Todos.backlogAdd(projectPath, e.text.replace(/\s*\n\s*/g, " "), () => root.done(e));
+    }
+
+    // Schreiben nacheinander (Anhängen läuft als Prozess, Ändern direkt), damit sich nichts überholt
     property var _queue: []
+    function _run(job: var): void {
+        _queue = _queue.concat([job]);
+        _next();
+    }
     function _next(): void {
-        if (writer.running || writer.job || !_queue.length)
+        while (!writer.running && !writer.job && _queue.length) {
+            const job = _queue[0];
+            _queue = _queue.slice(1);
+            if (job.edit) {
+                _edit(job.edit);
+                continue;
+            }
+            writer.job = job;
+            writer.command = ["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" >> "$1"', "sh", path, job.entry];
+            writer.running = true;
+        }
+    }
+    // frisch lesen (Datei kann von Hand geändert sein), ändern, schreiben; null = Eintrag nicht mehr da
+    function _edit(fn: var): void {
+        inbox.reload();
+        const before = inbox.text();
+        const after = fn(before);
+        if (after === null) {
+            console.warn("notes: entry no longer in " + root.path + " (changed by hand?)");
+            root.entries = Inbox.parse(before);
             return;
-        writer.job = _queue[0];
-        _queue = _queue.slice(1);
-        writer.command = ["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf "%s\\n" "$2" >> "$1"', "sh", path, writer.job.entry];
-        writer.running = true;
+        }
+        inbox.setText(after);
+        root.entries = Inbox.parse(after);
     }
     Process {
         id: writer
@@ -77,10 +110,8 @@ Singleton {
             writer.job = null;
             if (j) {
                 if (code === 0) {
-                    if (j.todo)
-                        Todos.add(root.todoList === "current" ? Todos.current : root.todoList, j.body.replace(/\s*\n\s*/g, " "));
                     inbox.reload();   // Datei kann neu entstanden sein (dann greift watchChanges erst danach)
-                    root.saved(j.todo);
+                    root.saved(false);
                 } else {
                     console.warn("notes: could not write " + root.path + " (exit " + code + ")");
                     root.failed();
@@ -108,64 +139,46 @@ Singleton {
         onLoadFailed: root.cfg = ({})
     }
 
-    // ---------- Zähler offener Notizen (billig: Datei lesen, bei Änderung neu zählen) ----------
+    // ---------- Inbox-Datei (bei Änderung neu einlesen; blockierend, damit _edit immer den frischen Stand ändert) ----------
     FileView {
         id: inbox
         path: root.path
         watchChanges: true
+        blockAllReads: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: root.openCount = (text().match(/^- \[ \] /gm) || []).length
-        onLoadFailed: root.openCount = 0
+        onLoaded: root.entries = Inbox.parse(text())
+        onLoadFailed: root.entries = []
     }
 
-    // ---------- Entwurf ----------
-    property bool _draftReady: false
-    FileView {
-        id: draftFile
-        path: root.home + "/.local/state/desktop/notes-draft.txt"
-        printErrors: false
-        onLoaded: {
-            if (!root.draft)
-                root.draft = text();
-            root._draftReady = true;
-        }
-        onLoadFailed: root._draftReady = true
-    }
-    Timer {
-        id: persist
-        interval: 700
-        onTriggered: draftFile.setText(root.draft)
-    }
-    onDraftChanged: if (_draftReady) persist.restart()
-
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call inbox …
     IpcHandler {
-        target: "notes"
-        function open(): void {
-            root.requestOpen(true);
-        }
-        function toggle(): void {
-            root.requestOpen(false);
-        }
-        function close(): void {
-            root.requestClose();
-        }
-        // zum Testen: speichert direkt (ohne Fenster), gleiche Regeln wie Enter im Feld
+        target: "inbox"
+        // gleiche Regeln wie Enter im Eingabefeld ("t …" = Aufgabe)
         function add(text: string): void {
             root.add(text);
         }
         function count(): string {
             return String(root.openCount);
         }
-    }
-
-    // Fenster (NotesWindow) lauscht darauf
-    signal openRequested(bool forceOpen)
-    signal closeRequested
-    function requestOpen(forceOpen: bool): void {
-        openRequested(forceOpen);
-    }
-    function requestClose(): void {
-        closeRequested();
+        function list(): string {
+            return JSON.stringify(root.items.map(e => ({ date: e.date, time: e.time, text: e.text })));
+        }
+        // neuesten offenen Gedanken mit genau diesem Text abhaken (zum Testen)
+        function done(text: string): string {
+            const e = root.items.find(x => x.text === text.trim());
+            if (!e)
+                return "not found";
+            root.done(e);
+            return "ok";
+        }
+        // neuesten offenen Gedanken mit genau diesem Text löschen (zum Testen)
+        function remove(text: string): string {
+            const e = root.items.find(x => x.text === text.trim());
+            if (!e)
+                return "not found";
+            root.remove(e);
+            return "ok";
+        }
     }
 }

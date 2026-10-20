@@ -3,30 +3,38 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Bar-Modus (AP 22, Tastatur zuerst): Super+B, dann ein Buchstabe öffnet das Popout des Chips; Esc oder nochmal Super+B = zu.
+// Bar-Modus (AP 22, Tastatur zuerst): Super+Leertaste, dann ein Buchstabe öffnet das Popout des Chips; Esc oder nochmal = zu.
 // Gleiche Logik wie der Workspace-Modus (WorkBar.qml): die Bar holt sich die Tastatur (BarWindow), solange der Modus läuft
 // oder ein per Taste geöffnetes Popout offen ist. Die Chips hören auf openRequested(name) und zeigen ihren Buchstaben,
-// solange modeOn ist. Einzelkürzel (Super+Alt+S/Z/L) gehen über dieselbe IPC: `barmode popout <name>`.
+// solange modeOn ist. Einzelkürzel für jeden Eintrag (Super+F/T/A/E/B/I, sonst Super+Alt+<Buchstabe>) gehen über dieselbe
+// IPC: `barmode popout <name>`.
 // IPC: qs ipc call barmode toggle|open|close|state|key <Buchstabe>|popout <name>
 Singleton {
     id: root
 
-    // Buchstabe → Popout (name = Popouts-Kennung des Popouts). Reihenfolge = Hinweiszeile.
+    // Buchstabe → Popout (name = Popouts-Kennung des Popouts). Reihenfolge wie in der Bar (links → rechts) = Hinweiszeile,
+    // Kürzel-Menü (Super+K) und docs/knowledge/hotkeys.md. Einzelkürzel je Eintrag: hypr/binds.conf, Abschnitt Topbar.
+    // Tray = Y (sYstray): T gehört den Tasks (Super+T), Y ist frei und liegt auf QWERTZ links unten bei Super/Alt.
+    // action: kein Popout, der Chip tut direkt etwas (actionRequested) – z. B. Dateimanager, Browser
     readonly property var entries: [
-        { key: "S", name: "mixer", label: "Sound" },
-        { key: "N", name: "net", label: "Network" },
-        { key: "L", name: "light", label: "Light" },
-        { key: "R", name: "resources", label: "Resources" },
-        { key: "D", name: "downloads", label: "Downloads" },
-        { key: "V", name: "devservices", label: "Dev" },
+        { key: "F", name: "focus", label: "Focus" },
+        { key: "T", name: "todo", label: "Tasks" },
+        { key: "A", name: "claudehub", label: "Agents" },
         { key: "M", name: "spotify", label: "Music" },
         { key: "C", name: "discord", label: "Chat" },
-        { key: "T", name: "tray", label: "Tray" },
-        { key: "U", name: "updates", label: "Updates" },
+        { key: "V", name: "devservices", label: "Dev" },
         { key: "H", name: "servers", label: "Servers" },
-        { key: "A", name: "claudehub", label: "Claude" },
-        { key: "O", name: "todo", label: "To-dos" },
-        { key: "F", name: "focus", label: "Focus" },
+        { key: "R", name: "resources", label: "Resources" },
+        { key: "L", name: "light", label: "Light" },
+        { key: "G", name: "gear", label: "Gear" },
+        { key: "S", name: "mixer", label: "Sound" },
+        { key: "N", name: "net", label: "Network" },
+        { key: "E", name: "files", label: "Files", action: true },
+        { key: "D", name: "downloads", label: "Downloads" },
+        { key: "B", name: "browser", label: "Browser", action: true },
+        { key: "I", name: "settings", label: "Settings", action: true },
+        { key: "U", name: "updates", label: "Updates" },
+        { key: "Y", name: "tray", label: "Tray" },
         { key: "Z", name: "notifs", label: "Notifications" }
     ]
 
@@ -50,6 +58,8 @@ Singleton {
 
     // an die Chips: dieses Popout per Tastatur öffnen (grab = mit Fokus-Griff)
     signal openRequested(string name, bool grab)
+    // an Chips ohne Popout (entries mit action): jetzt auslösen
+    signal actionRequested(string name)
     // an Popouts mit Reitern (aliases): vor dem Öffnen auf diesen Reiter schalten
     signal tabRequested(string name, string tab)
     // an Popups.qml: Benachrichtigungen per Tastatur (an/aus)
@@ -57,6 +67,10 @@ Singleton {
     // Test ohne Tastatur (IPC step/enter): Chip-Auswahl wie ←/→
     signal stepRequested(int d)
 
+    function isAction(name: string): bool {
+        const e = entries.find(x => x.name === name);
+        return !!e && e.action === true;
+    }
     function keyFor(name: string): string {
         const e = entries.find(x => x.name === name);
         return e ? e.key : "";
@@ -85,7 +99,7 @@ Singleton {
     }
     // Einzelkürzel: erst Tastatur holen, beim nächsten Tasten-Ereignis öffnen (fire)
     function arm(name: string): void {
-        if (name === "notifs" || name === "updates" || kbOpen === (aliases[name] ? aliases[name].name : name))
+        if (name === "notifs" || name === "updates" || isAction(name) || kbOpen === (aliases[name] ? aliases[name].name : name))
             return popout(name, true);
         modeOn = false;
         fromMode = false;
@@ -129,6 +143,11 @@ Singleton {
         // Benachrichtigungen haben kein Bar-Popout: die Popup-Karten selbst gehen in den Tastatur-Modus (Popups.qml)
         if (name === "notifs") {
             notifsRequested();
+            return;
+        }
+        // Aktions-Chips: kein Popout, also auch keine Tastatur behalten
+        if (isAction(name)) {
+            actionRequested(name);
             return;
         }
         // Updates: der Chip öffnet den Paketmanager (eigenes Panel mit Tastatur)

@@ -5,7 +5,7 @@ import qs.config
 import qs.services
 import qs.components
 
-// Downloads-Popout unter dem Downloads-Chip (Klick öffnet, Klick daneben / Esc schließt).
+// Downloads-Popout unter dem Dateimanager-Chip (FilesChip: Rechtsklick öffnet, Klick daneben / Esc schließt).
 // Die letzten Downloads (Downloads.count, Standard 12) nach Zeit; Suchfeld durchsucht den ganzen Ordner.
 // Zeile klicken = öffnen (xdg-open über Launch), Ordner-Knopf = im Dateimanager zeigen, ziehen = Datei in eine App legen
 // (text/uri-list). „Clean up“ legt Einträge älter als N Tage nach Rückfrage in den Papierkorb (gio trash).
@@ -283,7 +283,7 @@ PopupWindow {
         id: card
         // offen bis zum Weghovern (PopoutGuard.qml)
         PopoutGuard { id: guard; popout: pop; chip: pop.chip; name: "downloads" }
-        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+B, KeyNav.qml)
+        // Tastatur: Pfeile/Tab/Enter, Bar-Modus (Super+Leertaste, KeyNav.qml)
         Keys.onPressed: e => nav.key(e)
         KeyNav { id: nav; root: card; scope: null; popout: pop; guard: guard; name: "downloads" }
         width: pop.cardW
