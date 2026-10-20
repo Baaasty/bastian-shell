@@ -33,6 +33,8 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
   alle 195 Antworten gleich (`scripts/fastprobe bench`). Geht nur, weil das Voice-Modul `ioctl` aus der libc importiert
   (kein Syscall direkt) – nach Discord-Updates prüfen: `nm -D …/discord_voice.node | grep ioctl`.
   Rückweg: `scripts/fastprobe off` (oder `.so` löschen) + Discord neu starten; Env `DESKTOP_FASTPROBE=0`, `…_DEBUG=1`.
+  Wirkt erst ab dem nächsten Discord-Start über `scripts/app-run` – ob aktiv: `scripts/fastprobe status` muss
+  „geladen in Discord-PID …“ zeigen (`/proc/<pid>/environ` taugt nicht, Chromium überschreibt es).
 - Hängt sich die Kamera beim Starten/Stoppen von Streams auf, hilft nur Abstecken.
 - **Offen:** ob `brightness` im Auto-Modus das AE-Ziel verschiebt oder nur aufhellt. Reicht es nicht, der Reihe nach:
   Metering auf Mitte (Sel 8, die eigentliche Gegenlicht-Lösung), AE-Lock (Sel 25), zuletzt Software-Filter per
@@ -87,6 +89,9 @@ Stolperfallen:
 - **Schreiben nur ins Onboard-Profil** (Flash, `mouse save`): frischer Dump, nur die Textzeilen der geänderten Felder ersetzt,
   danach Prüfung, dass sich sonst nichts ändert; Solaar schreibt nur Sektoren, die sich unterscheiden. Vor dem ersten
   Schreiben einmalig Sicherung `~/.local/state/desktop/g502-profiles.bak.yaml`; zurück mit `scripts/mouse restore`.
+- **Regenbogen statt Profilfarbe:** Byte 252 im Profil-Sektor = `custom_animation_index` (libratbag-Quirk `G502X_PLUS`);
+  ≠ 0 spielt die Firmware ihre Animation statt `lighting[1]`. Solaar kennt es nicht und schreibt 0xff → `mouse save`/`restore`
+  setzen es danach auf 0, von Hand `scripts/mouse fix-light` (2026-10-20).
 - `rgb_control` bleibt `false`, `rgb.json` `skip: ["G502"]` bleibt – sonst übersteuern Solaar/OpenRGB das Profil „live“.
 - `scripts/mouse` und `scripts/rgb` teilen die Sperre `$XDG_RUNTIME_DIR/desktop-rgb.lock`: nie OpenRGB und Solaar gleichzeitig
   am Lightspeed-Empfänger. Ist sie belegt, meldet `mouse status` nur `busy` (die Shell behält die alten Werte).

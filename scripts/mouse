@@ -7,6 +7,7 @@
                                mouse save '{"resolutions": [1200, 1600, 2000], "defaultIndex": 0, "color": "#FF3700"}'
                                nur angegebene Felder; vorher einmalig Sicherung (g502-profiles.bak.yaml)
   mouse restore                Sicherung zurückschreiben
+  mouse fix-light              Profil-Byte custom_animation_index auf 0 (sonst Regenbogen statt Profilfarbe)
 
 Geschrieben wird nur die Textstelle der geänderten Felder im frischen Dump (Rest bleibt Byte für Byte), danach prüft das
 Skript, dass sich sonst nichts geändert hat. Solaar schreibt nur Sektoren, die sich wirklich unterscheiden.
@@ -299,6 +300,53 @@ def write_profiles(text):
     return int(m.group(1))
 
 
+ANIM_BYTE = 252  # custom_animation_index im Profil-Sektor (libratbag, Quirk G502X_PLUS)
+
+
+def fix_animation_index():
+    """Byte 252 des aktiven Profils auf 0 -> Firmware nimmt lighting[1] statt ihrer eigenen Animation.
+    Solaar kennt das Feld nicht und füllt es beim Schreiben mit 0xff = Regenbogen (2026-10-20).
+    Läuft innerhalb der Sperre des Aufrufers. -> True, wenn geschrieben."""
+    try:
+        return _fix_animation_index()
+    except Exception as e:  # Solaar-Bibliothek wirft eigene Typen (FeatureCallError …)
+        raise RuntimeError(f"fix-light: {e!r}") from None
+
+
+def _fix_animation_index():
+    import contextlib
+    import logging
+    logging.disable(logging.CRITICAL)
+    with contextlib.redirect_stdout(sys.stderr):  # stdout bleibt reines JSON
+        from logitech_receiver import common
+        from logitech_receiver.hidpp20 import OnboardProfiles
+        from logitech_receiver.hidpp20_constants import SupportedFeature as F
+        from solaar.cli import _find_device, _receivers_and_devices
+        dev = next(_find_device(list(_receivers_and_devices()), DEVICE.lower()), None)
+        if dev is None or not dev.online:
+            return False
+        info = dev.feature_request(F.ONBOARD_PROFILES, 0x00)
+        size = int.from_bytes(info[7:9], "big")
+        cur = dev.feature_request(F.ONBOARD_PROFILES, 0x40)
+        sector = int.from_bytes(cur[0:2], "big")
+        if size <= ANIM_BYTE + 2 or not 1 <= sector < info[6]:   # nur beschreibbare Flash-Sektoren
+            return False
+        b = OnboardProfiles.read_sector(dev, sector, size)
+        if b[ANIM_BYTE] == 0 or common.crc16(b[:-2]) != int.from_bytes(b[-2:], "big"):
+            return False
+        nb = b[:ANIM_BYTE] + b"\x00" + b[ANIM_BYTE + 1:-2]
+        nb += common.int2bytes(common.crc16(nb), 2)
+        OnboardProfiles.write_sector(dev, sector, nb)
+        dev.feature_request(F.ONBOARD_PROFILES, 0x30, cur[0:2])   # Profil neu laden
+        return True
+
+
+def cmd_fix_light():
+    with locked(90):
+        fixed = fix_animation_index()
+        return {**show(), "fixed": fixed}
+
+
 def cmd_save(raw):
     req = json.loads(raw)
     if not isinstance(req, dict):
@@ -321,6 +369,10 @@ def cmd_save(raw):
         if bad:
             raise RuntimeError("Patch würde mehr ändern als gewollt: " + ", ".join(bad[:5]))
         written = write_profiles(new)
+        try:
+            fix_animation_index()
+        except RuntimeError:
+            pass  # Profil ist geschrieben; fix-light lässt sich nachholen
         after, _, _ = dump()
         return {**after, "written": written}
 
@@ -330,6 +382,10 @@ def cmd_restore():
         raise RuntimeError(f"keine Sicherung ({BACKUP})")
     with locked(90):
         written = write_profiles(BACKUP.read_text())
+        try:
+            fix_animation_index()
+        except RuntimeError:
+            pass  # Profil ist geschrieben; fix-light lässt sich nachholen
         after, _, _ = dump()
         return {**after, "written": written}
 
@@ -347,6 +403,8 @@ def main(argv):
             out = cmd_save(argv[1])
         elif argv[0] == "restore":
             out = cmd_restore()
+        elif argv[0] == "fix-light":
+            out = cmd_fix_light()
         else:
             print(f"mouse: unbekannt: {' '.join(argv)} (mouse --help)", file=sys.stderr)
             return 2
