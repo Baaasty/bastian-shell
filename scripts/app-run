@@ -72,9 +72,9 @@ case "$(which_app "$app")" in
             fi
         fi
         if [ "$app" = discord ] || [ "$app" = equibop ]; then
-            # Absturz alle paar Minuten im Call (SIGSEGV in libnvcuvid): Video-Dekodieren über VA-API → nvidia-vaapi-driver
-            # (offiziell nur für Firefox). Darum ohne Hardware-Videodekodierung; Zeichnen bleibt auf der GPU.
-            # Unbekannter Treibername = VA-API startet nicht, auch nicht im eigenen Voice-Modul von Discord.
+            # Ohne Hardware-Videodekodierung über VA-API (nvidia-vaapi-driver, offiziell nur für Firefox); Zeichnen bleibt
+            # auf der GPU. Unbekannter Treibername = VA-API startet nicht, auch nicht im Voice-Modul von Discord.
+            # Gegen den SIGSEGV in libnvcuvid hilft das NICHT – der kommt aus NVENC (Hardware-Kodierung), siehe discord.md.
             export LIBVA_DRIVER_NAME=none
             set -- --disable-accelerated-video-decode "$@"
         fi

@@ -9,7 +9,7 @@
 //
 // Renderer-Seite:
 //  - liest Stores (VoiceStateStore, MediaEngineStore, …) und schickt bei jeder Änderung einen Zustand ("S"),
-//  - führt Befehle der Shell aus (Mic/Taub/Verlassen/Beitreten/Lautstärke),
+//  - führt Befehle der Shell aus (Mic/Taub/Kamera/Bildschirm/Verlassen/Beitreten/Lautstärke),
 //  - greift NUR die von der Shell gepinnten Kameras/Streams ab und schickt sie als JPEG ("F"). Quelle: direkt Discords
 //    Video-Engine (wie Discords eigene Kacheln: VideoStreamStore -> streamId -> createDiscordStream + DirectVideoOutputSink,
 //    Discords Referenzzählung), gelesen per MediaStreamTrackProcessor -> geht auch ohne sichtbare Call-Ansicht und bei
@@ -18,7 +18,7 @@
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy, findStoreLazy } from "@webpack";
-import { ChannelActions, ChannelStore, FluxDispatcher, GuildChannelStore, GuildMemberStore, GuildStore, MediaEngineStore, NavigationRouter, SelectedChannelStore, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
+import { ApplicationStreamingSettingsStore, ApplicationStreamingStore, ChannelActions, ChannelStore, FluxDispatcher, GuildChannelStore, GuildMemberStore, GuildStore, MediaEngineStore, NavigationRouter, SelectedChannelStore, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 
 const Native = VencordNative.pluginHelpers.DesktopBridge as PluginNative<typeof import("./native")>;
 
@@ -29,6 +29,14 @@ const VideoStreamStore = findStoreLazy("VideoStreamStore");
 // „CallCameraOverlay“ eines Kollegen von Bastian)
 const ChannelRTCStore = findStoreLazy("ChannelRTCStore");
 const acquireDirect: (streamId: string) => { stream: MediaStream; release(): void; } = findByCodeLazy("addDirectVideoOutputSink(", "addref()");
+// Bildschirm übertragen wie Discords eigener Knopf unter Linux: erst den nativen Picker des Voice-Moduls zeigen
+// (presentNativeScreenSharePicker → Portal/Share-Picker). Discords eigener Rückruf startet danach selbst
+// „[startStreamWithSource] prepicked:screen“, capture_linux holt die Bilder über PipeWire.
+// Direkt STREAM_START mit „prepicked:screen“ ohne Picker → „No screencast portal config available“, schwarz;
+// getDesktopSources liefert unter Wayland nur XWayland-Fenster (window:N) → ebenfalls schwarz.
+// STREAM_START wie Equicords „InstantScreenshare“ (GPL-3.0) bleibt nur als Rückfall, falls der Picker fehlt.
+const startStream = findByCodeLazy('type:"STREAM_START"');
+const stopStream = findByCodeLazy('type:"STREAM_STOP"');
 
 const settings = definePluginSettings({
     fps: {
@@ -324,12 +332,51 @@ async function readFrames(src: Source) {
             const { value, done } = await src.reader.read();
             if (done || !value) break;
             if (src.dead) { value.close(); break; }
+            if (isRotated(value)) {
+                // Handy hochkant: Bild kommt quer + „90° drehen“; drawImage(VideoFrame) rechnet das falsch ein
+                // (Ausschnitt um 16:9 vergrößert) → für diese Quelle das <video> nehmen, das dreht wie Discords Kachel
+                value.close();
+                src.frame?.close();
+                src.frame = null;
+                try { src.reader?.cancel(); } catch { /* schon zu */ }
+                src.reader = null;
+                try { src.clone?.stop(); } catch { /* schon zu */ }
+                src.clone = null;
+                attachVideo(src);
+                return;
+            }
             src.frame?.close();          // nur das neueste Bild behalten, sonst staut sich Discords Bildpuffer
             src.frame = value;
             src.n++;
         }
     } catch { /* Track beendet */ }
     if (!src.dead) src.dead = true;      // nächste Runde holt die Quelle neu
+}
+
+// gedreht: Rotations-Angabe (neuere Chromium) oder Kodier- und Anzeigeformat zeigen in verschiedene Richtungen
+function isRotated(f: VideoFrame): boolean {
+    const rot = (f as any).rotation;
+    if (typeof rot === "number" && rot % 180 !== 0) return true;
+    return f.codedWidth > f.codedHeight !== f.displayWidth > f.displayHeight && f.codedWidth !== f.codedHeight;
+}
+
+// Rückfall: verstecktes <video> (läuft weiter, weil Hintergrund-Drosselung aus ist)
+function attachVideo(src: Source) {
+    if (!hiddenBox) {
+        hiddenBox = document.createElement("div");
+        hiddenBox.style.cssText = "position:fixed;left:-10000px;top:0;width:320px;height:180px;opacity:0;pointer-events:none";
+        document.body.appendChild(hiddenBox);
+    }
+    const v = document.createElement("video");
+    v.muted = true;
+    v.autoplay = true;
+    v.playsInline = true;
+    v.width = 320;
+    v.height = 180;
+    v.srcObject = src.handle.stream;
+    hiddenBox.appendChild(v);
+    v.play().catch(() => { /* kommt mit dem ersten Bild */ });
+    src.video = v;
 }
 
 function openSource(key: string, streamId: string): Source | null {
@@ -366,22 +413,7 @@ function openSource(key: string, streamId: string): Source | null {
         readFrames(src);
         return src;
     } else {
-        // Rückfall: verstecktes <video> (läuft weiter, weil Hintergrund-Drosselung aus ist)
-        if (!hiddenBox) {
-            hiddenBox = document.createElement("div");
-            hiddenBox.style.cssText = "position:fixed;left:-10000px;top:0;width:320px;height:180px;opacity:0;pointer-events:none";
-            document.body.appendChild(hiddenBox);
-        }
-        const v = document.createElement("video");
-        v.muted = true;
-        v.autoplay = true;
-        v.playsInline = true;
-        v.width = 320;
-        v.height = 180;
-        v.srcObject = handle.stream;
-        hiddenBox.appendChild(v);
-        v.play().catch(() => { /* kommt mit dem ersten Bild */ });
-        src.video = v;
+        attachVideo(src);
     }
     sources.set(key, src);
     return src;
@@ -443,6 +475,49 @@ function setDeaf(want: boolean) {
     if (MediaEngineStore.isSelfDeaf() !== want) VoiceActions.toggleSelfDeaf();
 }
 
+// Kamera wie Equicords „ToggleVideoBind“: dasselbe Ereignis wie Discords eigener Kamera-Knopf
+function setVideo(want: boolean) {
+    if (MediaEngineStore.isVideoEnabled() !== want)
+        FluxDispatcher.dispatch({ type: "MEDIA_ENGINE_SET_VIDEO_ENABLED", enabled: want });
+}
+
+// eigener laufender Stream; Schlüssel wie Discord: guild:<gid>:<cid>:<uid> bzw. call:<cid>:<uid>
+function ownStreamKey(): string {
+    const s = ApplicationStreamingStore.getCurrentUserActiveStream?.();
+    if (!s) return "";
+    return s.streamType === "guild" ? `guild:${s.guildId}:${s.channelId}:${s.ownerId}` : `call:${s.channelId}:${s.ownerId}`;
+}
+
+async function setStream(want: boolean) {
+    const key = ownStreamKey();
+    if (!want) {
+        if (key) stopStream(key);
+        return;
+    }
+    if (key) return;
+    const cid = SelectedChannelStore.getVoiceChannelId();
+    const channel = cid ? ChannelStore.getChannel(cid) : null;
+    if (!channel) return;
+    try {
+        const voice = (window as any).DiscordNative?.nativeModules?.requireModule?.("discord_voice");
+        if (typeof voice?.presentNativeScreenSharePicker === "function") {
+            console.log("[DesktopBridge] stream: native picker");
+            voice.presentNativeScreenSharePicker();
+            return;
+        }
+        console.log("[DesktopBridge] stream: no native picker, STREAM_START prepicked");
+        const { soundshareEnabled } = ApplicationStreamingSettingsStore.getState();
+        startStream(channel.guild_id ?? null, cid, {
+            pid: null, sourceId: "prepicked:screen", sourceName: "A window, screen or app", audioSourceId: "A window, screen or app",
+            sound: soundshareEnabled, previewDisabled: false
+        });
+    } catch (e) {
+        // async: der try/catch in tick() sieht das nicht mehr
+        event({ event: "actionFailed", action: "stream", message: "Couldn’t start the stream" });
+        console.warn("[DesktopBridge] stream failed", e);
+    }
+}
+
 function channelPeople(id: string) {
     const ch = ChannelStore.getChannel(id);
     if (!ch) return { id, missing: true, members: [] };
@@ -468,6 +543,8 @@ function runCommand(line: string) {
     switch (op) {
         case "mute": setMute(a === "1"); break;
         case "deaf": setDeaf(a === "1"); break;
+        case "video": setVideo(a === "1"); break;
+        case "stream": setStream(a === "1"); break;
         case "leave": ChannelActions.selectVoiceChannel(null); break;
         case "join": if (num(a)) ChannelActions.selectVoiceChannel(a); break;
         case "umute": {
@@ -588,6 +665,9 @@ export default definePlugin({
         AUDIO_TOGGLE_SELF_DEAF: schedulePublish,
         AUDIO_SET_LOCAL_VOLUME: schedulePublish,
         AUDIO_TOGGLE_LOCAL_MUTE: schedulePublish,
+        MEDIA_ENGINE_SET_VIDEO_ENABLED: schedulePublish,
+        STREAM_CREATE: schedulePublish,
+        STREAM_DELETE: schedulePublish,
         RTC_CONNECTION_STATE: schedulePublish
     },
 

@@ -34,7 +34,7 @@ PopupWindow {
     anchor.edges: Edges.Bottom | Edges.Right
     anchor.gravity: Edges.Bottom | Edges.Left
     // feste Fenstergröße, sichtbar/klickbar ist nur die Karte (Maske) -> Höhe kann weich animieren
-    implicitWidth: 360
+    implicitWidth: 432     // Platz für vier Knöpfe mit Text („Deafen“, „Stream“ ungekürzt) + Verlassen-Symbol
     implicitHeight: maxCardHeight + 8
     color: "transparent"
     visible: false
@@ -233,8 +233,8 @@ PopupWindow {
         Behavior on border.color { ColorAnimation { duration: pop.quick } }
         Row {
             anchors.centerIn: parent
-            width: Math.min(implicitWidth, cb.width - 16)
-            spacing: 6
+            width: Math.min(implicitWidth, cb.width - 10)
+            spacing: 4
             Icon {
                 id: cbIcon
                 anchors.verticalCenter: parent.verticalCenter
@@ -246,7 +246,8 @@ PopupWindow {
             }
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.min(implicitWidth, cb.width - 16 - cbIcon.width - 6)
+                visible: cb.text !== ""      // nur Symbol (Leave): sonst sitzt es um den Abstand schief
+                width: Math.min(implicitWidth, cb.width - 10 - cbIcon.width - 4)
                 text: cb.text
                 color: cb.primary ? Theme.accentText : Theme.text
                 Behavior on color { ColorAnimation { duration: pop.quick } }
@@ -658,10 +659,12 @@ PopupWindow {
                         }
                     }
 
-                    // eigene Steuerung: drei gleich breite Spalten, Texte wechseln ohne Sprung
+                    // eigene Steuerung: gleich breite Spalten (Kamera/Bildschirm nur mit Plugin), Verlassen als
+                    // schmales Symbol rechts – Texte wechseln ohne Sprung
                     Item {
                         id: ctl
-                        readonly property real colW: (width - 12) / 3
+                        readonly property int cols: Discord.viaPlugin ? 4 : 2
+                        readonly property real colW: (width - height - cols * 6) / cols
                         width: parent.width
                         height: 36
 
@@ -684,19 +687,37 @@ PopupWindow {
                             onClicked: Discord.setDeaf(!Discord.self.deaf)
                         }
                         CtlBtn {
+                            visible: Discord.canControl && Discord.viaPlugin
+                            x: (ctl.colW + 6) * 2
+                            width: ctl.colW
+                            icon: Discord.self.video ? "videocam" : "videocam_off"
+                            text: "Cam"
+                            primary: Discord.self.video === true
+                            onClicked: Discord.setVideo(!Discord.self.video)
+                        }
+                        CtlBtn {
+                            visible: Discord.canControl && Discord.viaPlugin
+                            x: (ctl.colW + 6) * 3
+                            width: ctl.colW
+                            icon: Discord.self.stream ? "stop_screen_share" : "screen_share"
+                            text: Discord.self.stream ? "Live" : "Stream"
+                            primary: Discord.self.stream === true
+                            onClicked: Discord.setStream(!Discord.self.stream)
+                        }
+                        CtlBtn {
                             visible: !Discord.canControl
                             x: 0
-                            width: ctl.colW * 2 + 6
+                            width: (ctl.colW + 6) * ctl.cols - 6
                             icon: "lock_open"
                             text: "Enable Controls"
                             onClicked: Discord.reauth()
                         }
-                        // zweimal klicken, damit man nicht aus Versehen rausfliegt
+                        // zweimal klicken, damit man nicht aus Versehen rausfliegt (beim ersten Mal Akzent + Haken)
                         CtlBtn {
-                            x: (ctl.colW + 6) * 2
-                            width: ctl.colW
-                            icon: "call_end"
-                            text: pop.confirmLeave ? "Sure?" : "Leave"
+                            x: ctl.width - width
+                            width: ctl.height
+                            icon: pop.confirmLeave ? "check" : "call_end"
+                            text: ""
                             primary: pop.confirmLeave
                             onClicked: {
                                 if (!pop.confirmLeave) {

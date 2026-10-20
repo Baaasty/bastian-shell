@@ -6,7 +6,7 @@ Some files contain code adapted from other projects. Each of them keeps an origi
 | Files | Source | License |
 |---|---|---|
 | `shell/services/Hypr.qml` (event list) | [caelestia-dots/shell](https://github.com/caelestia-dots/shell) | GPL-3.0 |
-| `equicord/desktopBridge/*` (plugin for Equicord) | [Equicord](https://github.com/Equicord/Equicord) plugin API | GPL-3.0-or-later |
+| `equicord/desktopBridge/*` (plugin for Equicord) | [Equicord](https://github.com/Equicord/Equicord) plugin API; camera/screen-share calls after its plugins ToggleVideoBind and InstantScreenshare | GPL-3.0-or-later |
 | `shell/modules/switcher/Switcher.qml`, `bridge/kwin/desktop-switcher/` | KDE KWin | GPL-2.0-or-later |
 | `plasma/shells/de.bastian.desktop/contents/lockscreen/*`, `plasma/loginscreen/components/*`, layout of `shell/modules/lock/Lock.qml` | KDE Plasma Workspace | GPL-2.0-or-later / LGPL-2.0-or-later |
 | `theme/gen/icons.py` (derived icon theme, mirrors Breeze) | KDE Breeze Icons | LGPL-3.0 |

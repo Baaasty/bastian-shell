@@ -47,7 +47,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 - **F6** Ressourcen-Popout: Systemkarte und Prozesstabelle (Reiter, Suche, Sortieren, Beenden).
 - **F7** Dateimanager- und Browser-Chip (Super+E / Super+B), letzte Downloads als Popout per Rechtsklick auf den Dateimanager ([shell-features.md](knowledge/shell-features.md)).
 - **F8** Update-Chip: zählt dnf/COPR/Flatpak-Updates, öffnet den Paketmanager, installiert nie selbst ([UPDATES.md](knowledge/shell-features.md)).
-- **F9** Spotify- und Discord-Popout: Warteschlange/Library bzw. Call, Mic/Taub/Verlassen, Lautstärke pro Person.
+- **F9** Spotify- und Discord-Popout: Warteschlange/Library bzw. Call, Mic/Taub/Kamera/Bildschirm/Verlassen, Lautstärke pro Person.
 - **F10** Privatsphäre-Punkte neben der Uhr: Mikrofon, Kamera, Bildschirm teilen – nur solange aktiv ([PRIVACY.md](knowledge/shell-features.md)).
 
 ### Workspaces & Fenster

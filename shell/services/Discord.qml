@@ -154,14 +154,31 @@ Singleton {
     property var wish: ({})              // key -> { value, until }
     property var bridgeSelf: ({ mute: false, deaf: false, video: null, stream: null })
     property bool muteBeforeDeaf: false
-    function hold(patch: var): void {
-        const until = Date.now() + holdMs;
+    function hold(patch: var, ms: int): void {
+        const until = Date.now() + ms;
         const w = Object.assign({}, wish);
         for (const k in patch)
             w[k] = { value: patch[k], until: until };
         wish = w;
         root.self = Object.assign({}, root.self, patch);
-        wishEnd.restart();
+        endWishes();
+    }
+    // abgelaufene Wünsche raus, Timer auf den nächsten Ablauf
+    function endWishes(): void {
+        const now = Date.now();
+        const w = {};
+        let next = 0;
+        for (const k in wish)
+            if (wish[k].until > now) {
+                w[k] = wish[k];
+                next = next ? Math.min(next, wish[k].until) : wish[k].until;
+            }
+        wish = w;
+        applySelf();
+        if (next) {
+            wishEnd.interval = next - now + 30;
+            wishEnd.restart();
+        }
     }
     function applySelf(): void {
         const now = Date.now();
@@ -175,7 +192,7 @@ Singleton {
         if (!send("mute " + (on ? 1 : 0)))
             return;
         // Entstummen hebt in Discord auch Taub auf
-        hold(!on && root.self.deaf ? { mute: false, deaf: false } : { mute: on });
+        hold(!on && root.self.deaf ? { mute: false, deaf: false } : { mute: on }, holdMs);
     }
     function setDeaf(on: bool): void {
         if (!send("deaf " + (on ? 1 : 0)))
@@ -183,7 +200,18 @@ Singleton {
         // Taub schaltet in Discord auch das Mic stumm; danach kommt der vorige Mic-Stand zurück
         if (on)
             muteBeforeDeaf = root.self.mute === true;
-        hold({ deaf: on, mute: on ? true : muteBeforeDeaf });
+        hold({ deaf: on, mute: on ? true : muteBeforeDeaf }, holdMs);
+    }
+    // Kamera/Bildschirm gibt es nur übers Plugin (Discords RPC kann das nicht)
+    // Kamera: Discord öffnet das Gerät erst (1–3 s), bis dahin meldet es „aus“ → Knopf solange auf dem Wunsch halten
+    function setVideo(on: bool): void {
+        if (viaPlugin && send("video " + (on ? 1 : 0)))
+            hold({ video: on }, 5000);
+    }
+    // Start fragt unter Wayland erst das Portal → kein hold, Anzeige folgt Discords Stand
+    function setStream(on: bool): void {
+        if (viaPlugin)
+            send("stream " + (on ? 1 : 0));
     }
     function leave(): void {
         send("leave");
@@ -271,6 +299,13 @@ Singleton {
             return;
         }
         if (d.event === "actionFailed") {
+            // Kamera ging nicht: nicht 5 s lang „an“ zeigen
+            if (d.action === "video" && wish.video) {
+                const w = Object.assign({}, wish);
+                delete w.video;
+                wish = w;
+                applySelf();
+            }
             if (d.action === "guilds")
                 guildsLoading = false;
             if (d.action === "channels") {
@@ -367,10 +402,7 @@ Singleton {
     Timer {
         id: wishEnd
         interval: root.holdMs + 30
-        onTriggered: {
-            root.wish = ({});
-            root.applySelf();
-        }
+        onTriggered: root.endWishes()
     }
 
     Timer {
