@@ -54,20 +54,29 @@ Singleton {
         xhr.onreadystatechange = () => {
             if (xhr.readyState !== XMLHttpRequest.DONE)
                 return;
-            // Fehler (offline, kaputte Antwort): in 60 s nochmal statt erst in 15 min
+            // Fehler (offline, 429, kaputte Antwort): bald nochmal statt erst in 15 min, aber mit
+            // wachsendem Abstand (1, 2, 4 … 15 min), damit ein Ausfall open-meteo nicht im Minutentakt trifft
             if (xhr.status !== 200) {
-                retry.restart();
+                root._retryLater();
                 return;
             }
             try {
                 root._apply(JSON.parse(xhr.responseText));
+                root._failures = 0;
             } catch (e) {
-                console.warn("Weather: bad response (" + e + "), retrying in 60 s");
-                retry.restart();
+                console.warn("Weather: bad response (" + e + "), retrying later");
+                root._retryLater();
             }
         };
         xhr.open("GET", url);
         xhr.send();
+    }
+
+    property int _failures: 0
+    function _retryLater(): void {
+        retry.interval = Math.min(60 * 1000 * Math.pow(2, _failures), 15 * 60 * 1000);
+        _failures++;
+        retry.restart();
     }
 
     function _apply(d: var): void {
