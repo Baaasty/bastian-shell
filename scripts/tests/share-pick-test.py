@@ -55,13 +55,16 @@ check("recall fenster neue id", sp.recall_line(e, wins2, set()), "[SELECTION]r/w
 wins3 = sp.parse_list("40[HC>]helium[HT>]A[HE>]1[HA>]41[HC>]helium[HT>]B[HE>]2[HA>]")
 check("recall fenster mehrdeutig", sp.recall_line(e, wins3, set()), None)
 
-# Region
+# Region: nie merken, alte Merkungen nie wiedergeben, für Call-Apps gar nicht anbieten
 sp.remember("obs", "[SELECTION]r/region:DP-2@10,20,300,200\n", wins)
-check("recall region", sp.recall_line(sp.load_memory()["obs"], wins, {"DP-2"}), "[SELECTION]r/region:DP-2@10,20,300,200\n")
+check("region nicht gemerkt", "obs" in sp.load_memory(), False)
+check("alte region nie wiedergeben", sp.recall_line({"sel": "region:DP-2@10,20,300,200"}, wins, {"DP-2"}), None)
+check("region für discord aus", sp.region_ok("discord"), False)
+check("region für helium an", sp.region_ok("helium"), True)
 
 # Ohne App (aktives Fenster unbekannt) nichts merken; Kaputtes nie wiedergeben
 sp.remember("", "[SELECTION]r/screen:DP-1\n", wins)
-check("ohne app", sorted(sp.load_memory()), ["discord", "helium", "obs"])
+check("ohne app", sorted(sp.load_memory()), ["discord", "helium"])
 check("recall kaputt", sp.recall_line({"sel": "screen:DP-2; rm -rf"}, wins, {"DP-2"}), None)
 check("recall leer", sp.recall_line(None, wins, {"DP-2"}), None)
 

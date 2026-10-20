@@ -100,6 +100,9 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
 - Live-Quellwechsel geht unter Wayland nicht (Discord fragt das Portal nicht neu; Neustart-Weg beendete den Stream) – verworfen
   2026-10-20. Andere Quelle = stoppen und in der App neu teilen.
 - Die Karte bricht nur bewusst ab (Esc, Cancel, Klick daneben/auf anderen Monitor); endet ihr Fang ohne Klick, fängt sie neu.
+- xdph wartet blockierend auf `share-pick` – hängt es, hängt jedes weitere Teilen (20.10.: Region für Discord → Discord fragte in
+  Schleife, Portal-Neustart nötig). Darum: hartes Zeitlimit je Anfrage (60 s + 20 s), eine Anfrage nach der anderen (Sperre),
+  Reiter Region nicht für Discord & Co., Region nie gemerkt. `share-stop` liest nur `pw-cli ls` (pw-dump hängt mit xdph).
 - GTK-Alternative (hyprland-preview-share-picker, Commit `7e11349` geprüft, `PIN` im Skript) braucht sudo-Pakete; Tastatur erst nach Klick.
 
 # Launcher
@@ -176,7 +179,8 @@ Code: `shell/modules/screenshot/` (`Snip.qml`, `SnipPin.qml`, `SnipToast.qml`), 
 - Bilder nur im RAM (`$XDG_RUNTIME_DIR/desktop-snip/`), OCR-Bild sofort gelöscht, Pins beim Schließen; alles offline.
 - OCR braucht `tesseract tesseract-langpack-deu tesseract-langpack-eng` (sudo). Farbe kommt aus dem eingefrorenen Bild, `hyprpicker` ist unnötig.
 
-- Ohne Maus: Pfeile zielen (Shift/Strg 10 px), Enter/Leertaste = Start, Enter = Ende, dann Aktionen (gilt auch für Super+R und die Pipette). Der echte Zeiger springt per `movecursor` mit, damit Maus und Pfeile sich abwechseln können; die Echo-Bewegung wird über `warps` verworfen.
+- Pfeile: Shift = 10 px. Steht die Auswahl, schieben sie die zuletzt gezogene Ecke (`cornerX/Y`), Strg+Pfeile die ganze Auswahl – Alt+Pfeile sind Hyprland-Kürzel. Mit gedrückter Maustaste schieben Pfeile den Zeiger.
+- Ohne Maus: Pfeile zielen, Enter/Leertaste = Start, Enter = Ende, dann Aktionen (gilt auch für Super+R und die Pipette). Der echte Zeiger springt per `movecursor` mit, damit Maus und Pfeile sich abwechseln können; die Echo-Bewegung wird über `warps` verworfen.
 ## Absturz-Karten
 Code: `shell/services/Crashes.qml`, `shell/modules/crash/` · DrKonqi: `scripts/hypr drkonqi off|on|status`
 - Nur Apps bekommen eine Karte; CLI-Abstürze werden nur gezählt (`crash list`). Kein Restart für Shell, Hyprland, Portale (die startet systemd).

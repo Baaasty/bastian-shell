@@ -53,7 +53,11 @@ Scope {
     readonly property string screenName: Config.mainScreen
 
     readonly property string dir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/desktop-share-pick"
-    readonly property var tabs: ["screens", "windows", "region"]
+    // Region nur, wo sie sinnvoll ist: Discord & Co. können mit einem Bereich nichts anfangen (20.10.: Stream startete nicht,
+    // Discord fragte in Schleife neu) – scripts/share-pick schickt dann region: false. Region wird nie gemerkt.
+    property bool allowRegion: true
+    readonly property var tabs: allowRegion ? ["screens", "windows", "region"] : ["screens", "windows"]
+    readonly property bool canRemember: tab !== "region"
     readonly property var shownWindows: {
         const q = query.trim().toLowerCase();
         return q === "" ? windows : windows.filter(w => (title(w) + " " + w.cls).toLowerCase().includes(q));
@@ -128,6 +132,7 @@ Scope {
         windows = buildWindows(req.windows);
         screensList = buildScreens();
         allowToken = req.allowToken === true;
+        allowRegion = req.region !== false;
         requester = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(String(req.app || "")) ? String(req.app) : "";
         demo = req.demo === true;
         query = "";
@@ -234,10 +239,17 @@ Scope {
         return "#" + h(c.r) + h(c.g) + h(c.b) + h(c.a);
     }
     function startRegion(): void {
-        if (slurp.running)
+        if (slurp.running || !allowRegion)
             return;
         selecting = true;   // vor dem Verstecken setzen: das Freigeben des Fokus-Grabs bricht sonst ab
         slurpDelay.restart();
+        slurpCheck.restart();
+    }
+    // Sicherheitsnetz: läuft slurp nicht an (oder ist schon wieder weg, ohne Ergebnis), Karte zurück statt unsichtbar warten
+    Timer {
+        id: slurpCheck
+        interval: 1500
+        onTriggered: if (root.selecting && !slurp.running) root.selecting = false
     }
     // Karte erst verschwinden lassen, dann slurp (sonst landet das Overlay mit im Bild der Auswahl)
     Timer {
@@ -262,7 +274,7 @@ Scope {
                 const r = text.trim();
                 const m = /^[A-Za-z0-9._-]+@-?\d+,-?\d+,(\d+),(\d+)$/.exec(r);
                 if (m && Number(m[1]) > 0 && Number(m[2]) > 0)
-                    root.finish("ok " + (root.allowToken ? "r" : "") + "/region:" + r);
+                    root.finish("ok /region:" + r);   // Region nie merken
                 else
                     root.selecting = false;   // abgebrochen oder leer: zurück zur Auswahl
             }
@@ -511,7 +523,7 @@ Scope {
                             spacing: 2
                             Tab { text: "Screens"; icon: "desktop_windows"; current: root.tab === "screens"; onPicked: root.setTab("screens") }
                             Tab { text: "Windows"; icon: "web_asset"; count: root.windows.length; current: root.tab === "windows"; onPicked: root.setTab("windows") }
-                            Tab { text: "Region"; icon: "crop_free"; current: root.tab === "region"; onPicked: root.setTab("region") }
+                            Tab { visible: root.allowRegion; text: "Region"; icon: "crop_free"; current: root.tab === "region"; onPicked: root.setTab("region") }
                         }
                         Rectangle {
                             id: searchBox
@@ -826,6 +838,8 @@ Scope {
                             width: remRow.implicitWidth
                             height: 36
                             hoverEnabled: true
+                            enabled: root.canRemember
+                            opacity: root.canRemember ? 1 : 0.4
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.allowToken = !root.allowToken;
@@ -860,7 +874,7 @@ Scope {
                                         font.pixelSize: 13
                                     }
                                     Txt {
-                                        text: "Next time this app shares it without asking · Shift+Enter"
+                                        text: root.canRemember ? "Next time this app shares it without asking · Shift+Enter" : "A region is never remembered"
                                         color: Theme.textFaint
                                         font.pixelSize: 11
                                         font.weight: Font.Normal

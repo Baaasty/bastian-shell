@@ -48,4 +48,25 @@ check("unbekannt nie", ss.stoppable(data, 999), False)
 check("leer", ss.shares([]), [])
 check("kaputt", ss.shares([None, 3, {"type": "PipeWire:Interface:Link", "info": None}]), [])
 
+# pw-cli ls (nur Registry, kein pw-dump)
+ls_nodes = """\tid 224, type PipeWire:Interface:Node/3
+ \t\tobject.serial = "2028"
+ \t\tnode.name = "xdg-desktop-portal-hyprland"
+ \t\tmedia.class = "Video/Source"
+\tid 210, type PipeWire:Interface:Node/3
+ \t\tnode.name = "Discord"
+ \t\tmedia.class = "Stream/Input/Video"
+\tid 170, type PipeWire:Interface:Node/3
+ \t\tnode.name = "v4l2_input.x"
+ \t\tmedia.class = "Video/Source"
+"""
+ls_links = """\tid 47, type PipeWire:Interface:Link/3
+ \t\tlink.output.node = "224"
+ \t\tlink.input.node = "210"
+"""
+parsed = ss.parse_ls(ls_nodes) + ss.parse_ls(ls_links)
+check("pw-cli ls", ss.shares(parsed), [{"node": 224, "apps": ["Discord"]}])
+check("pw-cli ls Kamera nie", ss.stoppable(parsed, 170), False)
+check("pw-cli ls leer", ss.parse_ls(""), [])
+
 sys.exit(1 if fails else 0)

@@ -42,11 +42,13 @@ Gemerktes zeigen / vergessen:
 Nächste Anfrage ansagen (Shell, vor dem Start des Teilens):
     share-pick --expect discord
 """
+import fcntl
 import json
 import os
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -69,6 +71,13 @@ LOG = os.path.join(STATE, "share-pick.log")
 MEMORY = os.path.join(STATE, "share-picker.json")
 EXPECT = os.path.join(DIR, "expect.json")
 EXPECT_TTL = 20.0                                              # Sekunden, so lange gilt eine Ansage der Shell
+LOCK = os.path.join(DIR, "lock")
+# Hartes Ende pro Anfrage: xdph wartet blockierend auf uns – hängen wir, hängt jedes weitere Teilen (20.10.: nach
+# „Region“ für Discord fragte Discord in Schleife, ein share-pick blieb hängen, das Portal musste neu starten).
+DEADLINE = TIMEOUT + 20
+# Call-Apps können mit einem Bereich nichts anfangen (Stream startet nicht, Discord fragt in Schleife neu) → kein Reiter Region
+NO_REGION = {"discord", "discordcanary", "discordptb", "vesktop", "equibop", "webcord", "armcord", "legcord"}
+CURRENT = {"token": ""}                         # offene Karte (für das Aufräumen beim harten Ende)
 ANSWERS = os.path.join(DIR, "answers.json")    # zuletzt geteilt je App (Teilen-Menü zeigt „was“), nur im RAM-Ordner
 APP_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 SELECTION_RE = re.compile(r"\[SELECTION\]([^/\s]*)/(\S+)")
@@ -121,6 +130,26 @@ def demo_list():
         a = int(c["address"], 16)
         out.append({"id": a & 0xFFFFFFFF, "cls": c.get("class", ""), "title": c.get("title", ""), "addr": f"{a:x}"})
     return out
+
+
+def region_ok(app):
+    return (app or "").lower() not in NO_REGION
+
+
+def on_deadline(signum, frame):
+    """Hartes Ende: Karte schließen (kurz versuchen), nichts an xdph = Abbruch, sofort raus."""
+    log(f"hartes Zeitlimit ({DEADLINE:.0f} s) erreicht, abgebrochen")
+    if CURRENT["token"]:
+        ipc("close", CURRENT["token"], timeout=1)
+    os._exit(1)
+
+
+def lock_requests():
+    """Eine Anfrage nach der anderen (Discord feuert mehrere auf einmal); das harte Zeitlimit gilt auch beim Warten."""
+    os.makedirs(DIR, mode=0o700, exist_ok=True)
+    f = open(LOCK, "w")
+    fcntl.flock(f, fcntl.LOCK_EX)
+    return f
 
 
 def ipc(*args, timeout=4):
@@ -287,6 +316,8 @@ def recall_line(entry, windows, mons):
     if not isinstance(entry, dict):
         return None
     sel = str(entry.get("sel") or "")
+    if sel.startswith("region:"):
+        return None                     # Bereiche nie wiedergeben (alte Merkungen von vor dem 20.10.)
     if sel == "window":
         ids = [w["id"] for w in windows or [] if w["cls"] and w["cls"] == entry.get("cls")]
         return f"[SELECTION]r/window:{ids[0]}\n" if len(ids) == 1 else None
@@ -302,8 +333,8 @@ def remember(app, line, windows):
     if not app or not m or "r" not in m.group(1):
         return
     entry = memory_entry(m.group(2), windows)
-    if entry is None:
-        return
+    if entry is None or entry["sel"].startswith("region:"):
+        return                          # Bereiche nie merken
     entry["at"] = time.strftime("%Y-%m-%d %H:%M")
     mem = load_memory()
     mem[app] = entry
@@ -332,7 +363,10 @@ def fallback(reason, app="", windows=None):
     sys.stdout.flush()
     # nicht exec: wir brauchen seine Ausgabe zum Merken; sie geht unverändert weiter an xdph
     try:
-        r = subprocess.run([STOCK, *sys.argv[1:]], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL)
+        r = subprocess.run([STOCK, *sys.argv[1:]], stdout=subprocess.PIPE, stdin=subprocess.DEVNULL, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        log(f"{STOCK}: keine Auswahl nach {TIMEOUT:.0f} s, abgebrochen")
+        sys.exit(1)
     except OSError:
         log(f"{STOCK} startet nicht, abgebrochen")
         sys.exit(1)
@@ -366,7 +400,8 @@ def pick(windows, allow_token, demo=False, app=""):
     os.makedirs(DIR, mode=0o700, exist_ok=True)
     token = secrets.token_hex(8)
     result = os.path.join(DIR, token + ".result")
-    req = {"token": token, "allowToken": allow_token, "windows": windows, "demo": demo, "app": app}
+    req = {"token": token, "allowToken": allow_token, "windows": windows, "demo": demo, "app": app, "region": region_ok(app)}
+    CURRENT["token"] = token
 
     answer = ipc("open", json.dumps(req, ensure_ascii=False))
     if (answer is None or answer.startswith("Not ready")) and reopen(req, tries=6):
@@ -456,6 +491,9 @@ def main():
 
     app, how, hint = "", "", None
     if not demo:
+        signal.signal(signal.SIGALRM, on_deadline)
+        signal.alarm(int(DEADLINE))
+        held = lock_requests()   # noqa: F841 – Sperre hält bis Prozessende
         app = portal_requester()
         hint = take_expect(app)
         how = "Portal" if app else "Ansage der Shell" if hint else "aktives Fenster"
@@ -479,6 +517,9 @@ def main():
         fallback(text, app, windows)
     line = format_result(text, windows)
     if line is None:
+        return 1
+    if "/region:" in line and not region_ok(app):
+        log(f"Bereich für {app} nicht erlaubt, abgebrochen")
         return 1
     if demo:
         print("Auswahl (würde an xdph gehen): " + line, end="")

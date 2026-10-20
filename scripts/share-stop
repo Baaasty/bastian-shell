@@ -2,6 +2,7 @@
 """Bildschirmfreigaben auflisten und beenden – für jede App gleich, über PipeWire (Teilen-Menü der Bar).
 
     share-stop list           JSON: [{"node": <id>, "apps": ["Discord", …]}] – je Screencast von xdg-desktop-portal-hyprland
+                              (nur Registry über `pw-cli ls`, jeder Aufruf mit hartem Zeitlimit – blockiert nie)
     share-stop stop <node>    diese Freigabe beenden
     share-stop stop all       alle beenden
 
@@ -14,6 +15,7 @@ Log: ~/.local/state/desktop/share-pick.log
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -32,13 +34,43 @@ def log(msg):
         pass
 
 
-def dump():
+def run(*cmd, timeout=4):
+    """Befehl mit hartem Zeitlimit (timeout -k: auch ein festhängender Prozess wird beendet)."""
     try:
-        r = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
-        data = json.loads(r.stdout)
-        return data if isinstance(data, list) else []
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return []
+        r = subprocess.run(["timeout", "-k", "1", str(timeout), *cmd], capture_output=True, text=True,
+                           timeout=timeout + 3, stdin=subprocess.DEVNULL)
+        return r.stdout if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def parse_ls(text):
+    """`pw-cli ls Node|Link` → Objekte wie aus pw-dump ({id, type, info: {props}} bzw. Link mit Node-IDs)."""
+    out, cur = [], None
+    for line in (text or "").splitlines():
+        m = re.match(r"^\s*id (\d+), type (PipeWire:Interface:\w+)", line)
+        if m:
+            cur = {"id": int(m.group(1)), "type": m.group(2), "info": {"props": {}}}
+            out.append(cur)
+            continue
+        m = re.match(r'^\s+([\w.-]+) = "(.*)"\s*$', line)
+        if m and cur is not None:
+            cur["info"]["props"][m.group(1)] = m.group(2)
+    for o in out:
+        if o["type"] == "PipeWire:Interface:Link":
+            p = o["info"]["props"]
+            try:
+                o["info"]["output-node-id"] = int(p.get("link.output.node"))
+                o["info"]["input-node-id"] = int(p.get("link.input.node"))
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+def dump():
+    # Nicht pw-dump: das fragt die Parameter jedes Nodes beim Besitzer ab – hängt xdph (wartet auf den Picker), hängt
+    # pw-dump mit (20.10.: > 60 s). `pw-cli ls` liest nur die Registry des Servers.
+    return parse_ls(run("pw-cli", "ls", "Node")) + parse_ls(run("pw-cli", "ls", "Link"))
 
 
 def props(o):
@@ -94,7 +126,8 @@ def stoppable(data, node):
 
 def stop(node):
     try:
-        r = subprocess.run(["pw-cli", "destroy", str(node)], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        r = subprocess.run(["timeout", "-k", "1", "4", "pw-cli", "destroy", str(node)], capture_output=True, text=True,
+                           timeout=7, stdin=subprocess.DEVNULL)
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
