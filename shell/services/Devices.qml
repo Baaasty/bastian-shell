@@ -150,6 +150,8 @@ Singleton {
     property bool mouseLoaded: false     // Profil mindestens einmal gelesen
     property bool saving: false
     property string saveNote: ""
+    property string saveError: ""        // Grund, wenn Speichern scheiterte (steht dann statt der Werte in der Zeile)
+    property bool unverified: false      // Speichern ohne Antwort: Nachlesen entscheidet, ob es doch geschrieben hat
     readonly property bool mouseOk: mouseState === "ok"
     readonly property bool lowBattery: battery >= 0 && battery < 15 && !charging
 
@@ -181,6 +183,7 @@ Singleton {
         draftDefault = -1;
         draftColor = "";
         saveNote = "";
+        saveError = "";
     }
     function saveMouse(): void {
         if (!mouseDirty || saving || !mouseOk)
@@ -194,6 +197,8 @@ Singleton {
             req.color = draftColor;
         saving = true;
         saveNote = "";
+        saveError = "";
+        unverified = false;
         mouseSave.command = [mouseBin, "save", JSON.stringify(req)];
         mouseSave.running = true;
     }
@@ -218,6 +223,18 @@ Singleton {
             defaultIndex = j.defaultIndex || 0;
             mouseColor = j.color || "";
             mouseLoaded = true;
+            // Entwurf, den die Maus schon hat, ist keiner mehr (z. B. Speichern lief durch, Antwort fehlte)
+            if (draftRes !== null && JSON.stringify(draftRes) === JSON.stringify(resolutions))
+                draftRes = null;
+            if (draftDefault === defaultIndex)
+                draftDefault = -1;
+            if (draftColor !== "" && draftColor === mouseColor.toUpperCase())
+                draftColor = "";
+            if (unverified && !mouseDirty) {
+                saveNote = "Saved to mouse";
+                saveError = "";
+            }
+            unverified = false;
         }
     }
     Process {
@@ -260,17 +277,29 @@ Singleton {
                 try {
                     j = JSON.parse(text);
                 } catch (e) {
+                    // kein JSON = Skript abgestürzt; ob die Maus schon geschrieben hat, zeigt erst das Nachlesen
                     root.saveNote = "Save failed";
+                    root.saveError = "scripts/mouse gave no answer – check: scripts/mouse profile dump --json";
+                    root.unverified = true;
+                    dumpRetry.restart();   // Prozess läuft hier evtl. noch, mouseDump() würde nichts tun
                     return;
                 }
-                if (j.state === "ok") {
+                if (j.state === "ok" && j.reread === false) {
+                    // geschrieben, Nachlesen hakte: Entwurf bleibt, bis das nächste Lesen ihn bestätigt
+                    root.saveNote = "Saved to mouse";
+                    root.saveError = j.warning || "";
+                    root.unverified = true;
+                    dumpRetry.restart();
+                } else if (j.state === "ok") {
                     root.applyMouse(j, true);
                     root.revertMouse();
                     root.saveNote = j.written > 0 ? "Saved to mouse" : "Nothing changed";
+                    root.saveError = j.warning || "";   // z. B. Licht-Byte nicht zurückgesetzt
                 } else {
                     root.saveNote = j.state === "busy" ? "Receiver busy – try again" : j.state === "asleep" ? "Mouse asleep – move it, then save"
-                        : "Save failed" + (j.error ? ": " + j.error : "");
-                    if (j.state !== "busy")
+                        : "Save failed";
+                    root.saveError = j.state === "error" ? (j.error || "unknown error") : "";
+                    if (j.state !== "busy" && j.state !== "error")
                         root.applyMouse(j, false);
                 }
             }

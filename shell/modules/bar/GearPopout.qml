@@ -356,10 +356,13 @@ PopupWindow {
                 }
                 Txt {
                     Layout.fillWidth: true
-                    color: Devices.mouseOk ? Theme.text : Theme.textFaint
+                    color: Devices.saveError !== "" ? Theme.warning : Devices.mouseOk ? Theme.text : Theme.textFaint
                     font.pixelSize: 13
                     font.weight: Font.Normal
                     text: {
+                        // Grund fürs gescheiterte Speichern steht hier, rechts ist nur Platz für die Knöpfe
+                        if (Devices.saveError !== "")
+                            return (Devices.saveNote === "Save failed" ? "Save failed: " : "") + Devices.saveError;
                         const s = Devices.mouseState;
                         if (s === "nosolaar")
                             return "Solaar missing (sudo dnf install solaar)";

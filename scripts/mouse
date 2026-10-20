@@ -120,6 +120,10 @@ def yaml_load(text):
     class Loader(yaml.SafeLoader):
         pass
 
+    # fix_animation_index importiert logitech_receiver, das seine Tags global an SafeLoader hängt; ohne diese Zeile
+    # liefert der Dump danach OnboardProfiles-Objekte statt dicts (Absturz nach erfolgreichem Schreiben, 2026-10-20)
+    Loader.yaml_constructors = {k: v for k, v in yaml.SafeLoader.yaml_constructors.items() if not (k or "").startswith("!")}
+
     def any_tag(loader, suffix, node):
         if isinstance(node, yaml.MappingNode):
             return loader.construct_mapping(node, deep=True)
@@ -347,6 +351,28 @@ def cmd_fix_light():
         return {**show(), "fixed": fixed}
 
 
+def after_write(written):
+    """Nach erfolgreichem Schreiben: Licht-Byte zurück, Profil nachlesen. Geschrieben ist dann schon –
+    Fehler hier sind nur ein Hinweis (warning), kein „Save failed“. reread=False: Werte nicht frisch, Shell liest nach."""
+    warn = []
+    try:
+        fix_animation_index()
+    except RuntimeError as e:
+        warn.append(f"light byte not reset ({e}) – run scripts/mouse fix-light")
+    try:
+        after, _, _ = dump()
+    except Exception as e:  # Solaar-/YAML-Fehler beim Nachlesen
+        after = {"state": "error", "error": f"{type(e).__name__}: {e}"}
+    out = {**after, "written": written}
+    if after.get("state") != "ok" or "resolutions" not in after:
+        # Maus nach dem Flash kurz weg/schläft oder Nachlesen hakte: trotzdem ehrlich „geschrieben“
+        warn.append("saved, but re-read failed (" + (after.get("error") or after.get("state", "?")) + ")")
+        out = {"state": "ok", "written": written, "reread": False}
+    if warn:
+        out["warning"] = "; ".join(warn)
+    return out
+
+
 def cmd_save(raw):
     req = json.loads(raw)
     if not isinstance(req, dict):
@@ -369,12 +395,7 @@ def cmd_save(raw):
         if bad:
             raise RuntimeError("Patch würde mehr ändern als gewollt: " + ", ".join(bad[:5]))
         written = write_profiles(new)
-        try:
-            fix_animation_index()
-        except RuntimeError:
-            pass  # Profil ist geschrieben; fix-light lässt sich nachholen
-        after, _, _ = dump()
-        return {**after, "written": written}
+        return after_write(written)
 
 
 def cmd_restore():
@@ -382,12 +403,7 @@ def cmd_restore():
         raise RuntimeError(f"keine Sicherung ({BACKUP})")
     with locked(90):
         written = write_profiles(BACKUP.read_text())
-        try:
-            fix_animation_index()
-        except RuntimeError:
-            pass  # Profil ist geschrieben; fix-light lässt sich nachholen
-        after, _, _ = dump()
-        return {**after, "written": written}
+        return after_write(written)
 
 
 def main(argv):
@@ -412,6 +428,8 @@ def main(argv):
         out = {"state": "busy"}
     except (ValueError, RuntimeError, OSError) as e:
         out = {"state": "error", "error": str(e)}
+    except Exception as e:  # Unerwartetes trotzdem als JSON, sonst zeigt die Shell nur „Save failed“ ohne Grund
+        out = {"state": "error", "error": f"{type(e).__name__}: {e}"}
     print(json.dumps(out))
     return 0 if out.get("state") in ("ok", "busy", "asleep", "absent", "nosolaar", "noprofile") else 1
 

@@ -93,6 +93,10 @@ Stolperfallen:
 - **Regenbogen statt Profilfarbe:** Byte 252 im Profil-Sektor = `custom_animation_index` (libratbag-Quirk `G502X_PLUS`);
   ≠ 0 spielt die Firmware ihre Animation statt `lighting[1]`. Solaar kennt es nicht und schreibt 0xff → `mouse save`/`restore`
   setzen es danach auf 0, von Hand `scripts/mouse fix-light` (2026-10-20).
+- **Stolperfalle „Save failed“ trotz Schreiben** (behoben 2026-10-20): der Licht-Fix importiert `logitech_receiver`, das
+  seine YAML-Tags global an `SafeLoader` hängt → das Nachlesen bekam Objekte statt dicts und stürzte ab. `yaml_load`
+  wirft fremde `!`-Tags deshalb raus. Hakt nur Licht-Fix/Nachlesen, meldet `save` trotzdem `ok` + `warning`; der Grund
+  steht im Popout in der Maus-Zeile (statt der Werte). Jede Speicherung schreibt 2× Flash (Solaar setzt Byte 252 auf 0xff).
 - `rgb_control` bleibt `false`, `rgb.json` `skip: ["G502"]` bleibt – sonst übersteuern Solaar/OpenRGB das Profil „live“.
 - `scripts/mouse` und `scripts/rgb` teilen die Sperre `$XDG_RUNTIME_DIR/desktop-rgb.lock`: nie OpenRGB und Solaar gleichzeitig
   am Lightspeed-Empfänger. Ist sie belegt, meldet `mouse status` nur `busy` (die Shell behält die alten Werte).

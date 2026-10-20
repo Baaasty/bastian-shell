@@ -150,4 +150,11 @@ try:
 except ValueError:
     check("patch fehlendes Profil", True, True)
 
+# Nach dem Licht-Fix hängt logitech_receiver eigene Tags global an SafeLoader – yaml_load muss trotzdem dicts liefern
+import yaml  # noqa: E402
+
+yaml.SafeLoader.add_constructor("!OnboardProfiles", lambda loader, node: object())
+yaml.SafeLoader.add_constructor("!OnboardProfile", lambda loader, node: object())
+check("yaml_load trotz fremder Tags", mo.profile_info(mo.yaml_load(DUMP), 1)["resolutions"], [1200, 1600, 2000])
+
 sys.exit(1 if fails else 0)
