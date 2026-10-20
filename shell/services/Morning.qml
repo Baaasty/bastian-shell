@@ -60,7 +60,7 @@ Singleton {
             eligibleSince = 0;
             return;
         }
-        const here = !locked && !idle.isIdle && !Notifs.dnd && !Focus.active && !Windows.fullscreen && !Windows.game;
+        const here = !locked && !idle.isIdle && !Focus.active && !Windows.fullscreen && !Windows.game;
         if (!here || Date.now() - startedAt < delaySec * 1000) {
             eligibleSince = 0;
             return;

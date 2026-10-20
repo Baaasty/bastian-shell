@@ -15,8 +15,6 @@ Singleton {
     property var popups: []      // aktive Notification-Objekte
     property var history: []     // [{ app, summary, body, icon, time, file }]
     readonly property int popupMs: 6000
-    // „Nicht stören“ (Szenen: Spiele-Modus, Fokus …): wie der Fokus-Modus, nur Dringendes poppt auf; der Verlauf füllt sich weiter
-    property bool dnd: false
 
     // jede neue Meldung (auch im Fokus-Modus), z. B. für ClaudeChats
     signal received(var n)
@@ -125,8 +123,8 @@ Singleton {
                 time: Qt.formatTime(new Date(), "HH:mm")
             }].concat(root.history).slice(0, 50);
             root.saveHistory();
-            // Nicht stören / Fokus-Modus wie bisher; Ruhezeit und App-Regeln kommen obendrauf
-            if ((!(Focus.active || dnd) || urgent) && verdict.popup)
+            // Fokus-Modus: nur Dringendes poppt auf; Ruhezeit und App-Regeln kommen obendrauf
+            if ((!Focus.active || urgent) && verdict.popup)
                 root.popups = root.popups.concat([n]);
             if (verdict.held)
                 root.holdBack();
@@ -265,7 +263,7 @@ Singleton {
         if (!snoozed.length)
             return;
         const t = Date.now();
-        const calm = !NotifRules.quietNow && !(Focus.active || dnd);
+        const calm = !NotifRules.quietNow && !Focus.active;
         const due = snoozed.filter(s => s.due <= t && (calm || s.urgent)).sort((a, b) => a.due - b.due).slice(0, 2);
         if (!due.length)
             return;
@@ -315,7 +313,7 @@ Singleton {
         target: "notifs"
 
         function status(): string {
-            return JSON.stringify({ popups: root.popups.length, history: root.history.length, snoozed: root.snoozed.length, missed: root.missed, quiet: NotifRules.quietNow, dnd: root.dnd });
+            return JSON.stringify({ popups: root.popups.length, history: root.history.length, snoozed: root.snoozed.length, missed: root.missed, quiet: NotifRules.quietNow });
         }
         function clear(): void {
             root.clearHistory();

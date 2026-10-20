@@ -8,8 +8,8 @@ import "timewin.js" as TW
 // Hyperfokus-Wecker (Doku docs/knowledge/shell-features.md): nach afterMin Minuten am Stück am PC eine ruhige Karte unter der Bar
 // (shell/modules/breaks/BreakCard.qml). Pause = breakMin Minuten ohne Maus/Tastatur (IdleMonitor, auch während ein Video
 // Idle-Inhibit hält) oder Fokus-Pause.
-// Schweigt bei Vollbild, Spiel, Discord-Call, laufendem Fokus-Block, Sperre und in den Szenen aus silentScenes
-// (game, evening) – ist der Hinweis fällig, kommt er, sobald nichts mehr dagegen spricht.
+// Schweigt bei Vollbild, Spiel, Discord-Call, laufendem Fokus-Block (nicht bei Fokus ohne Zeit) und Sperre – ist der Hinweis fällig,
+// kommt er, sobald nichts mehr dagegen spricht.
 // Einstellungen: config/breaks.json, eigene Werte in ~/.config/desktop/breaks.json (beide live gelesen).
 // Zustand: ~/.local/state/desktop/breaks.json (übersteht Shell-Reloads). IPC: breaks status|snooze|snoozeFor|reset|test|hide|off.
 Singleton {
@@ -30,7 +30,6 @@ Singleton {
     readonly property int snoozeMin: Math.round(num(cfg.snoozeMin, 1, 120, 10))
     // Standard aus: Video/Idle-Inhibit ohne Eingabe zählt als Pause (nur Maus/Tastatur zählen als Arbeit)
     readonly property bool respectInhibitors: cfg.respectInhibitors === true
-    readonly property var silentScenes: Array.isArray(cfg.silentScenes) ? cfg.silentScenes.filter(s => typeof s === "string") : ["game", "evening"]
     readonly property var messages: {
         const m = Array.isArray(cfg.messages) ? cfg.messages.filter(s => typeof s === "string" && s.trim() !== "") : [];
         return m.length ? m : ["Water, stretch, look away."];
@@ -59,14 +58,12 @@ Singleton {
     readonly property string silentWhy: {
         if (Windows.game)
             return "game";
-        for (const s of silentScenes)
-            if (Scenes.isOn(s))
-                return "scene " + s;
         if (Windows.fullscreen)
             return "fullscreen";
         if (Discord.inVoice)
             return "call";
-        if (Focus.mode === "focus")
+        // nur der Block mit Ende: Fokus ohne Zeit kann stundenlang laufen – genau dann soll der Wecker kommen
+        if (Focus.mode === "focus" && !Focus.openEnded)
             return "focus";
         if (locked)
             return "locked";

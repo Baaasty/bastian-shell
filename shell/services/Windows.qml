@@ -15,13 +15,11 @@ Singleton {
     // meldet es selbst). Dann nehmen Bar und Arbeitsplatz-Leiste ihre Overlay-Flächen ganz weg: jede Overlay-Fläche
     // auf dem Monitor verhindert in Hyprland direct scanout und Tearing (CMonitor::isSolitaryBlocked, SC_OVERLAYS).
     property bool game: false
-    // Echtes Vollbild (Super+Shift+F, Hyprland fullscreen 0) oder Spiel: Bar, Arbeitsplatz-Leiste und die
+    // Echtes Vollbild (Super+↑ zweimal, Hyprland fullscreen 0) oder Spiel: Bar, Arbeitsplatz-Leiste und die
     // Rand-Streifen nehmen ihre Overlay-Flächen ganz weg (kein Einblenden am Rand, kein Overlay über dem Fenster).
-    // Maximiert (Super+F, fullscreen 1) zählt nicht: dort weichen sie nur aus und kommen am Rand zurück.
+    // Maximiert (Super+↑, fullscreen 1) zählt nicht: dort weichen sie nur aus und kommen am Rand zurück.
     // Benachrichtigungen und OSD bleiben erlaubt (eigene Fenster, nur kurz da).
-    // forceBare: Bar und Leiste per Szene weg (Spiele-Modus, services/Scenes.qml), auch ohne Vollbild
-    property bool forceBare: false
-    readonly property bool bare: fullscreen || game || forceBare
+    readonly property bool bare: fullscreen || game
     readonly property var screen: Quickshell.screens.find(s => s.name === Config.mainScreen) ?? null
     // Unterkante der Bar in Bildschirm-Koordinaten (+ etwas Luft)
     readonly property int barBottom: Theme.barMargin + Theme.barHeight + 4
