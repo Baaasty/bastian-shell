@@ -51,8 +51,9 @@ KEEP_AGE = 3600               # danach fliegen die Dateien weg
 RESULT_MAX = 4000
 ACTIVE = ("starting", "running")
 
-PROMPT = ("Fasse in 3–5 Stichpunkten zusammen: Woran arbeitest du gerade, was ist erledigt, was ist offen, "
-          "brauchst du etwas von mir? Antworte nur mit den Stichpunkten, ändere nichts, führe keine Werkzeuge aus.")
+# Kurz halten: die Karte unter der Bar ist für einen Blick, nicht zum Lesen (Bastian, 2026-10-20)
+PROMPT = ("Wie weit bist du? Antworte in höchstens 2–3 kurzen Sätzen, ohne Aufzählung: was du gerade machst "
+          "und ob du etwas von mir brauchst. Ändere nichts, führe keine Werkzeuge aus.")
 SYSTEM = ("Dies ist eine reine Statusabfrage aus der Desktop-Bar. Dir stehen keine Werkzeuge zur Verfügung. "
           "Antworte immer mit sichtbarem Text.")
 

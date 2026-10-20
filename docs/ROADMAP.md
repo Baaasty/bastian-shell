@@ -43,40 +43,38 @@ Per IPC und Screenshot vorgetestet (2026-10-20): Popouts, Bar-Modus, Panels, Lau
 Dev-Dienste, Downloads, Updates, Absturz-Karte, Hyperfokus, Projektzeit, Privatsphäre-Punkte – alles ok.
 Übrig ist nur, was echte Tasten, Maus oder Hardware braucht.
 
-- [ ] **A – Bar und Popouts**
+- [x] **A – Bar und Popouts**
   1 Maus 1 s auf den Tasks-Chip → Tooltip · 2 Super+Leertaste, S → Sound mit Glut-Rahmen ·
   3 Pfeile auf einen Regler: ←/→ ändert nichts, erst Enter, dann ←/→ · 4 Esc → zurück zum Chip, Esc → Bar-Modus zu ·
   5 Super+Alt+L zweimal → Licht auf/zu · 6 Super+Alt+H → Dev-Popout, Reiter Server ·
   7 Super+Alt+Y, ↓, →, Enter → Tray-Menü, ← zurück · 8 Spotify-Popout: Maus rein, Fenster öffnen → bleibt; weghovern → zu
-- [ ] **B – Benachrichtigungen und Workspaces**
+- [x] **B – Benachrichtigungen und Workspaces**
   1 `notify-send -a Test Hallo Text`, Super+Alt+Z, Entf → weg, auch aus dem Dashboard · 2 neue Karte, Super+Alt+X → weg ·
   3 Maus auf Karte → bleibt stehen · 4 Alt antippen → Workspace-Modus, Alt+←/→ markiert, Esc ·
   5 im Modus auf Projekt-Workspace Q → Quicklinks · 6 Alt+1…3 → Leiste zeigt kurz, wo man ist ·
   7 Maus über Kachelkopf → Projektzeit-Tooltip mit Woche · 8 Fenster-Symbol auf andere Kachel ziehen → Fenster wandert
-- [ ] **C – Fenster**
+- [x] **C – Fenster**
   1 Super+Return → Kitty · 2 Super+Shift+Return → Dropdown, nochmal → weg, Inhalt bleibt ·
   3 Super+Pfeile → nur Fokus · 4 Super+Shift+↑/↓ → schwebend → gekachelt → maximiert → Vollbild und zurück ·
   5 Super+Shift+→ → Fenster auf Nachbarmonitor, Fokus und Maus folgen · 6 Super+Strg+Pfeile halten → Größe ·
   7 Super+Q auf Spotify → weggeräumt; Alt+F4 → beendet · 8 Super+Alt+K → Layout speichern, auf leerem Desktop wiederherstellen
-- [ ] **D – Panels**
+- [x] **D – Panels**
   1 Super+K, „discord“ → gefiltert · 2 Super+P, Klick ins Leere → zu · 3 Super+O → Logos, Tab → Gruppen-Chips ·
   4 Super+T: Text + Enter → Inbox, „t test“ → To-do, ↓ → Inbox-Aktionen · 5 Super, `wetter` Enter → Websuche in Helium; `c hallo` → Claude ·
   6 Ressourcen-Popout: Zeile aufklappen · 7 `morning open`, Esc → zu · 8 Druck → Bereich, dann Enter / S / C / P / T (OCR)
-- [ ] **E – Hardware und System**
+- [x] **E – Hardware und System**
   1 `pkexec true` → eigener Dialog, Esc bricht ab · 2 Super+L, GoXLR-Fader verstellen, entsperren → Fader wie vorher ·
   3 `scripts/idle dim-test 10`, Maus → Abdunkeln endet · 4 Standby und zurück → PC-Licht wieder in der Primärfarbe (AP 23) ·
   5 Discord „Share Screen“ → eigene Karte · 6 Super+R Aufnahme → Topbar bleibt klickbar ·
   7 Call mit Kamera → Key Light an, Punkt neben der Uhr; aus → Licht aus · 8 Doppelklick auf .md in Dolphin → VS Code
-- [ ] **F – Ansehen und Kleinkram**
+- [x] **F – Ansehen und Kleinkram**
   1 `zenity --question --text=Test` → warmbraun · 2 Dolphin, Systemeinstellungen, Datei-Dialog → Hearth ·
   3 Rechtsklick in Qt- und GTK-App → Menüs im Desktop-Look · 4 Launcher „GoXLR“ → Helium ·
   5 `scripts/session save`, Fenster zu, `scripts/session restore` · 6 Launcher „New Project“ + `/new-project` → Gerüst ·
   7 Agents-Popout: Notizfeld, Tab → „Ask Claude…“, Enter; „status“-Knopf · 8 `scripts/helium-theme-compare` → entscheiden
-- [ ] **G – Härtetest (AP 21)**: Shell-Neustart (`scripts/hypr restart`), Monitor ab/an (`hyprctl keyword monitor "DP-2,disable"`, zurück mit `hyprctl reload`), Netz kurz weg → Shell fängt sich ohne Neustart
 
 ## Von dir
 
-- [ ] Adressen für Buchhaltung/CRM in `profiles/profiles.json`
 
 ## Erledigt bzw. geschlossen am 2026-10-20
 
