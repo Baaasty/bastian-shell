@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# iCloud Drive jetzt synchronisieren (Launcher, Dateien-Popout, Dolphin-Kontextmenü).
+# Startet nur die Unit icloud-sync.service (wie der Timer) – nie rclone selbst, damit Sperre und oneshot-Logik bleiben.
+# Wartet nicht selbst: der Wächter läuft als eigene transiente Unit, überlebt also Shell-Neustart und geschlossenes Dolphin.
+# Ausgabe (eine Zeile) zeigt das Dateien-Popout an.
+set -uo pipefail
+UNIT=icloud-sync.service
+STATE="$HOME/.local/state/icloud-sync"
+notify(){ notify-send -a "iCloud Sync" -i folder-cloud "$@" 2>/dev/null || true; }
+prop(){ systemctl --user show -P "$1" "$UNIT" 2>/dev/null; }
+
+if [[ "${1:-}" == --watch ]]; then
+    before="${2:-}" since="${3:-0}"
+    # erst warten, bis der Lauf wirklich begonnen hat (neue InvocationID), dann bis er vorbei ist; Obergrenze 3 h
+    for ((i = 0; i < 5400; i++)); do
+        sleep 2
+        inv=$(prop InvocationID); st=$(prop ActiveState)
+        if [[ "$inv" == "$before" ]]; then
+            # nach 60 s ohne Start und ohne wartenden Job: verworfen
+            (( i > 30 )) && ! systemctl --user list-jobs --no-legend 2>/dev/null | grep -q " $UNIT " \
+                && { notify -u normal "iCloud sync did not start" "journalctl --user -u $UNIT"; exit 1; }
+            continue
+        fi
+        [[ "$st" == inactive || "$st" == failed ]] || continue
+        if [[ "$(prop Result)" == success ]]; then
+            notify -u low -t 4000 "iCloud Drive synced" "Up to date."
+            exit 0
+        fi
+        # icloud-sync meldet eigene Fehler selbst (Login, Resync …) und legt dann "failed" neu an – nicht doppelt melden
+        f=$(stat -c %Y "$STATE/failed" 2>/dev/null || echo 0)
+        (( f >= since )) || notify -u normal "iCloud sync failed" "journalctl --user -u $UNIT"
+        exit 1
+    done
+    exit 1
+fi
+
+st=$(prop ActiveState)
+locked=0
+[[ -e "$STATE/lock" ]] && ! flock -n "$STATE/lock" true 2>/dev/null && locked=1   # z. B. icloud-sync von Hand im Terminal
+if [[ "$st" == activating || "$st" == active || "$st" == deactivating || $locked == 1 ]] \
+    || systemctl --user list-jobs --no-legend 2>/dev/null | grep -q " $UNIT "; then
+    notify -u low -t 3000 "iCloud Drive is already syncing" "You'll get a note when it's done."
+    echo "Already syncing"
+    exit 0
+fi
+
+before=$(prop InvocationID)
+since=$(date +%s)
+if ! systemctl --user start --no-block "$UNIT"; then
+    notify -u normal "iCloud sync could not start" "systemctl --user status $UNIT"
+    echo "Could not start sync"
+    exit 1
+fi
+# fester Name = höchstens ein Wächter; --collect räumt ihn danach weg
+systemd-run --user --quiet --collect --unit=icloud-sync-now-watch -- "$(readlink -f "$0")" --watch "$before" "$since" 2>/dev/null || true
+notify -u low -t 3000 "Syncing iCloud Drive…" "You'll get a note when it's done."
+echo "Syncing iCloud Drive…"

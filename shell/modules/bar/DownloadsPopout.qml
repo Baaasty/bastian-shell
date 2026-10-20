@@ -9,6 +9,7 @@ import qs.components
 // Die letzten Downloads (Downloads.count, Standard 12) nach Zeit; Suchfeld durchsucht den ganzen Ordner.
 // Zeile klicken = öffnen (xdg-open über Launch), Ordner-Knopf = im Dateimanager zeigen, ziehen = Datei in eine App legen
 // (text/uri-list). „Clean up“ legt Einträge älter als N Tage nach Rückfrage in den Papierkorb (gio trash).
+// Wolken-Knopf im Fuß = iCloud Drive jetzt synchronisieren (ICloud.qml).
 // Doku: docs/knowledge/shell-features.md
 PopupWindow {
     id: pop
@@ -135,6 +136,7 @@ PopupWindow {
         property string text
         property string icon
         property string tone: "plain"                  // plain | primary
+        readonly property alias area: btArea
         signal clicked()
         width: btRow.implicitWidth + 28
         height: 32
@@ -155,6 +157,7 @@ PopupWindow {
             }
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: bt.text !== ""
                 text: bt.text
                 font.pixelSize: 13
                 color: bt.tone === "primary" ? Theme.accentText : Theme.text
@@ -511,7 +514,7 @@ PopupWindow {
             }
         }
 
-        // Fuß: Ordner öffnen · Aufräumen · Rückmeldung
+        // Fuß: Ordner öffnen · Rückmeldung · iCloud jetzt synchronisieren · Aufräumen
         Item {
             id: footer
             x: 20
@@ -527,17 +530,27 @@ PopupWindow {
                 }
             }
             Txt {
+                // Hover/Markierung auf dem iCloud-Knopf erklärt ihn (nur Symbol, sonst passt die Zeile nicht)
+                readonly property bool icloudHot: icloudBtn.area.containsMouse || (nav.ringOn && nav.current === icloudBtn.area)
+                readonly property string msg: ICloud.note !== "" ? ICloud.note : Downloads.note
                 anchors.left: folderBtn.right
                 anchors.leftMargin: 10
-                anchors.right: cleanBtn.left
+                anchors.right: icloudBtn.left
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: Downloads.note !== "" ? Downloads.note
+                text: msg !== "" ? msg : icloudHot ? "Sync iCloud Drive now"
                     : pop.query !== "" ? pop.shown.length + " found" : Downloads.items.length + " in folder"
-                color: Downloads.note !== "" ? Theme.accentText : Theme.textFaint
+                color: msg !== "" ? Theme.accentText : Theme.textFaint
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: 12
                 font.weight: Font.Normal
+            }
+            Btn {
+                id: icloudBtn
+                anchors.right: cleanBtn.left
+                anchors.rightMargin: 8
+                icon: "cloud_sync"
+                onClicked: ICloud.syncNow()
             }
             Btn {
                 id: cleanBtn

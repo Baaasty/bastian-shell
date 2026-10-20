@@ -32,6 +32,7 @@ Code: `shell/modules/bar/GearChip.qml`, `GearPopout.qml`, `shell/services/Device
 - Abfragen nur bei offenem Popout (rgb 5 s, Maus 60 s), sonst Maus alle 10 min für die Akku-Warnung (< 15 %, nicht am Laden). Schläft die Maus, bleiben die letzten Werte grau stehen.
 - Einstellungen-Chip (`SettingsChip.qml`): startet `systemsettings.desktop` (Override in `config/applications/` mit `SDL_HIDAPI_LIBUSB=0`, sonst 15–17 s Hänger), Seiten mit derselben Umgebung. KScreen (Display) braucht KWin → keine Display-Seite.
 
+- iCloud jetzt synchronisieren (Launcher, Wolken-Knopf, Dolphin): nur über die Unit, damit Sperre und oneshot wie beim Timer greifen. Der Dolphin-Eintrag steht an jedem Ordner – KIO kann Service-Menüs nicht nach Pfad filtern.
 ## Spotify
 Code: `shell/services/SpotifyApi.qml`, `shell/modules/bar/Spotify*.qml`, Backend `scripts/spotify-api` · Cache: `~/.cache/desktop/spotify/` (`now.json` letzter Stand, `ratelimit.json` Budget/Pause, `blocked-until` Sperre der Shell; löschen = zurücksetzen)
 - Vorladen nur bei laufendem Spotify: 10 s nach Shell-Start, dann still bei Songwechsel (1,2 s warten, höchstens alle 20 s, beim Durchskippen nur einmal); Popout zeigt sofort `now.json` und lädt nur nach, wenn älter als 10 s oder anderer Song.

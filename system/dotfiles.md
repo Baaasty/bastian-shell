@@ -61,8 +61,9 @@ Spalte „Klasse“:
 | `~/.config/systemd/user/goxlr.service`, `icloud-photos.service`, `icloud-sync.{service,timer}` | L | |
 | `~/.config/containers/systemd/anisette.container` | L | Quadlet für icp |
 | `~/.config/rclone/icloud-filter.txt` | L | |
+| `~/.local/share/kio/servicemenus/desktop-icloud-sync.desktop` | L | Dolphin-Kontextmenü „Sync iCloud Drive now“ |
 | `~/.config/rclone/rclone.conf` | **c** | iCloud-Tokens! Neu: `rclone config` (Remotes `icloud`, `icloud-photos`), danach `icloud-login` |
-| `~/.local/bin/keylight`, `icloud-sync`, `icloud-login` | L | `keylight` = Link auf `scripts/keylight` (eine CLI für alles, auch den Shutdown-Dienst) |
+| `~/.local/bin/keylight`, `icloud-sync`, `icloud-sync-now`, `icloud-login` | L | `keylight` = Link auf `scripts/keylight` (eine CLI für alles, auch den Shutdown-Dienst) |
 | `~/.local/share/fonts/huette/` | – | alter Ordnername (bootstrap lädt neu nach `…/fonts/desktop/`), nicht ins Repo (54 MB, fremde Lizenzen) |
 | `~/.local/share/goxlr-utility/profiles/`, `mic-profiles/` | K | GoXLR-Profile + Mic-Profile (~130 KB). Rest (Logs, Presets, Icons) entsteht von selbst |
 | `~/.config/goxlr-utility/` | – | Daemon-Einstellungen, klein |
