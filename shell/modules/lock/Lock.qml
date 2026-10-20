@@ -7,7 +7,7 @@ import Quickshell.Services.Pam
 import qs.config
 import qs.services
 
-// Sperrbildschirm unter Hyprland (ext-session-lock). Ersetzt das Plasma-Paket plasma/shells/…/lockscreen,
+// Sperrbildschirm unter Hyprland (ext-session-lock). Ersetzt das Plasma-Paket plasma/shells/…/lockscreen (Git-Tag kwin-final),
 // sieht aus wie dieses (Ablauf und Maße aus LockScreenUi.qml/MainBlock.qml übernommen).
 // Herkunft: Ablauf/Maße nach KDE Plasma Workspace (lockscreen), GPL-2.0-or-later – siehe THIRD_PARTY.md.
 // Auslösen: scripts/lock now (Super+L, hypridle, Power-Menü) → qs ipc call lock lock.

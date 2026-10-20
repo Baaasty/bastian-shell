@@ -1,5 +1,5 @@
 # Neue Mails sofort melden (IMAP IDLE), Einmal-Codes kopieren, Code-Mails später in den Papierkorb.
-# Installiert/entfernt über scripts/rice on|off|feeds (Link nach ~/.config/systemd/user).
+# Installiert/entfernt über scripts/rice feeds (an) bzw. scripts/rice off (aus) (Link nach ~/.config/systemd/user).
 # Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/bastian-shell.
 [Unit]
 Description=Desktop: neue Mails melden, Codes kopieren

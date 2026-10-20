@@ -1,4 +1,4 @@
-# Flatpaks (Stand 2026-10-18 abends, geprüft mit `flatpak list`, Hyprland-Rechner)
+# Flatpaks (Stand 2026-10-20, geprüft mit `flatpak list --app`, Hyprland-Rechner)
 # Format: <system|user> <remote> <app-id>   # Name
 # remote "bundle" = aus einer .flatpak-Datei installiert, kein Repo → bootstrap überspringt, nur Hinweis.
 # Runtimes (Platform, GL.nvidia-…, codecs, Gtk3theme.Breeze) zieht flatpak automatisch nach.
@@ -8,15 +8,10 @@
 #   user:   flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
 # == System
-# ersetzt durch RPM (dnf.txt, 2026-10-18; Daten umziehen + Flatpaks entfernen: scripts/flatpak-to-native):
-#   com.discordapp.Discord → discord · com.spotify.Client → spotify-client (lpf) · org.mozilla.thunderbird_esr → thunderbird
-#   STAND 20.10.: Discord-Flatpak entfernt. Thunderbird umgezogen (~/.thunderbird), Flatpak auf Bastians PC noch zu entfernen.
-#   Spotify: Flatpak noch in Benutzung, spotify-client per lpf noch nicht gebaut (lpf: approve-wait).
-# Regel (2026-10-20, docs/DECISIONS.md): nativ als RPM, wenn es einen Update-Weg gibt (Repo/lpf); sonst Flatpak.
-# Die Flatpaks unten bleiben, weil es kein RPM mit Update-Weg gibt (Stand 2026-10-20).
-# aus der Liste 2026-10-20: com.core447.StreamController (Stream Deck, nie benutzt; auf Bastians PC noch zu deinstallieren)
-#   Auf einem frisch aufgesetzten PC werden sie nicht mehr installiert: Discord/Thunderbird als RPM, Spotify per lpf (bootstrap Schritt 2),
-#   Chat später Equibop (GitHub-RPM, bootstrap Schritt 2). Konten/Logins neu anmelden.
+# Regel (2026-10-20, docs/DECISIONS.md): nativ als RPM, wenn es einen Update-Weg gibt (Repo); sonst Flatpak.
+# Ersetzt durch RPM (dnf.txt; Daten umziehen + Flatpak entfernen: scripts/flatpak-to-native):
+#   com.discordapp.Discord → discord · org.mozilla.thunderbird_esr → thunderbird · com.spotify.Client → spotify-client (Repo negativo17)
+# Entfernt: com.core447.StreamController (Stream Deck, nie benutzt)
 system flathub hu.irl.cameractrls              # Kamera-Regler (Facecam) · kein RPM, nur Flathub oder git
 
 # == User

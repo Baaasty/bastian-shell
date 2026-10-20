@@ -71,9 +71,9 @@ Alles in `/var/lib/plasmalogin` wird als User `plasmalogin` geschrieben (wie der
 ## Layout-Theme (Lockscreen-Look)
 
 Quelle: `plasma/loginscreen/` (`components/` = unsere QML, `systemd/desktop-login.conf` = Drop-in,
-`preview/ShotHook.qml` = nur für `shot`). Farben kommen aus `DesktopTheme.qml` des Lockscreens
-(erzeugt aus `theme/palette.json`), Hauptmonitor und Code-Länge (`desktopAutoSubmitLength`, Standard 6)
-liest `apply` aus den Lockscreen-Einstellungen.
+`preview/ShotHook.qml` = nur für `shot`, `DesktopTheme.qml` = Farben, erzeugt aus `theme/palette.json` per
+`theme/gen/lockscreen_theme.py`). Hauptmonitor steht in `scripts/loginscreen` (`MAIN_SCREEN`), die Code-Länge
+(`desktopAutoSubmitLength` in `kscreenlockerrc`, Standard 6) liest `apply` von dort.
 
 **Warum so:** Plasma Login 6.7.5 hat keinen Theme-/Look-and-Feel-Schlüssel. `Main.qml`/`Login.qml` sind
 fest im Binary (`qrc:/qt/qml/org/kde/plasma/login/`). Sie importieren aber `org.kde.breeze.components`

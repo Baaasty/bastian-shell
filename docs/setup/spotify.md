@@ -43,15 +43,14 @@ Popout: oben der laufende Song, darunter **Up Next**. **Library** → Playlist a
 (lädt beim Scrollen nach). Song anklicken spielt ihn in der Playlist. **Play** startet bei Song 1
 (Zufallswiedergabe aus), **Shuffle** startet gemischt. Zurück-Pfeil oder **Esc** geht eine Ebene hoch.
 
-## Spotify-App als RPM (lpf)
+## Spotify-App als RPM (negativo17)
 
-Die App kommt nicht als Flatpak, sondern als RPM `spotify-client`, das `lpf-spotify-client` (RPM Fusion nonfree)
-lokal aus Spotifys Paket baut – verteilen darf es niemand fertig gebaut.
+Die App kommt als RPM `spotify-client` aus dem Repo `fedora-spotify` von negativo17 (`system/packages/repos.txt`),
+nicht als Flatpak. Updates kommen normal mit `dnf upgrade`.
 
-- Einmal: in der Gruppe `pkg-build` sein (`sudo usermod -aG pkg-build $USER`, neu anmelden), dann `lpf update spotify-client`
-  (Lizenz bestätigen, bauen, installieren). Danach `scripts/flatpak-to-native migrate spotify` (Login, Einstellungen).
-- **Updates:** `dnf upgrade` bringt nur ein neues Rezept `lpf-spotify-client`; die App selbst baut erst `lpf update`.
-  Offenes zeigt `lpf state` (`OK` = aktuell). Spotify aktualisiert sich als RPM nicht selbst.
+- Warum nicht `lpf-spotify-client` (RPM Fusion): das Rezept hing hinterher und wollte eine Version bauen, die Spotify
+  schon gelöscht hatte → Bau schlug fehl (2026-10-20).
+- Umzug vom Flatpak: `scripts/flatpak-to-native migrate spotify` (Login, Einstellungen; Offline-Songs neu laden).
 
 ## Gut zu wissen
 

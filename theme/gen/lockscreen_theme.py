@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""theme/palette.json -> Lockscreen-Farben (DesktopTheme.qml im Shell-Paket).
+"""theme/palette.json -> Farben des Login-Themes (plasma/loginscreen/DesktopTheme.qml).
 
-Der Lockscreen (kscreenlocker) kann palette.json nicht selbst lesen, deshalb wird
-ein QML-Singleton erzeugt. Aufruf aus dem Repo-Root:
+Der Greeter des Plasma Login Managers kann palette.json nicht selbst lesen, deshalb wird
+ein QML-Singleton erzeugt; scripts/loginscreen kopiert es ins Theme. Aufruf aus dem Repo-Root:
   python3 theme/gen/lockscreen_theme.py [variante]
 """
 import json
@@ -11,7 +11,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = ROOT / "plasma/shells/de.bastian.desktop/contents/lockscreen/DesktopTheme.qml"
+OUT = ROOT / "plasma/loginscreen/DesktopTheme.qml"
 
 src = json.loads((ROOT / "theme/palette.json").read_text())
 variant = sys.argv[1] if len(sys.argv) > 1 else src["defaultTheme"]

@@ -17,7 +17,7 @@ location, projects) lives in local, git-ignored files with an `.example` next to
 - **Launcher** – apps, windows and projects without prefix; prefixes for projects (`#`), calculator (`=`), emoji (`:`),
   clipboard (`;`), files (`/`), browser tabs (`@`), passwords (`pw `), calendar (`cal `) and web searches (`g `, `yt `, `gh ` …, `?` lists them all)
 - **Cheat sheet** – Super+K shows every keybinding, generated from the Hyprland config
-- **Lock screen** – the shell locks itself (ext-session-lock, PAM), hyprlock as fallback; a matching Plasma lock screen package lives in `plasma/`
+- **Lock screen** – the shell locks itself (ext-session-lock, PAM), hyprlock as fallback; a matching login screen theme lives in `plasma/loginscreen/`
 - **Own dialogs** – polkit agent, screen-share picker, file picker, crash card, "app not responding"
 - **Focus & breaks** – focus mode, break reminder, project time
 - **Theming** – one palette (`theme/palette.json`) feeds generators in `theme/gen/` for Qt/KDE, Kvantum, GTK, Kitty, Konsole,
@@ -45,7 +45,7 @@ Then pick the Hyprland (uwsm) session at login. `scripts/hypr uninstall` reverts
 Package lists for a fresh machine live in `system/` (`system/bootstrap` is a dry run by default, `--apply` runs it).
 Colors and app themes: edit `theme/palette.json`, then `python3 -I theme/gen/all.py` (see `theme/README.md`).
 
-The older KDE Plasma / KWin variant (`scripts/rice on|off`, `bridge/`, `plasma/`) is still in the tree but no longer the focus.
+The older KDE Plasma / KWin variant was removed; it is kept in the git tag `kwin-final`.
 
 Keybindings: press **Super+K** in the session, or read [docs/knowledge/hotkeys.md](docs/knowledge/hotkeys.md).
 

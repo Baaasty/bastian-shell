@@ -8,7 +8,7 @@ Plasma bleibt installiert und ist die Rückfall-Sitzung. Stand 2026-10-18 (AP 15
 | Datei | Inhalt |
 |---|---|
 | `packages/repos.txt` | Zusatz-Repos: RPM Fusion, COPR Quickshell, COPR Hyprland, COPR Helium, VS Code (+ Befehle) |
-| `packages/dnf.txt` | Pakete nach Gruppen: `paket` installieren · `-paket` entfernen · `?paket` optional (`--optional`) · `%paket` nur KWin (`--kwin`) |
+| `packages/dnf.txt` | Pakete nach Gruppen: `paket` installieren · `-paket` entfernen · `?paket` optional (`--optional`) |
 | `packages/flatpak.txt` | Flatpaks (System/User), Bundles, Overrides |
 | `packages/vscode-extensions.txt` | VS Code-Erweiterungen |
 | `packages/other.txt` | Rest: `~/.local/bin`, Fremd-Builds (`~/.local/src`), distrobox (Claude Desktop), Podman, Schriften, systemd-Units, `/etc`-Änderungen |
@@ -37,23 +37,23 @@ Einzelne Schritte: `system/bootstrap --list`, dann z. B. `--only 4,5`.
 
 | # | Schritt | sudo |
 |---|---|---|
-| 1 | Paketquellen: RPM Fusion, COPR `errornointernet/quickshell`, `sdegler/hyprland`, `imput/helium`, VS Code | **ja** |
-| 2 | dnf-Pakete aus `dnf.txt` (ein `dnf install`), ffmpeg-Swap, KDE-Gruppe (nur Workstation), KDE-Apps entfernen, GoXLR-RPM, Spotify per `lpf` | **ja** |
+| 1 | Paketquellen: RPM Fusion, COPR `errornointernet/quickshell`, `sdegler/hyprland`, `imput/helium`, `atim/lazygit`, `lihaohong/yazi`, negativo17 `fedora-spotify`, VS Code | **ja** |
+| 2 | dnf-Pakete aus `dnf.txt` (ein `dnf install`), ffmpeg-Swap, KDE-Gruppe (nur Workstation), KDE-Apps entfernen, GoXLR-RPM (OpenRGB von Codeberg: nur Hinweis) | **ja** |
 | 3 | System: Gruppe kvm, vhost_vsock, nodocker, Anmeldung Plasma Login, Firewall rdp (nur mit krdp), podman.socket | **ja** |
 | 4 | Flatpaks + Overrides (System-Flatpaks fragen per polkit) | polkit |
 | 5 | VS Code-Erweiterungen | – |
-| 6 | User-Tools: Bun, Claude CLI, Starship, Godot, pnpm, Schriften, icp · Hyprland: `scripts/session build` (hyprflow), `scripts/share-picker build`, Equicord klonen + `scripts/equicord build` | – |
+| 6 | User-Tools: Bun, Claude CLI, Starship, Godot, pnpm, `uv tool install magic-wormhole`, Schriften, icp · Hyprland: `scripts/session build` (hyprflow), Equicord klonen + `scripts/equicord build`, `scripts/fastprobe build` | – |
 | 7 | distrobox `ubuntu` + Claude Desktop (sudo nur **im** Container) | – |
 | 8 | Dotfiles: `system/dotfiles` verlinken, `system/copies` kopieren | – |
-| 9 | Gemeinsam für beide Sitzungen: `theme/gen/all.py`, `rice theme on`, `scripts/kitty-theme install`, Wallpaper-Bilder, `scripts/claude-skills install`, Helium-Host (`scripts/chrome-ext install --browser helium`), User-Dienste (Key Light/GoXLR, `rice feeds` wenn `secrets.json` da) | – |
-| 10 | Sitzung: `scripts/hypr install` (Konfig + Shell-Dienst `desktop-shell-hyprland`), `scripts/session install` (Session-Restore), `scripts/share-picker install` · mit `--kwin` zusätzlich Shell-Paket, `rice on`, `wallpaper set` | – |
+| 9 | Desktop gemeinsam: `theme/gen/all.py`, `rice theme on`, `scripts/kitty-theme install`, `scripts/zsh-setup install` (Standard-Shell per pkexec), `scripts/sshs install`, Wallpaper-Bilder, `scripts/claude-skills install`, Helium-Host (`scripts/chrome-ext install --browser helium`), User-Dienste (Key Light/GoXLR, `rice feeds` wenn `secrets.json` da) | – |
+| 10 | Sitzung: `scripts/hypr install` (Konfig + Shell-Dienst `desktop-shell-hyprland`), `scripts/session install` (Session-Restore), `scripts/share-picker install` (Shell-Picker, nichts zu bauen; GTK-Alternative: `?gtk4`-Pakete + `scripts/share-picker build`) | – |
 | 11 | Hinweise: was von Hand bleibt | – |
 
 Befehle mit sudo stehen in der Ausgabe mit **`[sudo]`**; die Schlusszeile zählt sie. Ohne `--apply` wird nichts ausgeführt.
 
-- **Standard = Hyprland.** Plasma bleibt installiert und unverändert (Rückfall-Sitzung im Login), der KWin-Rice
-  (Shell-Paket, `rice on`, KWin-Kürzel/-Skripte, `%`-Pakete wie krdp) kommt nur mit **`--kwin`** dazu.
-- `--no-hyprland` lässt die Hyprland-Builds (6) und die Hyprland-Sitzung (10) weg – z. B. `--kwin --no-hyprland` für den alten KWin-Stand.
+- **Nur Hyprland.** Plasma bleibt installiert und unverändert (Rückfall-Sitzung im Login). Der alte KWin-Rice
+  (Shell-Paket, `rice on`, KWin-Kürzel/-Skripte) ist aus dem Repo entfernt und liegt im Git-Tag `kwin-final`.
+- `--no-hyprland` lässt die Hyprland-Builds (6) und die Hyprland-Sitzung (10) weg – nur die Basis.
 - `--optional` installiert auch die `?`-Pakete (sonst nur ein Hinweis).
 - **Nie überschrieben:** Kopien, deren PC-Fassung neuer ist als das Repo (Hinweis: `system/sync pull` oder `push --apply`),
   fremde Dateien (werden vorher als `.vor-desktop` bzw. nach `~/.local/state/desktop/` gesichert).
@@ -89,9 +89,9 @@ system/sync pull Code     # nur Pfade mit „Code“
 `pull` übernimmt keine Textdatei, in der etwas wie Token/Passwort/Key steht (zeigt nur die Zeilennummer).
 Faustregel: nach Änderungen in VS Code/Claude/GoXLR/Monitoren ab und zu `system/sync pull` + committen.
 
-### Auf DIESEM PC umstellen (noch nicht gemacht – du entscheidest, wann)
+### Auf DIESEM PC umstellen (erledigt 2026-10-19 – bleibt als Anleitung)
 
-Heute sind alle Dateien noch normale Dateien (Stand = Repo, `system/sync` zeigt es). Umstellen auf Links:
+Umstellen von normalen Dateien auf Links (`system/sync` zeigt den Stand):
 
 1. `system/sync` → alles `ok` / „gleich“? Sonst erst `system/sync pull` bzw. Unterschied prüfen.
 2. `system/bootstrap --only 8` (zeigt nur) → `system/bootstrap --apply --only 8`

@@ -1,4 +1,4 @@
-# VS Code-Erweiterungen (code --list-extensions, Stand 2026-10-18 abends: 85 installiert = 83 hier + 2 aus theme/gen)
+# VS Code-Erweiterungen (code --list-extensions, Stand 2026-10-20: 85 installiert = 83 hier + 2 aus theme/gen)
 # bootstrap: code --install-extension <id> (idempotent). Format: eine ID pro Zeile, "#" = Kommentar.
 # NICHT hier: desktop.desktop-theme + desktop.desktop-projects – die erzeugt und installiert theme/gen/all.py.
 # Hinweis: VS Code Settings Sync scheint aktiv (~/.config/Code/User/sync) – dann kämen die auch per Anmeldung zurück.

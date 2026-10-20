@@ -1,5 +1,5 @@
 # Beim Herunterfahren (oder Abmelden): GoXLR-Profil speichern und Key Light aus. ExecStop läuft beim Beenden
-# der User-Sitzung. Installiert/entfernt über scripts/rice on|off (Link nach ~/.config/systemd/user).
+# der User-Sitzung. Installiert über system/bootstrap (Schritt 9, Link nach ~/.config/systemd/user).
 # GoXLR: die Fader haben keinen Motor – das Profil merkt sich so die letzte Lautstärke, beim nächsten Start
 # passt sie zur Fader-Position und man muss den Fader nicht erst "abholen".
 # Davor: Routing komplett aus (goxlr-reset-routing), damit das gespeicherte Profil schon „alles aus“ ist

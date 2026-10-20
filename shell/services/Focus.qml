@@ -269,7 +269,6 @@ Singleton {
         if (!ready)
             pendingTask = task;   // Todos setzt die Aufgabe schon vor dem Laden der Datei
         save();
-        writeLockInfo();
     }
 
     // Sekundentakt: Ablauf von Block/Pause
@@ -411,7 +410,6 @@ Singleton {
         ready = true;
         account();
         save();
-        writeLockInfo();
     }
 
     function save(): void {
@@ -420,15 +418,5 @@ Singleton {
         stateFile.setText(JSON.stringify({ task: task, mode: mode, blockMin: blockMin, presetIdx: presetIdx, recent: recent, endsAt: endsAt, pausedMs: pausedMs, openEnded: openEnded, startedAt: startedAt, block: block, day: day,
             focusMin: focusMin, screenMin: screenMin, focusMs: Math.round(focusMs), screenMs: Math.round(screenMs),
             savedAt: lastTick }, null, 1));
-    }
-
-    // Der Lockscreen kann keine Dateien lesen, lädt aber QML: Aufgabe als kleines QML-Objekt
-    FileView {
-        id: lockInfo
-        path: root.home + "/.local/share/plasma/shells/de.bastian.desktop/contents/lockscreen/DesktopLockInfo.qml"
-        printErrors: false
-    }
-    function writeLockInfo(): void {
-        lockInfo.setText("import QtQuick\nQtObject { property string task: " + JSON.stringify(task) + " }\n");
     }
 }

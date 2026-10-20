@@ -2,7 +2,7 @@
 
 Bastians einziges Theme „desktop“ (früher „Hütte“): Quickshell (QML, Layer-Shell) auf Fedora 44 / Hyprland 0.56 (uwsm).
 Plasma bleibt installiert (Dolphin, Dateidialog, Qt-Theme, Bluetooth/WLAN), ist aber nicht mehr die Sitzung.
-Der alte KWin-Weg liegt noch im Repo (`plasma/`, `bridge/kwin/`, `scripts/rice`) – Kurzfassung in `docs/knowledge/hyprland.md`.
+Der alte KWin-Weg ist aus dem Repo entfernt und liegt nur noch im Git-Tag `kwin-final` (`docs/knowledge/hyprland.md`).
 
 ## Regeln
 
@@ -39,7 +39,6 @@ Flächen aus Tokens `surface` / `surfaceRaised` / `surfaceSunken`; `Glass.qml` l
 - Kürzel nur in `hypr/binds.conf` → `qs ipc call …`; der Titel `# …` dahinter speist Super+K und `scripts/hotkeys-md`
   (erzeugt `docs/knowledge/hotkeys.md` – nie von Hand ändern).
 - Sperre = eigene Shell-Sperre (`shell/modules/lock`, ext-session-lock), Notfall hyprlock.
-- KWin-Weg: **nie einen zweiten `kwin_wayland` starten** (macht alle KWin-Kürzel tot, Reparatur `scripts/rice keys-fix`).
 
 ## Monitore
 
@@ -53,7 +52,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - `tools/` eigene C-Quellen, gebaut nach `~/.local/lib/desktop/` (`v4l2-fastprobe`: schnellerer Kamerastart in Discord, `scripts/fastprobe`)
 - `theme/` `palette.json` + Generatoren `theme/gen/` für alle Apps · `design/` Inspos, Design-Brief, `preview.html`
 - `projects/` Projekt-Registry (`projects.json`: Farbe, Ports, Öffnen, Links – nur über `scripts/project`) · `profiles/` Desktop-Vorlagen
-- `equicord/` Discord-Plugin `desktopBridge` · alter KWin-Weg: `plasma/`, `bridge/kwin/`
+- `equicord/` Discord-Plugin `desktopBridge` · `plasma/loginscreen/` Theme des Login-Bildschirms (Plasma Login Manager, `scripts/loginscreen`)
 - `claude/skills/desktop-project/` nur der Wrapper `project` um `scripts/project` (kein Slash-Befehl; genutzt von
   `/project` und `/new-project` aus dem privaten Skill-Repo), verlinkt per `scripts/claude-skills install`
 - `system/` PC neu aufsetzen: `packages/` (dnf, Repos, Flatpak, VS-Code-Erweiterungen, Sonstiges), `dotfiles.md`,
@@ -69,6 +68,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/hypr panic` (Shell aus, Konsole auf)
 - Discord-Kamera schneller: `scripts/fastprobe build|on|off|status|bench` (wirkt beim nächsten Discord-Start)
 - Bildschirm teilen: `scripts/share-picker status|remembered|forget [app]` (gemerkte Auswahl je App)
+- Klänge: `scripts/sounds play [notify-urgent]|build|on|off|status` (Probehören, neu erzeugen, Sound-Theme für Apps)
 - Kürzel geändert: `scripts/hotkeys-md` (Cheat-Sheet neu) · Farben geändert: `python3 -I theme/gen/all.py`
 - PC neu aufsetzen: `system/bootstrap` (dry-run, echt mit `--apply`) · Umzug: `docs/setup/migrate.md`
 - Checks: `scripts/check` (Tests unter `scripts/tests/`, qmllint wenn installiert) – läuft auch als Git-Hook
@@ -93,7 +93,7 @@ Scope = Bereich (`bar`, `workbar`, `launcher`, `bridge`, `hypr`, `theme`, `syste
 ## Workflow
 
 - Größere Features: Plan Mode → Plan bestätigen lassen → umsetzen → Checks zeigen → Roadmap abhaken.
-- Roadmap: aktuell `docs/ROADMAP-HYPRLAND.md`, `docs/ROADMAP.md` = Gesamtliste (KWin-Zeit).
+- Roadmap: nur `docs/ROADMAP.md` (alte `ROADMAP-HYPRLAND.md` seit 2026-10-20 nur noch in Git).
   Nur `- [ ]` / `- [x]` (kein `[~]` → `- [ ] … (teilweise: was fehlt)`), erster offener Punkt = nächster Schritt.
 - Ideen „nicht jetzt“: eine Zeile in `docs/BACKLOG.md` statt umsetzen; ganzes Konzept → `docs/BACKLOG-<THEMA>.md`.
 - Beim Kompaktieren erhalten: geänderte Dateien, offene TODOs, aktueller Roadmap-Punkt.
@@ -128,7 +128,7 @@ Stelle und erklären das Warum. Widerspricht die Doku dem Code: Doku sofort korr
 | `THIRD_PARTY.md` | übernommener fremder Code + Lizenzen (Pflicht, Repo ist GPL und öffentlich) |
 | `docs/PRD.md` | was die Shell kann und warum, Nicht-Ziele |
 | `docs/ARCHITECTURE.md` | wie sie gebaut ist (Ordner, Datenfluss, IPC, Start) |
-| `docs/ROADMAP-HYPRLAND.md` · `docs/ROADMAP.md` | was dran ist / Gesamtliste |
+| `docs/ROADMAP.md` | was dran ist |
 | `docs/BACKLOG.md` · `docs/TECHSTACK.md` · `docs/DECISIONS.md` | Ideen · womit und warum · Entscheidungs-Log |
 | `docs/knowledge/` | `shell-features` (Konfig/Grenzen je Feature) · `hyprland` (Sitzung, Sperre, hyprflow, alter KWin-Weg) · `theming` · `hotkeys` (erzeugt) · `projects` (Registry) · `discord` (Plugin, Kameras) · `hardware` (Facecam, RGB) |
 | `docs/setup/` | einmal einrichten: discord, goxlr, hue, spotify, mail-calendar, passwords, loginscreen, migrate |

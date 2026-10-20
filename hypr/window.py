@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fenster-Schema mit Super+Pfeilen unter Hyprland – Nachbau des KWin-Scripts bridge/kwin/desktop-tiling.
+"""Fenster-Schema mit Super+Pfeilen unter Hyprland – Nachbau des KWin-Scripts desktop-tiling (Git-Tag kwin-final).
 
   window.py maximize        Super+↑   maximieren, nochmal = zurück
   window.py restore         Super+↓   normale Größe mittig (ist es schon normal: 60 % × 70 % mittig)

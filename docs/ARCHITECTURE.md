@@ -22,7 +22,7 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 | `projects/` | Projekt-Registry (`projects.json` lokal, `projects.example.json` im Repo, `store.py`, nur über `scripts/project`) |
 | `profiles/` | Desktop-Vorlagen (`profiles.json` lokal, `.example` im Repo; `services/Templates.qml`) |
 | `equicord/desktopBridge/` | Discord-Plugin (Equicord): Call-Status und Kamerabilder über einen lokalen Socket an `services/Cams.qml`/`Discord.qml` |
-| `plasma/`, `bridge/kwin/`, `scripts/rice` | alter KWin/Plasma-Weg (Shell-Paket, KWin-Skripte, Login-Theme); bleibt im Baum, nicht mehr im Fokus |
+| `plasma/loginscreen/` | Theme des Login-Bildschirms (Plasma Login Manager), eingespielt per `scripts/loginscreen`. Der alte KWin-Weg liegt nur im Git-Tag `kwin-final` |
 
 ## Datenfluss
 
@@ -54,7 +54,7 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 - `scripts/hypr install` verlinkt `hypr/`, Portale, uwsm-Umgebung und die Unit nach `~/.config` (nichts systemweit),
   `uninstall` nimmt alles zurück.
 - `systemd/desktop-shell-hyprland.service` startet `qs -p ${DESKTOP}/shell` mit der Hyprland-Sitzung, `Restart=on-failure`;
-  unter Plasma hält `ExecCondition` sie an. Plasma-Gegenstück: `desktop-shell.service` (`scripts/rice on|off`).
+  in der Rückfall-Sitzung Plasma hält `ExecCondition` sie an (dort läuft keine Shell).
 - Ein Pfad überall (`~/Workspace/bastian-shell/shell`): Quickshell unterscheidet Instanzen nach Pfad, sonst findet
   `qs ipc` sie nicht. Testen: `qs -p ~/Workspace/bastian-shell/shell`.
 - Weitere Hintergrund-Starts (hypridle, Polkit-Agent, Session-Restore, RGB): `hypr/autostart.conf`.

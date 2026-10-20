@@ -300,7 +300,7 @@ def pick(windows, allow_token, demo=False):
             if now - last_alive > ALIVE_EVERY:
                 last_alive = now
                 if ipc("alive", token) != "yes" and not os.path.exists(result):
-                    # Shell neu geladen (Datei geändert, rice restart): dieselbe Anfrage nochmal zeigen statt Rückfall.
+                    # Shell neu geladen (Datei geändert, hypr restart): dieselbe Anfrage nochmal zeigen statt Rückfall.
                     # Erst wenn die Shell auch nach ~10 s nicht wieder antwortet, kommt der Standard-Picker.
                     if not reopen(req):
                         return "fallback", "Shell hat die Auswahl verloren und kommt nicht wieder"

@@ -47,7 +47,7 @@ run() {
 name()    { case "$1" in discord) echo Discord;; spotify) echo Spotify;; thunderbird) echo Thunderbird;; esac; }
 fp_id()   { case "$1" in discord) echo com.discordapp.Discord;; spotify) echo com.spotify.Client;; thunderbird) echo org.mozilla.thunderbird_esr;; esac; }
 rpm_pkg() { case "$1" in discord) echo discord;; spotify) echo spotify-client;; thunderbird) echo thunderbird;; esac; }
-rpm_hint() { case "$1" in discord) echo "sudo dnf install discord";; spotify) echo "sudo dnf install lpf-spotify-client && lpf update spotify-client";; thunderbird) echo "sudo dnf install thunderbird";; esac; }
+rpm_hint() { case "$1" in discord) echo "sudo dnf install discord";; spotify) echo "sudo dnf install spotify-client  # Repo fedora-spotify (negativo17), system/packages/repos.txt";; thunderbird) echo "sudo dnf install thunderbird";; esac; }
 desktop_native() { case "$1" in discord) echo discord.desktop;; spotify) echo spotify.desktop;; thunderbird) echo net.thunderbird.Thunderbird.desktop;; esac; }
 # Prozessnamen (Flatpak und RPM heißen gleich)
 procs()   { case "$1" in discord) echo 'Discord|discord';; spotify) echo 'spotify';; thunderbird) echo 'thunderbird|thunderbird-bin';; esac; }

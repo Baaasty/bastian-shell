@@ -1,27 +1,20 @@
 #!/usr/bin/env bash
 # Bildschirmbereich als Video aufnehmen (Super+R, Auswahl macht shell/modules/screenshot/Snip.qml).
-# KWin streamt genau den Bereich (scripts/screencast.c, zkde_screencast stream_region, Mauszeiger
-# eingebettet) → GStreamer (NVENC, sonst OpenH264) → MP4 in ~/Videos/Screencasts (wie Spectacle).
+# wf-recorder (wlr-screencopy) nimmt genau den Bereich auf (Mauszeiger dabei), NVENC, sonst OpenH264
+# → MP4 in ~/Videos/Screencasts (wie Spectacle). Nur unter Hyprland; nichts zu installieren außer wf-recorder.
 #
-#   screenrec install             Hilfsprogramm bauen + KWin-Freigabe (.desktop) anlegen
-#   screenrec uninstall           beides wieder entfernen
-#   screenrec start X Y W H [S]   Aufnahme starten (globale logische Koordinaten, S = Skalierung)
+#   screenrec start X Y W H [S]   Aufnahme starten (globale logische Koordinaten; S wird nicht mehr gebraucht)
 #   screenrec stop                laufende Aufnahme beenden (Datei wird fertig geschrieben)
 #   screenrec status              Zustand als JSON ({"recording":false} wenn keine läuft)
 #
 # Die Aufnahme läuft per systemd-run in einem eigenen Scope und übersteht Shell-Neustarts.
-# Unter Hyprland stattdessen wf-recorder (wlr-screencopy, Bereich in globalen Koordinaten, NVENC, sonst
-# OpenH264) – kein install nötig, nur das Paket wf-recorder.
+# Der frühere KWin-Weg (zkde_screencast + GStreamer, scripts/screencast.c) liegt im Git-Tag kwin-final.
 set -uo pipefail
 
 SELF=$(readlink -f "$0")
-HERE=$(dirname "$SELF")
-BIN="$HOME/.local/libexec/desktop-screencast"
-GRANT="${XDG_DATA_HOME:-$HOME/.local/share}/applications/desktop-screencast.desktop"
 RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/desktop-screenrec"
 STATE="$RUN/state.json"
 OUTDIR="$(xdg-user-dir VIDEOS 2>/dev/null || echo "$HOME/Videos")/Screencasts"
-FPS=60
 
 notify() { notify-send -a "Screen Recording" -i "${3:-media-record}" "$1" "${2:-}" 2>/dev/null || true; }
 
@@ -35,32 +28,6 @@ running_pid() {
     # nur zählen, wenn dort wirklich „screenrec run“ läuft – sonst träfe stop einen fremden Prozess
     tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -qxF "$SELF" || return 1
     echo "$pid"
-}
-
-cmd_install() {
-    mkdir -p "$(dirname "$BIN")" "$(dirname "$GRANT")"
-    if [ ! -x "$BIN" ] || [ "$HERE/screencast.c" -nt "$BIN" ]; then
-        gcc -O2 -o "$BIN" "$HERE/screencast.c" || { echo "build failed (gcc)" >&2; exit 1; }
-    fi
-    cat > "$GRANT" <<EOF
-# desktop: erlaubt desktop-screencast (scripts/screencast.c) KWins Screencast-Protokoll.
-# KWin prüft, ob /proc/<pid>/exe zum Exec= dieser Datei passt.
-# Rückgängig: scripts/screenrec uninstall
-[Desktop Entry]
-Type=Application
-NoDisplay=true
-Name=Desktop Screencast
-Exec=$BIN
-X-KDE-Wayland-Interfaces=zkde_screencast_unstable_v1
-EOF
-    kbuildsycoca6 >/dev/null 2>&1 || true
-    echo "installed: $BIN"
-}
-
-cmd_uninstall() {
-    rm -f "$GRANT" "$BIN"
-    kbuildsycoca6 >/dev/null 2>&1 || true
-    echo "removed"
 }
 
 cmd_status() {
@@ -78,29 +45,16 @@ on_hyprland() { [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; }
 cmd_start() {
     [ $# -ge 4 ] || { echo "usage: screenrec start X Y W H [SCALE]" >&2; exit 2; }
     if running_pid >/dev/null; then echo "already recording" >&2; exit 1; fi
-    if on_hyprland; then
-        command -v wf-recorder >/dev/null || { notify "Screen recording not set up" "Install wf-recorder (docs/knowledge/hyprland.md)" dialog-warning; exit 1; }
-    elif [ ! -x "$BIN" ] || [ ! -f "$GRANT" ]; then
-        notify "Screen recording not set up" "Run: scripts/screenrec install" dialog-warning
-        exit 1
-    fi
+    on_hyprland || { notify "Screen recording unavailable" "Only in the Hyprland session" dialog-warning; exit 1; }
+    command -v wf-recorder >/dev/null || { notify "Screen recording not set up" "Install wf-recorder (docs/knowledge/hyprland.md)" dialog-warning; exit 1; }
     # setsid: vom Aufrufer lösen (Terminal zu ≠ Aufnahme weg)
     setsid -f systemd-run --user --scope --quiet --collect --slice=app.slice \
         --unit="desktop-screenrec-$(date +%s%N)" -- "$SELF" run "$@" >/dev/null 2>&1 </dev/null
 }
 
-# Encoder-Kette: NVENC (GPU), sonst OpenH264 (CPU)
-encoder() {
-    if [ "${1:-nv}" = nv ] && gst-inspect-1.0 --exists nvh264enc 2>/dev/null; then
-        echo "nvh264enc preset=p4 tune=high-quality rc-mode=vbr const-quality=23 bframes=0 ! video/x-h264,profile=high"
-    else
-        echo "videoconvert ! video/x-raw,format=I420 ! openh264enc bitrate=12000000 complexity=high"
-    fi
-}
-
-# intern: läuft im Scope, hält Screencast + gst-launch, bis SIGINT/SIGTERM
+# intern: läuft im Scope, hält wf-recorder, bis SIGINT/SIGTERM
 cmd_run() {
-    local x=$1 y=$2 w=$3 h=$4 scale=${5:-1}
+    local x=$1 y=$2 w=$3 h=$4
     # H.264 (4:2:0) braucht gerade Kantenlängen
     w=$(( w / 2 * 2 )); h=$(( h / 2 * 2 ))
     [ "$w" -ge 2 ] && [ "$h" -ge 2 ] || { notify "Recording failed" "Region too small" dialog-error; exit 1; }
@@ -112,70 +66,10 @@ cmd_run() {
     # sofort Zustand schreiben (verhindert Doppelstart)
     printf '{"recording":true,"starting":true,"pid":%d}\n' $$ > "$STATE"
 
-    if on_hyprland; then
-        run_wf "$x" "$y" "$w" "$h" "$out"
-        return
-    fi
-
-    coproc CAST { exec "$BIN" "$x" "$y" "$w" "$h" "$scale"; }
-    local cast=$CAST_PID word node serial
-    if ! read -r -t 5 -u "${CAST[0]}" word node word serial; then
-        kill "$cast" 2>/dev/null
-        rm -f "$STATE"
-        notify "Recording failed" "KWin did not start the screencast" dialog-error
-        exit 1
-    fi
-    # Serial (KWin ≥ 6.x) bevorzugt, sonst Knoten-ID
-    local target=$serial
-    [ "${serial:-0}" != 0 ] || target=$node
-
-    local start gst rc=0 try
-    for try in nv cpu; do
-        start=$(date +%s%3N)
-        # shellcheck disable=SC2046 # Encoder-Kette absichtlich aufgespalten
-        gst-launch-1.0 -q -e \
-            pipewiresrc target-object="$target" do-timestamp=true keepalive-time=1000 \
-            ! video/x-raw ! videorate drop-only=true max-rate=$FPS ! queue \
-            ! $(encoder "$try") ! h264parse ! mp4mux ! filesink location="$out" \
-            > "$RUN/gst.log" 2>&1 &
-        gst=$!
-        printf '{"recording":true,"pid":%d,"start":%s,"file":"%s","x":%d,"y":%d,"w":%d,"h":%d}\n' \
-            $$ "$start" "$out" "$x" "$y" "$w" "$h" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
-        # warten; Signale unterbrechen wait → gst per SIGINT sauber beenden (EOS, MP4 wird abgeschlossen)
-        local asked=-1
-        while kill -0 "$gst" 2>/dev/null; do
-            if [ "$stop" = 1 ]; then
-                [ "$asked" -ge 0 ] || { kill -INT "$gst" 2>/dev/null; asked=$SECONDS; }
-                # hängt gst nach 15 s noch, hart beenden
-                [ $(( SECONDS - asked )) -lt 15 ] || kill -TERM "$gst" 2>/dev/null
-                sleep 0.2
-                continue
-            fi
-            wait "$gst"
-        done
-        wait "$gst"
-        rc=$?
-        # NVENC gescheitert, bevor jemand gestoppt hat → einmal mit CPU-Encoder
-        if [ "$try" = nv ] && [ "$stop" = 0 ] && [ "$rc" != 0 ] && [ $(( $(date +%s%3N) - start )) -lt 3000 ]; then
-            rm -f "$out"
-            continue
-        fi
-        break
-    done
-
-    kill "$cast" 2>/dev/null
-    wait "$cast" 2>/dev/null
-    rm -f "$STATE"
-
-    local secs=$(( ($(date +%s%3N) - start) / 1000 ))
-    if [ -s "$out" ] && [ "$rc" = 0 ]; then
-        notify "Recording saved" "$w × $h · $((secs / 60)):$(printf %02d $((secs % 60))) · in Videos/Screencasts" video-x-generic
-    else
-        notify "Recording failed" "$(tail -n 3 "$RUN/gst.log" 2>/dev/null)" dialog-error
-    fi
+    run_wf "$x" "$y" "$w" "$h" "$out"
 }
 
-# Hyprland: wf-recorder nimmt den Bereich direkt auf (Mauszeiger dabei); SIGINT schließt die MP4 sauber ab
+# wf-recorder nimmt den Bereich direkt auf (Mauszeiger dabei); SIGINT schließt die MP4 sauber ab
 run_wf() {
     local x=$1 y=$2 w=$3 h=$4 out=$5 start rec rc=0 try asked
     for try in h264_nvenc libopenh264; do
@@ -215,11 +109,9 @@ run_wf() {
 }
 
 case "${1:-}" in
-    install) cmd_install ;;
-    uninstall) cmd_uninstall ;;
     start) shift; cmd_start "$@" ;;
     stop) cmd_stop ;;
     status) cmd_status ;;
     run) shift; cmd_run "$@" ;;
-    *) sed -n '2,13p' "$SELF" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,11p' "$SELF" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

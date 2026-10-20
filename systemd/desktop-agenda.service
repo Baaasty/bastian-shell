@@ -1,5 +1,5 @@
 # Termine (Vormonat bis übernächster Monat) und offene Todos per CalDAV -> ~/.cache/desktop/agenda.json. Läuft über desktop-agenda.timer.
-# Installiert/entfernt über scripts/rice on|off (Link nach ~/.config/systemd/user).
+# Installiert/entfernt über scripts/rice feeds|off (Link nach ~/.config/systemd/user).
 # Repo-Pfad: DESKTOP aus ~/.config/desktop/hyprland.env (scripts/hypr install), sonst ~/Workspace/bastian-shell.
 [Unit]
 Description=Desktop: Termine und Todos abrufen

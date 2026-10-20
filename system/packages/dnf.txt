@@ -1,12 +1,11 @@
-# dnf-Pakete für Fedora 44 + Hyprland 0.56 + Quickshell (Stand 2026-10-18 abends)
-# Quelle der Wahrheit: der laufende PC (`rpm -q`, `dnf history`, `dnf repoquery --installed --qf '%{name} %{reason}'`).
+# dnf-Pakete für Fedora 44 + Hyprland 0.56 + Quickshell (Stand 2026-10-20)
+# Quelle der Wahrheit: der laufende PC (`rpm -q`, `dnf history` ab ID 14 = selbst installiert, `dnf repoquery --installed --qf '%{name} %{reason}'`).
 # `dnf repoquery --userinstalled` liefert ~400 Einträge, weil das Kiwi-Image fast alles als "User" markiert – Basis-Rauschen.
 #
 # Format: ein Paket pro Zeile, "# …" = Kommentar.
 #   paket     installieren
 #   -paket    entfernen (dnf remove)
 #   ?paket    optional / nicht mehr nötig: bootstrap zeigt nur einen Hinweis; installiert wird nur mit --optional
-#   %paket    nur für die KWin-/Plasma-Sitzung (Rückfall, Branch kwin): bootstrap installiert es nur mit --kwin
 # system/bootstrap installiert alles Fehlende in EINEM `dnf install` (idempotent). Basis (Kernel, systemd, NetworkManager …)
 # bringen Fedora Workstation und Fedora KDE selbst mit und steht deshalb nicht hier.
 
@@ -39,7 +38,8 @@ cliphist                       # Zwischenablage-Verlauf (Launcher)
 kitty                          # Standard-Terminal (Super+Return), Look: scripts/kitty-theme install
 xdg-terminal-exec              # Terminal-Apps aus dem Launcher (uwsm app)
 playerctl                      # Medientasten / MPRIS
-tesseract                      # OCR im Snip (scripts/snip-ocr) – bei Bastian noch nicht installiert (Stand 18.10.)
+wtype                          # Tastendruck simulieren (Wayland, ohne Dienst/root): Zwischenablage „Enter = sofort einfügen“ (ydotool 2026-10-20 ersetzt)
+tesseract                      # OCR im Snip (scripts/snip-ocr), dnf history 53
 tesseract-langpack-deu
 tesseract-langpack-eng
 polkit-kde                     # Rückfall-Agent, falls die Shell den Passwort-Dialog nicht übernimmt (scripts/polkit-agent)
@@ -57,7 +57,7 @@ libnotify                      # notify-send
 python3-pillow                 # theme/gen/wallpaper.py
 socat                          # Sockets (Discord-Brücke, Kamera-Relay)
 qt6-qttools                    # qdbus-qt6
-gcc                            # Linker für cargo-Builds (hyprflow, Share-Picker), baut tools/v4l2-fastprobe; früher auch scripts/screencast.c (KWin)
+gcc                            # Linker für cargo-Builds (hyprflow, Share-Picker), baut tools/v4l2-fastprobe
 wireplumber                    # wpctl (Lautstärke, GoXLR-Routing)
 pipewire-utils
 
@@ -82,47 +82,44 @@ helium-bin                     # Browser (COPR imput/helium); Google Chrome ist 
 code                           # VS Code nativ (Repo vscode)
 
 # == Apps als RPM (bis 2026-10-18 Flatpaks; Daten umziehen: scripts/flatpak-to-native, Start: scripts/app-run)
-discord                        # RPM Fusion nonfree · Bar-Chip, discord-bridge (Socket $XDG_RUNTIME_DIR/discord-ipc-0); geht erst weg, wenn Equibop funktioniert
-lpf-spotify-client             # RPM Fusion nonfree · baut spotify-client lokal (bootstrap: Gruppe pkg-build + lpf update) · Update: docs/setup/spotify.md
+discord                        # RPM Fusion nonfree · Bar-Chip, discord-bridge (Socket $XDG_RUNTIME_DIR/discord-ipc-0) · Mod: eigener Equicord-Build (scripts/equicord)
+spotify-client                 # Repo negativo17 fedora-spotify (repos.txt) · Updates per dnf (bis 2026-10-20 lpf-spotify-client, dnf history 54/55)
 thunderbird                    # Fedora, Release statt ESR · Profil ~/.thunderbird, Theme aus theme/gen/thunderbird.py
 steam                          # RPM Fusion nonfree · Bibliothek ~/Data/Games/SteamLibrary (in Steam hinzufügen)
 mpv                            # Standard-Videoplayer · system/copies/.config/mimeapps.list
 yt-dlp
 kde-connect                    # Handy-Kopplung (kdeconnectd)
-# equibop                      # NICHT aus einem Repo: GitHub-RPM Equicord/Equibop (bootstrap Schritt 2, wie goxlr-utility)
 # goxlr-utility                # NICHT aus einem Repo: GitHub-RPM GoXLR-on-Linux/goxlr-utility (bootstrap Schritt 2)
 solaar                         # Logitech-Maus G502 X PLUS: Farbe/DPI ins Onboard-Profil (docs/knowledge/hardware.md)
-# openrgb                      # NICHT aus Fedora (rc2 zu alt): Codeberg-RPM 1.1 + hidapi-hotplug, siehe other.txt
+# openrgb                      # NICHT aus Fedora (rc2 zu alt): Codeberg-RPM 1.1 + hidapi-hotplug (dnf history 49), siehe other.txt
 
 # == Entwicklung
 git
-git-lfs                        # jetzt per dnf (früher Binary in ~/.local/bin – das danach löschen, es überdeckt /usr/bin)
+git-lfs                        # per dnf (das alte Binary in ~/.local/bin ist seit 2026-10-20 weg)
 gh
 nodejs                         # → nodejs22 + npm; pnpm kommt user-lokal (bootstrap Schritt 6, Equicord-Build)
 ripgrep
 python3
-cargo                          # + rust: hyprflow (scripts/session build), Share-Picker (scripts/share-picker build)
+cargo                          # + rust: hyprflow (scripts/session build), optional GTK-Share-Picker (scripts/share-picker build)
 pkgconf-pkg-config
-gtk4-devel                     # nur zum Bauen des Share-Pickers (kann nach dem Bau wieder weg)
-gtk4-layer-shell               # Laufzeit-Bibliothek des Share-Pickers – bei Bastian noch nicht installiert (Stand 18.10.)
-gtk4-layer-shell-devel
+uv                             # Python-CLI-Tools user-lokal: `uv tool install` (magic-wormhole, other.txt)
 btop
 fastfetch
 # zsh im Desktop-Look (scripts/zsh-setup install): Plugins aus Fedora, fzf-tab per git nach ~/.local/share/zsh
 zsh
 zsh-autosuggestions
 zsh-syntax-highlighting
-zsh-completions                # zusätzliche Tab-Vervollständigungen
 eza
 bat
 fzf
 zoxide
-atuin                          # Strg+R: durchsuchbarer Verlauf (lokal, ohne Sync)
+atuin                          # Strg+R: durchsuchbarer Verlauf (lokal, ohne Sync) – config/zsh/zshrc nutzt es, wenn da
 fd-find
 tealdeer                       # tldr: kurze Beispiele statt man
 git-delta                      # schöne git diffs (theme/gen/delta.py)
 du-dust
 duf
+unrar                          # RPM Fusion nonfree · .rar entpacken (Funktion `x` in config/zsh/zshrc)
 lazygit                        # COPR atim/lazygit (repos.txt)
 yazi                           # COPR lihaohong/yazi (repos.txt)
 
@@ -159,19 +156,23 @@ liberation-sans-fonts
 -qrca
 -skanpage
 
-# == Nur Plasma-/KWin-Sitzung (Rückfall; bootstrap --kwin)
-%gstreamer1-plugins-bad-free   # nvh264enc für die KWin-Bildschirmaufnahme (unter Hyprland: wf-recorder)
-%krdp                          # Remote Desktop (Plasma); Firewall-Dienst rdp nur, wenn installiert
-
 # == Optional / nicht (mehr) nötig – installiert nur mit --optional, nichts wird gelöscht
 ?hyprpicker                    # Farbpipette – nicht nötig, Snip liest das Pixel selbst (docs/knowledge/shell-features.md); kam als schwache Abhängigkeit
 ?gamemode                      # Host-Dienst gamemoded (CPU „performance“ während Spielen); kam mit Steam; Nutzen meist klein
                                #   → in Steam pro Spiel Startoption „gamemoderun %command%“
+?gtk4-devel                     # nur für den GTK-Share-Picker (Alternative zum Shell-Picker): scripts/share-picker build
+?gtk4-layer-shell               #   Laufzeit-Bibliothek dazu
+?gtk4-layer-shell-devel
 ?chezmoi                       # nicht mehr nötig: Dotfiles liegen in system/dotfiles + system/copies (weg: sudo dnf remove chezmoi)
-?ydotool                       # offen: „Enter = sofort einfügen“ in der Zwischenablage (nur bei Bedarf)
 
 # Entfernt / ersetzt (nur als Gedächtnis, nichts davon wird installiert):
 #   google-chrome-stable   entfernt 2026-10-18 (dnf history 35) → Helium. /etc/yum.repos.d/google-chrome.repo liegt noch da (optional löschen).
 #   xwaylandvideobridge    kam mit der KDE-Gruppe, unter Hyprland unnötig
+#   tailscale              installiert 2026-10-17 (dnf history 16), entfernt 2026-10-18 (45)
+#   equibop                GitHub-RPM (34), entfernt 2026-10-18 (38) → Discord-RPM + eigener Equicord-Build
+#   tmux                   entfernt 2026-10-19 (46)
+#   lpf-spotify-client     entfernt 2026-10-20 (54) → spotify-client aus negativo17 (55), kein lokaler Bau/pkg-build mehr
+#   openrgb (Fedora 1.0~rc2) + openrgb-udev-rules   entfernt 2026-10-19 (48) → Codeberg-RPM 1.1 (other.txt)
+#   zsh-completions        gibt es in Fedora 44 nicht (ein unbekanntes Paket ließe den ganzen `dnf install` scheitern)
 # Schwache Abhängigkeiten, die dnf mit hyprland/hyprland-guiutils geholt hat und die niemand benutzt (nichts zu tun):
 #   nwg-panel, wofi, python3-i3ipc, python3-xlib, python3-netifaces, brightnessctl, wlr-randr, newt

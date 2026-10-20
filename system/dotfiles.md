@@ -1,7 +1,7 @@
 # Dotfiles – was wichtig ist und wohin es gehört
 
-Stand 2026-10-18. **Umgesetzt:** `system/dotfiles/` (Links) + `system/copies/` (Kopien, Liste `copies.txt`) +
-`system/sync`. **Auf diesem PC ist noch nichts verlinkt** – Umstellen: `system/README.md` → „Auf DIESEM PC umstellen“.
+Stand 2026-10-20. **Umgesetzt:** `system/dotfiles/` (Links) + `system/copies/` (Kopien, Liste `copies.txt`) +
+`system/sync`. Auf Bastians PC sind die Links seit 2026-10-19 gesetzt (`bootstrap --only 8`).
 
 Spalte „Klasse“:
 
@@ -25,6 +25,12 @@ Spalte „Klasse“:
 | `~/.bash_profile` | – | Fedora-Standard |
 | `~/.gitconfig` | L | Name, Mail, `defaultBranch=main`, LFS-Filter. Keine Secrets. Eigene Fassung lokal (gitignored), im Repo nur `.gitconfig.example` |
 | `~/.ssh/config` | L | Host-Einträge mit Key-Namen; ganz oben `Include config.d/sshs.conf` (Server von `sshs add`, lokal). Eigene Fassung lokal (gitignored), im Repo nur `config.example`. **Keys selbst = c** |
+| `~/.zshrc` | a | Link auf `config/zsh/zshrc` per `scripts/zsh-setup install` (bootstrap 9): dazu fzf-tab nach `~/.local/share/zsh/plugins/`, git-delta-Include in `~/.gitconfig`, Standard-Shell zsh (pkexec). Fremde `.zshrc` → `~/.local/state/desktop/zshrc.backup` |
+| `~/.config/{bat/themes,lazygit/config.yml,yazi/theme.toml}`, `theme/out/delta.gitconfig` | a | `theme/gen/{bat,lazygit,yazi,delta}.py` (kommen mit `zsh-setup install` bzw. `all.py`) |
+| `~/.config/yazi/init.lua`, `~/.config/kitty/sshs.conf` + `sshs_kitten.py`, `~/.local/bin/sshs` | a | Links per `scripts/sshs install` (bootstrap 9), dazu `ssh-agent.socket`. `~/.config/yazi/vfs.toml` erzeugt `sshs sync` |
+| `~/.ssh/config.d/sshs.conf` | – (lokal) | Server-Liste von `sshs add` – nicht im Repo, Server neu eintragen |
+| `~/.config/fastfetch/config.jsonc`, `~/.bashrc.d/desktop-fetch.sh` | a | Links per `scripts/kitty-theme install` (bootstrap 9): Fastfetch-Gruß beim Öffnen |
+| `~/.local/share/uv/tools/` | – | `uv tool install magic-wormhole` (bootstrap 6) |
 | `~/.config/starship.toml` | a | gibt es nicht – `STARSHIP_CONFIG` zeigt auf `theme/out/starship.toml` |
 | `~/.config/Code/User/settings.json` | K | ~4,6 KB, keine Tokens gefunden. Eigene Kopie lokal (gitignored, Firmen-URLs), im Repo `settings.json.example` – bootstrap nimmt die Vorlage nur, wenn beides fehlt. Achtung: Projektfarben schreibt `scripts/vscode-colors` in die **Workspace**-Settings, nicht hierher |
 | `~/.config/Code/User/keybindings.json` | K | |
@@ -37,15 +43,12 @@ Spalte „Klasse“:
 | `~/.claude/skills/security-audit`, `synced/` | – | kommen von Claude selbst |
 | `~/.claude.json` | c | Konto/OAuth, Projekt-Verlauf – nicht ins Repo, `claude` neu anmelden |
 | `~/.config/kdeglobals` | a | Farbschema per `rice theme on` (`plasma-apply-colorscheme Desktop`) |
-| `~/.config/kwinrc` | a + b (Ausschnitt) | Effekte/Plugins/ScreenEdges/TabBox/Deko/ModifierOnly setzt `scripts/rice on`. Rest (`[NightColor]`, `[Desktops]`, `[Xwayland]`, `[Wayland]`) → als `kwriteconfig6`-Liste ins Repo, nicht die Datei (voll mit Tiling-UUIDs) |
-| `~/.config/kglobalshortcutsrc` | a | `scripts/rice on` setzt eigene + räumt fremde Kürzel (FOREIGN-Liste) |
-| `~/.config/kwinrulesrc` | a | `scripts/winrules on` |
+| `~/.config/kwinrc` | a + b (Ausschnitt) | Fensterdeko (`org.kde.kdecoration2`) setzt `rice theme on` (wirkt nur in der Plasma-Sitzung). Rest (`[NightColor]`, `[Desktops]`, `[Xwayland]`, `[Wayland]`) → als `kwriteconfig6`-Liste ins Repo, nicht die Datei (voll mit Tiling-UUIDs) |
 | `~/.config/kwinoutputconfig.json` | K | Monitor-Anordnung (3 Monitore, 360 Hz). KWin erkennt die Monitore per EDID; greift nach Ab-/Anmelden. Nur lokal (gitignored, enthält Monitor-Seriennummern), `system/sync pull` holt sie |
 | `~/.config/kcminputrc` | a | Cursor per `rice theme on` |
-| `~/.config/plasmarc`, `plasmashellrc`, `plasma-org.kde.plasma.desktop-appletsrc` | a | `rice on` (OSD aus, Panel weg) + `scripts/shellpkg` |
 | `~/.config/kscreenlockerrc` | a | Lockscreen-Wallpaper per `scripts/wallpaper set` |
 | `~/.config/konsolerc`, `~/.local/share/konsole/` | a | `theme/gen/konsole.py` + `scripts/konsole-ui on` |
-| `~/.config/hypr/{hyprland,hypridle}.conf`, `~/.config/uwsm/env-hyprland`, `~/.config/xdg-desktop-portal/hyprland-portals.conf`, `~/.config/desktop/hyprland.env`, `~/.config/systemd/user/desktop-shell-hyprland.service` (+ Drop-in `desktop-shell.service.d/not-on-hyprland.conf`) | a | `scripts/hypr install` (bootstrap 10) – nur Einstieg/Links, alles Echte steht in `hypr/` |
+| `~/.config/hypr/{hyprland,hypridle}.conf`, `~/.config/uwsm/env-hyprland`, `~/.config/xdg-desktop-portal/hyprland-portals.conf`, `~/.config/desktop/hyprland.env`, `~/.config/systemd/user/desktop-shell-hyprland.service` | a | `scripts/hypr install` (bootstrap 10) – nur Einstieg/Links, alles Echte steht in `hypr/` |
 | `~/.config/hypr/xdph.conf`, `~/.config/hyprland-preview-share-picker/` | a | `scripts/share-picker install` (bootstrap 10, erst nach `share-picker build`) |
 | `~/.config/hyprflow/config.toml`, `desktop-session-save.{service,timer}` | a | `scripts/session install` (bootstrap 10). Gesicherte Sitzungen `~/.local/share/hyprflow/sessions/` = – (entstehen neu) |
 | `~/.config/kitty/{kitty,theme}.conf` | a | Links per `scripts/kitty-theme install` (bootstrap 9) |

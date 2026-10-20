@@ -1,5 +1,5 @@
 /*
- Fensterwechsler (Super+Tab), Ersatz für das KWin-TabBox-Layout bridge/kwin/desktop-switcher.
+ Fensterwechsler (Super+Tab), Ersatz für das KWin-TabBox-Layout bridge/kwin/desktop-switcher (Git-Tag kwin-final).
  Aussehen 1:1 von dort übernommen; dessen Aufbau stammt aus KWins Layouts "thumbnail_grid" und "big_icons":
    SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
    SPDX-FileCopyrightText: 2020 Chris Holland <zrenfire@gmail.com>

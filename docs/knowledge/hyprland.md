@@ -12,8 +12,8 @@ Umzug und Autologin: [setup/migrate.md](../setup/migrate.md).
   prüfen mit `scripts/hypr check` (`Hyprland --verify-config`, startet nichts), `scripts/hypr status` zeigt Fehlendes.
   Im Login **„Hyprland (uwsm-managed)“** wählen.
 - `install` legt nur Includes und Links an, die allein in der Hyprland-Sitzung wirken: `~/.config/hypr/*.conf` → `hypr/`,
-  uwsm-Umgebung aus `hypr/env.conf`, Portal-Zuordnung, User-Unit `desktop-shell-hyprland`, und Drop-ins, die hier die
-  Plasma-Shell-Unit und DrKonqi anhalten (eigene Absturz-Karte, [shell-features.md](shell-features.md); einzeln zurück:
+  uwsm-Umgebung aus `hypr/env.conf`, Portal-Zuordnung, User-Unit `desktop-shell-hyprland`, und ein Drop-in, das hier
+  DrKonqi anhält (eigene Absturz-Karte, [shell-features.md](shell-features.md); einzeln zurück:
   `scripts/hypr drkonqi on`). Fremde Dateien sichert es nach `~/.local/state/desktop/hypr-backup/`, `uninstall` holt sie zurück.
 - **Zurück zu Plasma:** abmelden → „Plasma (Wayland)“. Shell hängt: Strg+Alt+Shift+Q (`scripts/hypr panic`: Shell aus,
   Konsole auf), dann `uwsm stop`. Nichts geht: Strg+Alt+F3 → `loginctl terminate-user $USER`.
@@ -51,7 +51,7 @@ Spiele (`steam_app_<id>`) öffnen auf DP-2 mit `content game`; Vollbild schalten
 - Super antippen und Super+Tab gehen über `qs ipc` (ein Prozessstart je Taste); wirkt das träge → Quickshell-`GlobalShortcut`.
 - Bildschirm teilen: Discord nutzt keine Portal-Restore-Tokens (Log von xdph: nie `restore_data`) – die Auswahl merkt
   darum unser Picker selbst je App ([shell-features.md](shell-features.md#bildschirm-teilen), `scripts/share-picker forget`).
-- Monitore nur über `monitors.conf`. Plasma-only bleiben `scripts/rice`, `winrules`, `shellpkg`, `wallpaper set`
+- Monitore nur über `monitors.conf`. Plasma-only bleibt `scripts/wallpaper set`
   (in Plasma ausführen; die Hyprland-Shell übernimmt neue Wallpaper über `kscreenlockerrc`).
 - **hyprlang (.conf) ist seit 0.55 veraltet** und fällt bald weg → vor einem Update auf 0.57+ Release-Notes lesen,
   ggf. auf Lua umstellen oder das Update zurückhalten.
@@ -73,8 +73,8 @@ Der letzte Workspace wird nicht entfernt, sondern auf einen leeren Standard zur�
 
 ## Sperrbildschirm
 
-Unter Plasma sperrt kscreenlocker mit dem Shell-Paket (`plasma/`), unter Hyprland die Shell selbst (`shell/modules/lock`,
-ext-session-lock) im selben Look. Einstieg für alles: `scripts/lock`.
+Die Shell sperrt selbst (`shell/modules/lock`, ext-session-lock); in der Rückfall-Sitzung Plasma sperrt der normale
+kscreenlocker. Einstieg für alles: `scripts/lock`.
 
 - Super+L, Power-Menü, `loginctl lock-session` und hypridle rufen `scripts/lock now` → IPC `lock lock`. Antwortet die Shell
   nicht, übernimmt sofort **hyprlock** (Farben aus der Palette).
@@ -114,17 +114,6 @@ Stand: installiert, Autosave läuft; **ein echter Restore ist noch nicht geteste
 
 ## Alter KWin-Weg
 
-Bis 2026-10-18 lief die Shell über KWin (Plasma 6). Der Code liegt noch, die KWin-Variante soll weg ([DECISIONS.md](../DECISIONS.md)).
-
-- Dazu gehören `plasma/` (Shell-Paket `de.bastian.desktop`: Layout ohne Panel, Lockscreen; Login-Theme), `bridge/kwin/`
-  (KWin-Scripts `desktop-tiling`, `desktop-edges`, Fensterwechsler `desktop-switcher`), `scripts/rice on|off|status|theme|switcher`
-  (bündelt alle Plasma-Änderungen, `off` = Vanilla-Plasma) und `scripts/shellpkg install|test|on|off` (Lockscreen-Paket).
-- Ersatz für fehlende Protokolle (kein foreign-toplevel, ext-workspace, ext-session-lock, screencopy, GlobalShortcut):
-  Fenster/Desktops über `import org.kde.taskmanager` + Freigabe `~/.local/share/applications/org.quickshell.desktop`
-  (`X-KDE-Wayland-Interfaces=org_kde_plasma_window_management`, keine andere .desktop-Datei mit `Exec=/usr/bin/qs`),
-  D-Bus über `org.kde.plasma.workspace.dbus`, Kürzel per `.desktop` mit `X-KDE-Shortcuts` → `qs ipc`
-  (Änderungen erst nach `rice off && rice on`), Klick außerhalb per `PopupWindow.grabFocus`, Sperre per Plasma-Shell-Paket.
-- Regeln: jede Plasma-Änderung mit einem Befehl rückgängig, Plasma-Dateien vorher sichern, Farbschemata nur neu anlegen,
-  nie `kded6`/`plasmashell` killen. Erste Anlaufstelle war `refs/caelestia-kde`.
-- **Nie einen zweiten `kwin_wayland` starten** (auch nicht `--virtual`): beim Beenden markiert er alle KWin-Kürzel als tot
-  (Alt+Tab …). Reparatur: `scripts/rice keys-fix`.
+Bis 2026-10-18 lief die Shell über KWin (Plasma 6); seit 2026-10-20 ist der Code aus dem Repo entfernt und liegt nur noch im
+Git-Tag `kwin-final` (`plasma/shells/`, `bridge/kwin/`, `scripts/rice on`, `shellpkg`, `winrules`, KWin-Bildschirmaufnahme) –
+Grund: [DECISIONS.md](../DECISIONS.md). Übrig ist nur das Login-Theme `plasma/loginscreen/` (Plasma Login Manager, `scripts/loginscreen`).

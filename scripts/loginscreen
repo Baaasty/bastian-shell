@@ -45,7 +45,8 @@ CFG="$HOME/.config"
 GREETER="/usr/libexec/plasma-login-greeter"
 SYS_BREEZE="/usr/lib64/qt6/qml/org/kde/breeze/components"
 THEME_SRC="$REPO/plasma/loginscreen"
-LOCK_DIR="$REPO/plasma/shells/de.bastian.desktop/contents/lockscreen"
+# Uhr nur auf diesem Monitor (wie die Sperre der Shell; früher desktopMainScreen im KWin-Lockscreen-Paket)
+MAIN_SCREEN="DP-2"
 THEME_REL=".local/share/desktop-login"                                  # in $PLHOME
 DROPIN_REL=".config/systemd/user/plasma-login.service.d/desktop-login.conf"
 FONTS_REL=".local/share/fonts/desktop"
@@ -86,7 +87,7 @@ EOF
 
 # ---- Layout-Theme ---------------------------------------------------------------------------------
 # Baut <dir>/qml/org/kde/breeze/components (System-Komponenten + unsere Fassungen aus plasma/loginscreen/,
-# DesktopTheme.qml vom Lockscreen, LoginConfig.qml) und <dir>/fingerprint.sha256.
+# DesktopTheme.qml, LoginConfig.qml) und <dir>/fingerprint.sha256.
 # Optional zweites Argument: Ordner für Bildschirmfotos (nur `shot`, baut ShotHook ein).
 build_theme() {
     local dir="$1" shot_out="${2:-}"
@@ -100,11 +101,11 @@ build_theme() {
     cp "$SYS_BREEZE"/*.qml "$mod/"
     # 2) unsere Fassungen drüber
     cp "$THEME_SRC"/components/*.qml "$mod/"
-    # 3) Farben: dieselbe Datei wie der Lockscreen (erzeugt aus theme/palette.json)
-    cp "$LOCK_DIR/DesktopTheme.qml" "$mod/DesktopTheme.qml"
-    # 4) Einstellungen wie beim Lockscreen: Hauptmonitor, Code-Länge (desktopAutoSubmitLength, Standard 6)
-    local main_screen code_len
-    main_screen="$(grep -oP 'desktopMainScreen: "\K[^"]+' "$LOCK_DIR/LockScreenUi.qml" || true)"
+    # 3) Farben (erzeugt aus theme/palette.json: theme/gen/lockscreen_theme.py)
+    cp "$THEME_SRC/DesktopTheme.qml" "$mod/DesktopTheme.qml"
+    # 4) Einstellungen: Hauptmonitor, Code-Länge (desktopAutoSubmitLength aus kscreenlockerrc, Standard 6)
+    # Der Kommentartext im erzeugten LoginConfig.qml bleibt wörtlich gleich: er geht in den Fingerabdruck ein.
+    local main_screen="$MAIN_SCREEN" code_len
     code_len="$(kreadconfig6 --file kscreenlockerrc --group Greeter --group LnF --group General \
         --key desktopAutoSubmitLength --default 6 2>/dev/null || echo 6)"
     [[ "$code_len" =~ ^[0-9]+$ ]] || code_len=6

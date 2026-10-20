@@ -77,4 +77,4 @@ Weg sind danach: Bluetooth-Oberfläche (nur noch `bluetoothctl`), Netzwerk-Apple
   Das muss in einer eigenen Runde auf greetd und die Keep-Liste umgestellt werden.
 - Login-Bildschirm im Desktop-Look: greetd mit einem Quickshell-Greeter in einem kleinen Hyprland. Die Farben kommen aus `palette.json` (Generator `theme/gen/login.py`). Das ist nur geplant, noch nicht gebaut.
   `scripts/loginscreen` und `plasma/loginscreen/` sind nach dem Umzug veraltet.
-- KWin-Code im Repo (`scripts/rice` außer `theme`/`feeds`, `scripts/shellpkg`, `scripts/winrules`, `bridge/kwin/`, `plasma/`) kann raus. Das gehört in eine eigene Runde.
+- KWin-Code im Repo: entfernt am 2026-10-20 (liegt im Git-Tag `kwin-final`); `scripts/rice` kann nur noch `theme`, `variant`, `feeds`, `off`.

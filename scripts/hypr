@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hyprland als zweite Sitzung neben Plasma (Branch hyprland). Plasma bleibt unberührt und Standard-Fallback.
+# Hyprland-Sitzung einrichten. Plasma bleibt installiert und unberührt (Rückfall-Sitzung).
 # Anleitung, Pakete, Zurück zu Plasma: docs/knowledge/hyprland.md
 #
 #   hypr install     Konfiguration verlinken/anlegen (ohne sudo): ~/.config/hypr, uwsm-Umgebung, Portale,
@@ -22,8 +22,8 @@ CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 STATE="$HOME/.local/state/desktop"
 BACKUP="$STATE/hypr-backup"
 UNIT="desktop-shell-hyprland"
-PLASMA_UNIT="desktop-shell"
-DROPIN="$CONF/systemd/user/$PLASMA_UNIT.service.d/not-on-hyprland.conf"
+# Rest der KWin-Variante (bis 2026-10-20): Sperre für deren Shell-Dienst – install/uninstall räumen sie nur noch weg
+DROPIN="$CONF/systemd/user/desktop-shell.service.d/not-on-hyprland.conf"
 ENVFILE="$CONF/desktop/hyprland.env"
 # DrKonqi (KDE-Absturzfenster) nur in der Hyprland-Sitzung und nur bei laufender Shell aus – dort zeigt die Shell
 # eine eigene Karte (shell/modules/crash). Unter Plasma ohne Wirkung.
@@ -111,17 +111,9 @@ EOF
     done
     if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$APPS" 2>/dev/null || true; fi
 
-    # Shell-Dienst für Hyprland; der Plasma-Dienst bekommt eine Bedingung (unter Plasma ändert sich nichts)
+    # Shell-Dienst für Hyprland
     link "$REPO/systemd/$UNIT.service" "$CONF/systemd/user/$UNIT.service"
-    # Sperre nur, solange es die KWin-Variante noch gibt (nach system/migrate Schritt 7 ist sie weg)
-    if [ -e "$CONF/systemd/user/$PLASMA_UNIT.service" ] || [ -L "$CONF/systemd/user/$PLASMA_UNIT.service" ]; then
-        write "$DROPIN" <<'EOF'
-# ERZEUGT von scripts/hypr install – die Plasma-Shell (KWin-Variante) nicht in der Hyprland-Sitzung starten.
-# Rückgängig: scripts/hypr uninstall
-[Service]
-ExecCondition=/bin/sh -c 'case ":$${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) exit 1 ;; esac; exit 0'
-EOF
-    elif [ -f "$DROPIN" ]; then
+    if [ -f "$DROPIN" ] && head -n1 "$DROPIN" | grep -qF "$MARK"; then
         rm -f "$DROPIN"; rmdir "$(dirname "$DROPIN")" 2>/dev/null || true
     fi
     drkonqi_off
@@ -177,9 +169,7 @@ missing_packages() {
 cmd_status() {
     local f
     for f in "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" \
-        "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$ENVFILE"; do
-        # ohne KWin-Variante (desktop-shell.service) braucht es die Sperre nicht
-        [ "$f" = "$DROPIN" ] && [ ! -e "$CONF/systemd/user/$PLASMA_UNIT.service" ] && [ ! -L "$CONF/systemd/user/$PLASMA_UNIT.service" ] && continue
+        "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DRKONQI_DROPIN" "$ENVFILE"; do
         if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
             say "ok      $f"
         elif [ -e "$f" ]; then

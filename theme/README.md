@@ -18,7 +18,7 @@ Variante umschalten (setzt `defaultTheme`, erzeugt alles neu, wendet an, was sch
 
 Einzeln: `kde_colors.py`, `ktexteditor.py` (an/aus: `--an`/`--aus`), `konsole.py`, `starship.py`, `vscode.py` (+ `vscode_projects.py`), `chrome.py`, `thunderbird.py`; Cursor: `design/cursors/build-xcursor.sh`.
 Wallpaper (nicht in `all.py`): `wallpaper.py [variante] [--motif=licht,huegel,holz]` → `out/wallpaper/<variante>/<motiv>/` (gitignored) + Vorschauen `design/wallpapers/`; Vergleich `design/wallpapers.html`, setzen `scripts/wallpaper set --variant dusk --motif huegel`.
-`--alles` erzeugt zusätzlich `design/palette.js`, das Lockscreen-Theme und `Theme.qml` des Fensterwechslers (`bridge/kwin/desktop-switcher/`, installiert per `scripts/rice switcher`).
+`--alles` erzeugt zusätzlich `design/palette.js` und die Farben des Login-Themes (`plasma/loginscreen/DesktopTheme.qml`, eingespielt per `scripts/loginscreen apply`).
 
 | Ziel | Datei im Repo | Installiert nach |
 |---|---|---|

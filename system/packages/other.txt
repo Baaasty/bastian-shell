@@ -1,4 +1,4 @@
-# Alles außerhalb von dnf/Flatpak (Stand 2026-10-18 abends, Hyprland-Rechner)
+# Alles außerhalb von dnf/Flatpak (Stand 2026-10-20, Hyprland-Rechner)
 
 ## ~/.local/bin
 bun            1.4.3     Binary (identisch mit ~/.bun/bin/bun) · neu: GitHub-Release bun-linux-x64.zip → ~/.local/bin (bootstrap 6)
@@ -7,9 +7,10 @@ claude         2.1.302   Symlink → ~/.local/share/claude/versions/<ver> · neu
 starship       1.27.0    offizielles Release (ohne sudo) · neu: starship.rs/install.sh -b ~/.local/bin (bootstrap 6)
 pnpm, pn, pnpx, pnx  → ~/.local/lib/node_modules/pnpm   pnpm 12.8.1 per `npm i -g pnpm@12.8.1 --prefix ~/.local` (bootstrap 6) – nur für den Equicord-Build
 hyprflow       0.2.1     Session-Restore, gebaut von `scripts/session build` (cargo, festgenagelter Commit; Quelle ~/.local/src/hyprflow) (bootstrap 6)
-hyprland-preview-share-picker   Bildschirm-teilen-Auswahl, gebaut von `scripts/share-picker build` (cargo, festgenagelt; Quelle
-                 ~/.local/src/hyprland-preview-share-picker) – bei Bastian NOCH NICHT gebaut (braucht gtk4-devel + gtk4-layer-shell(-devel), siehe dnf.txt)
-git-lfs        3.8.0     Binary – künftig per dnf (dnf.txt); nach `dnf install git-lfs` dieses Binary löschen (liegt im PATH vor /usr/bin)
+hyprland-preview-share-picker   nur die GTK-Alternative zum Shell-Picker (Standard: scripts/share-pick, nichts zu bauen) –
+                 `scripts/share-picker build` (cargo + ?gtk4-Pakete aus dnf.txt); bei Bastian nicht gebaut, bootstrap baut ihn nicht
+sshs           → scripts/sshs (Link)   SSH-Server-Picker in Kitty; `scripts/sshs install` legt die Links an (bootstrap 9)
+magic-wormhole, wormhole  → ~/.local/share/uv/tools/magic-wormhole   Dateien von PC zu PC schicken · `uv tool install magic-wormhole` (bootstrap 6)
 godot          → ~/.local/opt/godot/Godot_v4.7.2-stable_linux.x86_64 (GitHub-Release godotengine/godot, bootstrap 6)
 icp            → ~/Apps/icp/.venv/bin/icp  (iCloud-Passwörter, git clone github.com/Sank6/iCloud-Keychain-for-Linux + venv;
                  braucht den Anisette-Container, Browser-Erweiterung von Hand, Login per Apple-ID – bootstrap 6)
@@ -18,16 +19,19 @@ icloud-sync    eigenes Skript → system/dotfiles/.local/bin – rclone bisync i
 icloud-login   eigenes Skript → system/dotfiles/.local/bin – rclone reconnect
 # keylight/icloud-* liegen in system/dotfiles/.local/bin/ und werden von bootstrap 8 verlinkt.
 
+## ~/.local/share/zsh/plugins
+fzf-tab                          github.com/Aloxaf/fzf-tab (git clone --depth 1)   → scripts/zsh-setup install (bootstrap 9)
+
 ## ~/.local/src (Quellen für Fremd-Builds; werden von den Skripten selbst geklont und auf den geprüften Commit gesetzt)
 hyprflow                         github.com/isorensen/hyprflow            → scripts/session build
-hyprland-preview-share-picker    github.com/WhySoBad/hyprland-preview-share-picker → scripts/share-picker build
+hyprland-preview-share-picker    github.com/WhySoBad/hyprland-preview-share-picker → scripts/share-picker build (nur GTK-Alternative)
 equicord                         github.com/Equicord/Equicord             → von Hand klonen (git clone), dann scripts/equicord build; Hinweis in bootstrap 11
                                  (Plugin desktopBridge liegt in equicord/ im Repo; Details docs/knowledge/discord.md)
 libfastprobe.so                  eigene Quelle tools/v4l2-fastprobe/  → scripts/fastprobe build (gcc) → ~/.local/lib/desktop/; lädt scripts/app-run in Discord
 
 ## RPMs aus GitHub-Releases (kein Repo → nicht in dnf.txt; bootstrap 2 lädt das neueste)
 goxlr-utility 1.2.4       GoXLR-on-Linux/goxlr-utility, goxlr-utility-<ver>-1.x86_64.rpm (nicht die -suse-Datei)
-equibop 3.3.1             Equicord/Equibop, equibop-<ver>.x86_64.rpm (Discord-Client mit Equicord; Plugin desktopBridge: scripts/equicord install)
+(equibop 3.3.1 war hier bis 2026-10-18 – entfernt; Chat = Discord-RPM + eigener Equicord-Build)
 
 ## Distrobox
 ubuntu         Image docker.io/library/ubuntu:24.04
@@ -50,6 +54,7 @@ Container:
   systemd-anisette       Quadlet ~/.config/containers/systemd/anisette.container (system/dotfiles), Port 127.0.0.1:6969, für icp
   <projekt>-postgres     je Projekt (compose, `bun run services:up`)
   <projekt>-minio        je Projekt mit Datei-Speicher (+ <projekt>-minio-init, einmalig)
+  <projekt>-game-local   eigene Images je Projekt (z. B. localhost/soulwick-game:local)
   → Projekt-Container entstehen aus den Projekt-Repos neu, nicht im Bootstrap.
 Images: ubuntu:24.04, dadoum/anisette-v3-server:latest, postgres:15, postgres:17-alpine,
         pgsty/minio:RELEASE.2026-06-18T00-00-00Z, oven/bun:1.4.3(-slim)
@@ -59,6 +64,7 @@ User-Socket: podman.socket aktiviert, DOCKER_HOST in ~/.bashrc.d/desktop.sh
 JetBrainsMonoNerdFont-*.ttf (16 Schnitte)   github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
 MaterialSymbolsRounded.ttf                  github.com/google/material-design-icons (variablefont/MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf)
 Inter kommt per dnf (rsms-inter-fonts).
+~/.local/share/fonts/webbude/ (Poppins, Permanent Marker) – Projekt-Schriften, nicht Teil der Shell; bootstrap lädt sie nicht
 
 ## Erzeugt aus dem Repo (nichts zu sichern; bootstrap 9 → theme/gen/all.py und die Installer)
 ~/.local/share/color-schemes/Desktop.colors, DesktopHearth.colors   KDE-Farbschemata (kde_colors.py)
@@ -76,8 +82,7 @@ Themes, die NICHT aus dem Repo kommen: color-schemes/CatppuccinMochaRed.colors, 
 Aus dem Repo (systemd/*; Links bzw. angepasste Kopien – bootstrap 9 legt sie an, Pfade aus dem Repo-Ort):
   Hyprland:  desktop-shell-hyprland.service (scripts/hypr install) · desktop-session-save.{service,timer} (scripts/session install)
              desktop-keylight-off.service, desktop-goxlr-unlock.{path,service}, desktop-mail.{service,timer},
-             desktop-agenda.{service,timer}, desktop-mail-watch.service (bootstrap 9)
-  Nur KWin:  desktop-shell.service, desktop-keys-watch.service (scripts/rice on; bootstrap --kwin)
+             desktop-agenda.{service,timer}, desktop-mail-watch.service, desktop-passwords.{service,timer} (rice feeds, bootstrap 9)
   Transient: desktop-polkit-agent (Wächter, startet scripts/polkit-agent aus hypr/autostart.conf per systemd-run – keine Datei)
 Fremd, eigene Dateien (in system/dotfiles/.config/systemd/user):
   goxlr.service              goxlr-daemon (GoXLR Utility), default.target
@@ -85,7 +90,7 @@ Fremd, eigene Dateien (in system/dotfiles/.config/systemd/user):
   icloud-sync.{service,timer}  ~/.local/bin/icloud-sync (rclone bisync iCloud Drive)
   Quadlet anisette.container (→ systemd-anisette)
 Fremd, nur aktiviert (Dateien vom System):
-  podman.socket (sockets.target); app-org.kde.krdpserver.service (nur Plasma, entfällt unter Hyprland)
+  podman.socket (sockets.target); ssh-agent.socket (scripts/sshs install); app-org.kde.krdpserver.service (nur Plasma, entfällt unter Hyprland)
 
 ## GoXLR Utility
 goxlr-utility 1.2.4 RPM (siehe oben).
@@ -95,7 +100,6 @@ Schalter der Shell (von Hand pflegbar, optional): ~/.config/desktop/{goxlr,audio
 
 ## System (/etc, root) – vom Bootstrap mit sudo
 - Gruppe kvm für den eigenen Benutzer (Claude Desktop VM)       sudo usermod -aG kvm $USER
-- Gruppe pkg-build für den eigenen Benutzer (lpf baut Spotify)      sudo usermod -aG pkg-build $USER
 - Modul vhost_vsock beim Boot                          /etc/modules-load.d/vhost_vsock.conf
 - /etc/containers/nodocker (podman-docker ohne Hinweis)
 - Anmeldung: Plasma Login Manager (plasmalogin.service ist display-manager); auf Workstation wechselt bootstrap 3 von GDM darauf
@@ -104,9 +108,9 @@ Schalter der Shell (von Hand pflegbar, optional): ~/.config/desktop/{goxlr,audio
 - Secure Boot an → akmods-Schlüssel per MOK einschreiben (manuell, Neustart)
 - Kernel-Zeile (kommt von akmod-nvidia/grubby): rd.driver.blacklist=nouveau,nova_core modprobe.blacklist=nouveau,nova_core
 - Login-Bildschirm: scripts/loginscreen apply (sudo, eigener Schritt im Repo, nur als Hinweis in bootstrap 10)
-Nicht mehr nötig: Chrome-Repo/Brave-Repo (siehe repos.txt), KWin-Shell-Paket (~/.local/share/plasma/shells/de.bastian.desktop, nur --kwin)
+Nicht mehr nötig: Chrome-Repo/Brave-Repo (siehe repos.txt), KWin-Shell-Paket (~/.local/share/plasma/shells/de.bastian.desktop, KWin-Weg im Git-Tag kwin-final)
 
-## RPMs außerhalb der Repos (von Hand, sudo; Updates von Hand)
+## RPMs außerhalb der Repos (von Hand, sudo; Updates von Hand; bootstrap 2 zeigt nur einen Hinweis) – dnf history 48/49
 openrgb        1.1.0     https://codeberg.org/OpenRGB/OpenRGB/releases/download/release_1.1/openrgb_1.1_x86_64_f44_8e16de2.rpm
 hidapi-hotplug 0.15.0    https://codeberg.org/OpenRGB/hidapi-hotplug/releases/download/hidapi-hotplug-0.15.0/hidapi-hotplug-0.15.0-3.fc43.x86_64.rpm
                  Fedoras openrgb 1.0~rc2 + openrgb-udev-rules vorher entfernen (gleiche udev-Datei): sudo dnf remove openrgb openrgb-udev-rules,
