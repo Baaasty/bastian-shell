@@ -16,7 +16,7 @@ import qs.services
 // (sinnvoll nur mit verschlüsselter Platte + Autologin; Standard bleibt Passwort, docs/knowledge/hyprland.md).
 // Absturz: Hyprland bleibt gesperrt; die neu gestartete Shell sperrt dank Zustandsdatei wieder,
 // sonst übernimmt scripts/lock guard mit hyprlock (Ablauf: docs/knowledge/hyprland.md).
-// Leerlauf (hypridle → scripts/lock): IPC „idle“ dimmt und sperrt, beachtet den Fokus-Block.
+// Leerlauf (hypridle → scripts/lock): IPC „idle“ sperrt, beachtet den Fokus-Block (Abdunkeln: modules/idle).
 Scope {
     id: root
 
@@ -286,11 +286,6 @@ Scope {
         }
     }
 
-    // Leerlauf-Dimmen (hypridle → scripts/lock dim/undim)
-    DimOverlay {
-        id: dimmer
-    }
-
     // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call lock lock
     IpcHandler {
         target: "lock"
@@ -304,23 +299,14 @@ Scope {
         }
     }
 
-    // hypridle (über scripts/lock): im Fokus-Block erst beim zweiten, späteren Aufruf mit force
+    // hypridle (über scripts/lock): im Fokus-Block erst beim zweiten, späteren Aufruf mit force.
+    // Abdunkeln davor: shell/modules/idle (IPC „dim“).
     IpcHandler {
         target: "idle"
 
-        function dim(force: bool): string {
-            if (!force && Focus.active)
-                return "skip";
-            dimmer.dimmed = true;
-            return "ok";
-        }
-        function undim(): void {
-            dimmer.dimmed = false;
-        }
         function lock(force: bool): string {
             if (!force && Focus.active)
                 return "skip";
-            dimmer.dimmed = false;
             return root.lock();
         }
     }

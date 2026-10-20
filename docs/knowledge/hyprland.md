@@ -79,7 +79,7 @@ ext-session-lock) im selben Look. Einstieg für alles: `scripts/lock`.
 - Entsperren nur per Passwort über PAM (`shell/assets/pam.d/desktop-lock`: 2 s Wartezeit, kein leeres Passwort).
   Bewusst kein IPC-„unlock“. Ausnahme: `~/.config/desktop/lock.json` mit `{ "requirePassword": false }` → Leertaste
   entsperrt; nur sinnvoll mit verschlüsselter Platte und Autologin. hyprlock fragt immer nach dem Passwort.
-- Leerlauf (`hypr/hypridle.conf`): 5:00 dimmen, 5:05 sperren, +1 min Monitore aus; im Fokus-Block erst nach 15 min.
+- Leerlauf (`hypr/hypridle.conf`): 4:00 langsam abdunkeln, 5:00 Monitore aus, 5:05 sperren; im Fokus-Block 10 min später.
 - Zustand in `$XDG_RUNTIME_DIR/desktop-lock` (`locked`/`unlocked`) – daran hängen u. a. GoXLR-Fader beim Entsperren.
 - **Absturz:** Hyprland bleibt gesperrt (`misc:allow_session_lock_restore`). Der Wächter `scripts/lock guard` startet
   hyprlock, wenn die Shell die Sperre ~12 s nicht hält; die neu gestartete Shell sperrt dank Zustandsdatei selbst wieder.

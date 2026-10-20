@@ -3,8 +3,6 @@
 # Ablauf, Absturz-Verhalten und Notfall aus dem TTY: docs/knowledge/hyprland.md
 #
 #   lock now              sperren (Super+L, Power-Menü, hypridle lock_cmd): Shell, sonst hyprlock
-#   lock dim [force]      Leerlauf: abdunkeln (im Fokus-Block nur mit force)
-#   lock undim            wieder hell
 #   lock idle [force]     Leerlauf: sperren (im Fokus-Block nur mit force; ohne Shell immer per hyprlock)
 #   lock dpms-if-locked   Monitore aus, aber nur wenn gesperrt (hypridle)
 #   lock status           locked | unlocked
@@ -13,6 +11,7 @@
 #
 # Zustand: $XDG_RUNTIME_DIR/desktop-lock („locked“/„unlocked“, schreibt die Shell bzw. der Wächter).
 # Unter KWin/Plasma: „now“ = loginctl lock-session (kscreenlocker), alles andere tut nichts.
+# Abdunkeln vor dem Sperren: scripts/idle.
 set -uo pipefail
 
 SELF=$(readlink -f "$0")
@@ -225,23 +224,14 @@ cmd_idle() {
     emergency
 }
 
-cmd_dim() {
-    on_hyprland || exit 0
-    local force=false
-    [ "${1:-}" = force ] && force=true
-    ipc idle dim "$force" >/dev/null || true
-}
-
 case "${1:-}" in
     now) cmd_now ;;
     idle) cmd_idle "${2:-}" ;;
-    dim) cmd_dim "${2:-}" ;;
-    undim) on_hyprland && { ipc idle undim >/dev/null || true; } ;;
     dpms-if-locked) [ "$(state)" = locked ] && on_hyprland && hyprctl dispatch dpms off >/dev/null ;;
     status) s=$(state); echo "${s:-unlocked}" ;;
     rescue) on_hyprland && emergency ;;
     guard) start_guard ;;
     guard-run) cmd_guard_run ;;
-    *) sed -n '2,15p' "$SELF" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    *) sed -n '2,14p' "$SELF" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 exit 0

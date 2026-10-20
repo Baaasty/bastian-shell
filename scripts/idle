@@ -1,20 +1,37 @@
 #!/usr/bin/env bash
-# Kamin-Idle (ruhiger Kamin-Bildschirm nach Leerlauf). Doku: docs/knowledge/shell-features.md
+# Leerlauf-Abdunkeln (alle Monitore langsam dunkel, dann DPMS aus). Kette: hypr/hypridle.conf,
+# Doku: docs/knowledge/shell-features.md
 #
-#   idle show [force]   Kamin einblenden (hypridle; im Fokus-Block nur mit force)
-#   idle hide           ausblenden (hypridle bei Resume)
-#   idle toggle         zum Ausprobieren
-#   idle status         shown | hidden
+#   idle dim [force]      langsam abdunkeln (hypridle; im Fokus-Block nur mit force)
+#   idle undim            sofort wieder hell (hypridle bei Resume)
+#   idle black [force]    Monitore aus (DPMS; im Fokus-Block nur mit force)
+#   idle dim-test [s]     Abdunkeln ausprobieren, endet nach s Sekunden von selbst (Standard 10, max. 60)
+#   idle black-test [s]   Monitore s Sekunden aus, dann sicher wieder an (Standard 3, max. 10)
+#   idle status           dimmed | clear
 #
-# Das ist KEINE Sperre. Gesperrt wird von scripts/lock. Antwortet die Shell nicht, tut dieses Skript nichts.
+# Das ist KEINE Sperre. Gesperrt wird von scripts/lock.
 set -uo pipefail
 REPO=$(dirname "$(dirname "$(readlink -f "$0")")")
-ipc() { timeout 3 qs ipc --any-display -p "$REPO/shell" call fireplace "$@" 2>/dev/null; }
+ipc() { timeout 3 qs ipc --any-display -p "$REPO/shell" call dim "$@" 2>/dev/null; }
+force() { [ "${1:-}" = force ] && echo true || echo false; }
+# ganze Zahl zwischen min und max, sonst Standard
+num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo $(( $1 < $3 ? $3 : ($1 > $4 ? $4 : $1) )) || echo "$2"; }
 case "${1:-}" in
-    show) ipc on "$([ "${2:-}" = force ] && echo true || echo false)" ;;
-    hide) ipc off >/dev/null ;;
-    toggle) ipc toggle ;;
-    status) ipc status || echo hidden ;;
-    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    dim) ipc start "$(force "${2:-}")" >/dev/null ;;
+    undim) ipc stop >/dev/null ;;
+    black)
+        # Shell antwortet nicht: trotzdem aus (Eingabe weckt sie, hypridle-Resume schaltet an)
+        [ "$(ipc black "$(force "${2:-}")")" = skip ] || hyprctl dispatch dpms off >/dev/null
+        ;;
+    dim-test) ipc test "$(num "${2:-}" 10 2 60)" ;;
+    black-test)
+        s=$(num "${2:-}" 3 1 10)
+        # Rückweg auch bei Abbruch (Strg+C, kill)
+        trap 'hyprctl dispatch dpms on >/dev/null' EXIT
+        hyprctl dispatch dpms off >/dev/null
+        sleep "$s"
+        ;;
+    status) ipc status || echo clear ;;
+    *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
 exit 0

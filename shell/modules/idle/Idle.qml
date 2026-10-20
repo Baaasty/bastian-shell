@@ -6,28 +6,58 @@ import Quickshell.Wayland
 import qs.config
 import qs.services
 
-// Kamin-Idle: nach Leerlauf ein ruhiger Kamin-Bildschirm auf dem Hauptmonitor, auf den anderen Monitoren dunkel.
-// hypridle → scripts/idle show|hide → IPC „fireplace“ (hypr/hypridle.conf). Doku: docs/knowledge/shell-features.md
-// KEINE Sperre: gesperrt wird weiter von der Lock-Kette (scripts/lock, Lock.qml). Die Sperre liegt über diesem Fenster.
-// Jede Taste/Mausbewegung beendet es: hypridle ruft beim Resume „hide“, zusätzlich beendet jede Mausbewegung
-// auf dem Kamin es selbst (falls hypridle nicht läuft). Fenster gibt es nur, solange der Kamin sichtbar ist.
+// Leerlauf-Abdunkeln: alle Monitore werden langsam stark dunkler, danach schaltet hypridle sie per DPMS
+// ganz aus („clean schwarz“). Kette und Zeiten: hypr/hypridle.conf → scripts/idle → IPC „dim“.
+// Doku: docs/knowledge/shell-features.md (Leerlauf-Abdunkeln)
+// Klickdurchlässig und ohne Tastaturfokus: jede Eingabe geht an die Fenster darunter und blendet schnell aus
+// (hypridle ruft beim Resume „stop“; der eigene IdleMonitor fängt es ab, falls hypridle nicht läuft oder beim Test).
+// KEINE Sperre: gesperrt wird weiter von scripts/lock (Lock.qml), die Sperre liegt über diesem Fenster.
+// Fenster gibt es nur, solange abgedunkelt wird (kein Dauer-Zeichnen).
 Scope {
     id: root
 
     readonly property bool supported: !!Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
     property bool shown: false
+    // Einblenddauer; ease-in, damit die erste Hälfte kaum auffällt (beim Lesen nicht stören)
+    property int duration: 60000
+    // stark dunkel, aber nicht schwarz: man sieht noch, dass der PC an ist. Schwarz macht danach DPMS.
+    readonly property real strength: 0.88
+    // ausblenden erst beim Wechsel ruhig → Eingabe (beim Test wird beim Start evtl. noch getippt)
+    property bool sawIdle: false
 
-    function show(force: bool): string {
+    function start(force: bool, ms: int): string {
         if (!supported)
             return "unsupported";
-        // Fokus-Block: Lesen/Denken am Bildschirm nicht stören (wie das Dimmen)
+        // Fokus-Block: Lesen/Denken am Bildschirm nicht stören (spätere Listener kommen mit force)
         if (!force && Focus.active)
             return "skip";
+        sawIdle = false;
+        duration = ms;
         shown = true;
         return "ok";
     }
-    function hide(): void {
+    function stop(): void {
+        testEnd.stop();
         shown = false;
+    }
+
+    // Rückfall ohne hypridle: 1 s ruhig, dann jede Eingabe = aus. Inhibitoren egal (Video läuft weiter → trotzdem weg).
+    IdleMonitor {
+        enabled: root.shown
+        timeout: 1
+        respectInhibitors: false
+        onIsIdleChanged: {
+            if (isIdle)
+                root.sawIdle = true;
+            else if (root.sawIdle)
+                root.stop();
+        }
+    }
+
+    // Test endet von selbst
+    Timer {
+        id: testEnd
+        onTriggered: root.stop()
     }
 
     Variants {
@@ -37,14 +67,20 @@ Scope {
             id: win
 
             required property var modelData
-            // Config.mainScreen fällt schon auf den ersten Monitor zurück, wenn DP-2 fehlt
-            readonly property bool isMain: modelData.name === Config.mainScreen
-            // 0 → 1 beim Einblenden (langsam), schnell wieder weg
-            property real level: root.shown ? 1 : 0
-            property bool armed: false
+
+            function sync(): void {
+                if (root.shown) {
+                    fadeOut.stop();
+                    fadeIn.restart();
+                } else {
+                    fadeIn.stop();
+                    fadeOut.restart();
+                }
+            }
 
             screen: modelData
-            visible: root.shown || level > 0
+            // OpacityAnimator schreibt die Deckkraft erst am Ende zurück → Sichtbarkeit an den Lauf koppeln
+            visible: root.shown || fadeOut.running
             anchors {
                 top: true
                 bottom: true
@@ -53,77 +89,73 @@ Scope {
             }
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
-            WlrLayershell.namespace: "desktop-fireplace"
+            WlrLayershell.namespace: "desktop-dim"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            // leere Maske: Klicks und Zeiger gehen durch
+            mask: Region {}
 
-            Behavior on level { NumberAnimation { duration: root.shown ? 1400 : 220; easing.type: Easing.OutCubic } }
-
-            // erst kurz nach dem Einblenden auf die Maus hören (Zeiger „betritt“ das Fenster)
-            Timer {
-                id: arm
-                interval: 1500
-                onTriggered: win.armed = true
+            Rectangle {
+                id: shade
+                anchors.fill: parent
+                color: Qt.alpha(Theme.dim, 1)
+                opacity: 0
             }
+
+            // Animator läuft im Render-Thread: gleichmäßig auf 360 Hz, auch wenn die Shell kurz hängt
+            OpacityAnimator {
+                id: fadeIn
+                target: shade
+                to: root.strength
+                duration: root.duration
+                easing.type: Easing.InQuad
+            }
+            OpacityAnimator {
+                id: fadeOut
+                target: shade
+                to: 0
+                duration: Theme.fade
+                easing.type: Easing.OutCubic
+            }
+
             Connections {
                 target: root
                 function onShownChanged() {
-                    win.armed = false;
-                    if (root.shown)
-                        arm.restart();
-                }
-            }
-
-            Item {
-                anchors.fill: parent
-                opacity: win.level
-
-                Rectangle {
-                    anchors.fill: parent
-                    visible: !win.isMain
-                    color: Qt.darker(Theme.bgBottom, 1.8)
-                }
-                Loader {
-                    anchors.fill: parent
-                    active: win.isMain && win.visible
-                    sourceComponent: Fireplace {
-                        active: root.shown
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.BlankCursor
-                    acceptedButtons: Qt.AllButtons
-                    onPositionChanged: if (win.armed) root.hide()
-                    onPressed: root.hide()
-                    onWheel: root.hide()
+                    win.sync();
                 }
             }
         }
     }
 
-    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call fireplace on false
+    // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call dim start false
     IpcHandler {
-        target: "fireplace"
+        target: "dim"
 
         // Achtung: „show“ als Funktionsname geht nicht (kollidiert mit dem Unterbefehl „qs ipc show“)
-        function on(force: bool): string {
-            return root.show(force);
+        function start(force: bool): string {
+            return root.start(force, 60000);
         }
-        function off(): void {
-            root.hide();
+        function stop(): void {
+            root.stop();
         }
-        function toggle(): string {
-            if (root.shown) {
-                root.hide();
-                return "hidden";
+        // vor DPMS aus (scripts/idle black): gleiche Fokus-Regel wie beim Abdunkeln
+        function black(force: bool): string {
+            if (!force && Focus.active)
+                return "skip";
+            return "ok";
+        }
+        // Ausprobieren: in ~70 % der Zeit abdunkeln, kurz halten, dann von selbst aus (2–60 s)
+        function test(seconds: int): string {
+            const s = Math.max(2, Math.min(60, seconds));
+            const r = root.start(true, Math.round(s * 700));
+            if (r === "ok") {
+                testEnd.interval = s * 1000;
+                testEnd.restart();
             }
-            return root.show(true);
+            return r;
         }
         function status(): string {
-            return root.shown ? "shown" : "hidden";
+            return root.shown ? "dimmed" : "clear";
         }
     }
 }
