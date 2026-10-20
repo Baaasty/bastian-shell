@@ -3,7 +3,7 @@
 
   winmove dir l|r|u|d        wie `movewindow <richtung>`
   winmove mon <monitorname>  wie `movewindow mon:<name>`
-  winmove max up|down        Stufe hoch/runter: normal → maximiert → Vollbild (Super+↑/↓, Alt+Shift+↑/↓)
+  winmove max up|down        Stufe hoch/runter: schwebend → normal → maximiert → Vollbild (Super+Shift+↑/↓, Alt+Shift+↑/↓)
 
 Warum: Mit cursor:no_warps bleibt der Mauszeiger auf dem alten Monitor, und Hyprland fokussiert dort das
 verbliebene Fenster, nicht das verschobene (z. B. zwei Fenster im Split, rechtes auf den nächsten Monitor).
@@ -13,6 +13,8 @@ Monitor passiert nichts weiter (Zeiger bleibt, wo er ist).
 max: Hyprland kennt nur Umschalter (`fullscreen 1` maximiert, `fullscreen 0` Vollbild, jeweils nochmal = aus).
 Für „↑ eine Stufe größer, ↓ eine Stufe zurück“ braucht es den aktuellen Zustand (activewindow.fullscreen:
 0 normal, 1 maximiert, 2+ Vollbild). Ein Umschalter auf einen anderen Modus wechselt direkt dorthin.
+Unter „normal“ liegt „schwebend“ (activewindow.floating): ↓ löst das Fenster aus der Kachel (mittig, 60 × 70 %),
+↑ legt es zurück – Super+↑/↓ bleibt so frei für den Fokus (übereinander gekachelte Fenster).
 """
 import json
 import os
@@ -37,12 +39,18 @@ def step(direction):
     if not w or not w.get("address"):
         return 0
     fs = int(w.get("fullscreen") or 0)
-    state = 2 if fs >= 2 else fs
-    if direction == "up" and state < 2:
+    floating = w.get("floating") is True
+    # -1 schwebend · 0 normal · 1 maximiert · 2 Vollbild
+    state = 2 if fs >= 2 else fs if fs else (-1 if floating else 0)
+    if direction == "up" and state == -1:
+        hc("dispatch", "settiled", "active")
+    elif direction == "up" and state < 2:
         hc("dispatch", "fullscreen", "1" if state == 0 else "0")
     elif direction == "down" and state > 0:
         # Vollbild → maximiert (Umschalter auf anderen Modus), maximiert → normal (Umschalter aus)
         hc("dispatch", "fullscreen", "1")
+    elif direction == "down" and state == 0:
+        hc("--batch", "dispatch setfloating active ; dispatch resizeactive exact 60% 70% ; dispatch centerwindow")
     else:
         return 0
     shell_refresh()

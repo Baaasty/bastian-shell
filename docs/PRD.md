@@ -54,7 +54,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 
 - **F11** Workspace-Leiste unten: Desktops über alle Monitore mit Vorschau, Vorlagen, offene Apps; Alt+1…9, Alt antippen = Workspace-Modus; Fenster-Symbol auf einen Mini-Monitor einer Kachel ziehen = Fenster auf genau diesen Workspace und Monitor.
 - **F12** Fenster-Wechsler Alt+Tab / Super+Tab (Super+^ = gleiche App).
-- **F13** Fenster per Taste: Super+←/→ Fokus, Super+↑/↓ maximieren → Vollbild / zurück, Super+Shift+Pfeile verschieben (über Monitore), Super+Strg+Pfeile Größe, Super+Shift+V schweben, Super+1/2/3 Monitor.
+- **F13** Fenster per Taste: Super+Pfeile Fokus, Super+Shift+↑/↓ Stufen schwebend ↔ normal ↔ maximiert ↔ Vollbild, Super+Shift+←/→ verschieben (über Monitore), Super+Strg+Pfeile Größe, Super+Shift+V schweben, Super+1/2/3 Monitor.
 - **F14** Hintergrund-Apps Discord/Spotify: Super+Q räumt weg statt zu beenden, Rausholen über Bar/Workspace-Leiste; sichtbar kommen sie auf jeden Desktop mit, auf ihrem Monitor (Liste: `config/follow.json`).
 - **F15** Drop-down-Terminal (Super+Shift+Enter) und Fenster-Layouts speichern/anwenden (Super+Alt+K, [LAYOUTS.md](knowledge/shell-features.md)).
 - **F16** Sitzung wiederherstellen nach Neustart/Absturz über hyprflow ([SESSION.md](knowledge/hyprland.md)).

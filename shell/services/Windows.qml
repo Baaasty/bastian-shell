@@ -16,9 +16,9 @@ Singleton {
     // meldet es selbst). Dann nehmen Bar und Arbeitsplatz-Leiste ihre Overlay-Flächen ganz weg: jede Overlay-Fläche
     // auf dem Monitor verhindert in Hyprland direct scanout und Tearing (CMonitor::isSolitaryBlocked, SC_OVERLAYS).
     property bool game: false
-    // Echtes Vollbild (Super+↑ zweimal, Hyprland fullscreen 0) oder Spiel: Bar, Arbeitsplatz-Leiste und die
+    // Echtes Vollbild (Super+Shift+↑ zweimal, Hyprland fullscreen 0) oder Spiel: Bar, Arbeitsplatz-Leiste und die
     // Rand-Streifen nehmen ihre Overlay-Flächen ganz weg (kein Einblenden am Rand, kein Overlay über dem Fenster).
-    // Maximiert (Super+↑, fullscreen 1) zählt nicht: dort weichen sie nur aus und kommen am Rand zurück.
+    // Maximiert (Super+Shift+↑, fullscreen 1) zählt nicht: dort weichen sie nur aus und kommen am Rand zurück.
     // Benachrichtigungen und OSD bleiben erlaubt (eigene Fenster, nur kurz da).
     readonly property bool bare: fullscreen || game
     readonly property var screen: Quickshell.screens.find(s => s.name === Config.mainScreen) ?? null
@@ -29,9 +29,9 @@ Singleton {
         target: Hypr
         function onVersionChanged() { root.recompute(); }
     }
-    // Vollbild → maximiert (Super+↓, Hyprland fullscreen 2 → 1) kam nicht zuverlässig als Ereignis an: der Stand
+    // Vollbild → maximiert (Super+Shift+↓, Hyprland fullscreen 2 → 1) kam nicht zuverlässig als Ereignis an: der Stand
     // blieb auf Vollbild, Bar und Leisten blieben weg. Solange Vollbild gilt, die echte Lage nachfragen (2×/s, billig).
-    // Über Super+↑/↓ fragt scripts/winmove sofort nach (hypr refresh), das hier fängt F11 & Co.
+    // Über Super+Shift+↑/↓ fragt scripts/winmove sofort nach (hypr refresh), das hier fängt F11 & Co.
     Timer {
         interval: 500
         repeat: true

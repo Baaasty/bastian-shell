@@ -41,7 +41,7 @@ aufrollen. Große Entscheidungen mit abgewogenen Optionen: eigene Datei `decisio
 - 2026-10-18 · Workspaces: nur größere Leiste, kein Overlay · gut sichtbar, klarer aktiver Workspace, bequem wählbar (ROADMAP-HYPRLAND „Entschieden“) · angenommen
 - 2026-10-19 · Tastatur zuerst: Shell komplett per Kürzel, Maus nur in Browser und Apps; ohne Kürzel und Tastaturbedienung gilt ein Feature als nicht fertig · Bedienung aus dem Muscle Memory (ROADMAP-HYPRLAND „Leitlinie“) · angenommen
 - 2026-10-20 · Abendwärme (hyprsunset), Szenen (Spiele-Modus, Feierabend) und Tagesrückblick entfernt; Projektzeit bleibt, heute im Kachelkopf der Workspace-Leiste statt eigener Karte · Bastian braucht es nicht · angenommen
-- 2026-10-20 · Tasten-Schema: Alt = Workspaces, Super = Fenster, Super+Alt = Menüs/Programme und Topbar (Super+Leertaste = Bar-Modus, Super+Alt+Buchstabe = Bar-Modus + Buchstabe, die häufigsten Super+F/T/A/E/B/I ohne Alt; Super+↑/↓ = maximieren/Vollbild bzw. zurück); Kürzel nur dafür plus Notfälle, Screenshots, Medientasten und Klassiker · Muscle Memory: ein Modifier je Bereich, ein Buchstabe je Bar-Chip (`hypr/binds.conf`, `shell/services/BarKeys.qml`) · angenommen
+- 2026-10-20 · Tasten-Schema: Alt = Workspaces, Super = Fenster, Super+Alt = Menüs/Programme und Topbar (Super+Leertaste = Bar-Modus, Super+Alt+Buchstabe = Bar-Modus + Buchstabe, die häufigsten Super+F/T/A/E/B/I ohne Alt; Super+↑/↓ = maximieren/Vollbild bzw. zurück; ab 2026-10-20 Super+Shift+↑/↓ inkl. schwebend, Super+Pfeile nur Fokus); Kürzel nur dafür plus Notfälle, Screenshots, Medientasten und Klassiker · Muscle Memory: ein Modifier je Bereich, ein Buchstabe je Bar-Chip (`hypr/binds.conf`, `shell/services/BarKeys.qml`) · angenommen
 
 ## Betrieb
 

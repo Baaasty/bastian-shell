@@ -32,10 +32,10 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 
 | Taste | Aktion |
 |---|---|
-| `Super + ← / →` | Focus window |
-| `Super + Shift + ←↑↓→` | Move window |
-| `Super + ↑`<br>`Alt + Shift + ↑` | Maximize, again = fullscreen |
-| `Super + ↓`<br>`Alt + Shift + ↓` | Restore (fullscreen → maximized → normal) |
+| `Super + ←↑↓→` | Focus window |
+| `Super + Shift + ← / →` | Move window |
+| `Super + Shift + ↑`<br>`Alt + Shift + ↑` | Bigger: floating → tiled → maximized → fullscreen |
+| `Super + Shift + ↓`<br>`Alt + Shift + ↓` | Smaller: fullscreen → maximized → tiled → floating |
 | `Super + Ctrl + →` | Resize window: wider |
 | `Super + Ctrl + ←` | Resize window: narrower |
 | `Super + Ctrl + ↓` | Resize window: taller |
