@@ -28,7 +28,7 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
 ## RGB (OpenRGB)
 
 `scripts/rgb` setzt alle RGBs im PC **statisch** auf `accent` der aktiven Palette-Variante, für LEDs kräftiger abgeleitet
-(gleicher Farbton, Sättigung 0.92, volle Helligkeit: hearth `#DB6B4C` → `#FF4714` – LEDs mischen Gedecktes sonst weißlich;
+(gleicher Farbton, volle Sättigung und Helligkeit: hearth `#DB6B4C` → `#FF3700` – LEDs mischen Gedecktes sonst weißlich;
 anpassbar in `rgb.json` `saturation`/`brightness`), kein Effekt.
 Hardware: MSI MPG B550 Gaming Plus (Mystic Light, `1462:7c56`), NZXT Smart Device V2 (`1e71:200f`), RAM über SMBus
 (`/dev/i2c-0…2`, PIIX4), GPU (Gigabyte RTX 3070 Ti, nur `Direct`), Maus G502 X PLUS (Lightspeed-Empfänger `046d:c547`).

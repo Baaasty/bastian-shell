@@ -12,7 +12,7 @@ Technik: OpenRGB ohne Server (--noautoconnect). Erst ein Scan (-l), dann pro Ger
 --boot (Autostart): fehlt openrgb oder klemmt etwas, kurze Meldung und Exit 0 – der Login wird nie blockiert.
 --delay S: erst S Sekunden warten (nach Standby, USB braucht kurz; hypridle after_sleep_cmd nutzt 3 s).
 Geräte auslassen: ~/.config/desktop/rgb.json  {"skip": ["G502"]}  (Teil des Gerätenamens, Groß/klein egal)
-LED-Farbe = accent mit mehr Sättigung (LEDs wirken sonst blass): rgb.json  {"saturation": 0.92, "brightness": 1.0}
+LED-Farbe = accent mit mehr Sättigung (LEDs wirken sonst blass): rgb.json  {"saturation": 1.0, "brightness": 1.0}
 Hängt ein Gerät, setzt apply die übrigen einzeln; es landet in ~/.local/state/desktop/rgb-slow.json und kommt künftig einzeln zuletzt.
 Installieren (einmalig, sudo): sudo dnf install openrgb openrgb-udev-rules
 """
@@ -71,10 +71,10 @@ def palette_accent():
 
 def led_color(hex6):
     """LEDs mischen gedeckte Farben (Grün/Blau-Anteil) fast weißlich: gleicher Farbton, aber Sättigung und Helligkeit
-    hoch (Standard 0.92 / 1.0, anpassbar in rgb.json „saturation“/„brightness“). Die Palette bleibt die Quelle."""
+    hoch (Standard 1.0 / 1.0, anpassbar in rgb.json „saturation“/„brightness“). Die Palette bleibt die Quelle."""
     import colorsys
     cfg = load_config()
-    sat = min(1.0, max(0.0, float(cfg.get("saturation", 0.92))))
+    sat = min(1.0, max(0.0, float(cfg.get("saturation", 1.0))))
     val = min(1.0, max(0.0, float(cfg.get("brightness", 1.0))))
     h, _, _ = colorsys.rgb_to_hsv(*(int(hex6[i:i + 2], 16) / 255 for i in (0, 2, 4)))
     return "".join(f"{round(c * 255):02X}" for c in colorsys.hsv_to_rgb(h, sat, val))
