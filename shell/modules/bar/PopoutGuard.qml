@@ -1,20 +1,26 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import qs.config
 import qs.services
 
-// Bar-Popouts: offen bleiben, bis man weghovert (Bastian: „nach Knopfdruck nicht zu, erst beim Weghovern“).
+// Auf/Zu aller Bar-Popouts an einer Stelle (Regeln: docs/knowledge/shell-features.md „Bar-Popouts“).
 // In die Karte des Popouts legen (füllt sie aus, fängt nichts ab – nur Hover):
 //   PopoutGuard { id: guard; popout: pop; chip: pop.chip; name: "net" }
 // und in close() des Popouts `guard.intended = true` setzen (Esc, Chip-Klick, Weghovern = gewollt).
-// Regel (AP 22, für alle Bar-Popouts): zu geht ein Popout nur durch
-//  1. Weghovern aus der Hitbox (Karte, Chip, Streifen zwischen Bar und Popout), nachdem die Maus drin war – erst nach
-//     `delay` ms, Maustaste gedrückt (Regler ziehen) zählt als drin,
-//  2. Esc / close(), 3. Chip-Klick, Umschalt-Taste oder ein anderes Popout (Popouts.claim), 4. Klick daneben.
-// Schließt der Compositor es von sich aus, während die Maus drin ist (Klick ins Popout unter Hyprland, Fenster wird
-// geholt/fokussiert, Discord-Ereignis), geht es sofort wieder auf – ohne Klick-Fang; scharf erst wieder, wenn die Maus
-// sich darin gezeigt hat. War es per Taste offen (keyOpened), reicht danach die Bar die Tasten weiter (KeyNav.qml / BarKeys.fwd).
+//
+// Hyprland, per Maus geöffnet (ownGrab): statt des xdg-Popup-Grabs (Qt grabFocus) ein eigener Klick-Fang über
+// hyprland_focus_grab mit Popout UND Bar in der Liste. Dadurch
+//  - bekommt die Bar weiter die Maus: Hand-Zeiger, Hover, Tooltip, ein Klick auf einen anderen Chip wechselt direkt,
+//  - schließt das Popout nie „von selbst“: endet der Fang, bleibt das Fenster stehen (kein Zu→Auf-Flackern).
+// Zu geht es nur durch: Klick außerhalb (Fang-Flächen unten bzw. Ende des Fangs ohne Anlass), Esc / close(),
+// Klick auf den eigenen Chip, ein anderes Popout (Popouts.claim), Weghovern nach `delay` ms, wenn die Maus drin war.
+// Endet der Fang ohne Klick (Fenster/Ebene geht auf/zu, Arbeitsfläche – Popouts.changedAt), bleibt es offen und fängt neu.
+// Hat ein anderes Shell-Fenster die Tastatur genommen (Launcher …) oder hat etwas Vorrang (Popouts.modal, Share-Picker),
+// geht es zu statt zurückzukommen.
+// Per Taste geöffnet (keyOpened, KeyNav.qml / BarKeys): Qt-Grab wie bisher, schließt der Compositor es, kommt es ohne
+// Klick-Fang wieder (die Bar reicht dann die Tasten weiter, BarKeys.fwd). KWin: alter Weg mit Hover der Bar.
 Item {
     id: g
 
@@ -53,40 +59,176 @@ Item {
     readonly property bool onBridge: Popouts.bridge && Popouts.current === name
     readonly property bool near: inside || overChip || holding || onBridge || inStrip
 
-    // wann die Maus zuletzt im Popout war: schließt der Compositor es kurz danach (Klick hinein), kommt es wieder
     property real lastInside: 0
     property bool wasInside: false
     onInsideChanged: {
-        if (inside)
+        if (inside) {
             armed = true;
-        else
+            // ohne Fang offen (Fang war weg, Grenze erreicht): sobald die Maus wieder drin ist, neu fangen
+            if (ownGrab && popout.visible && !grabOn)
+                regrab(true);
+        } else {
             lastInside = Date.now();
-    }
-    function reopen(): void {
-        pending = true;
-        reopenTimer.start();
-    }
-    function restoreGrab(): void {
-        if (popout.grabFocus === false)
-            popout.grabFocus = true;        // nächstes Öffnen per Klick wieder mit Klick-Fang
+        }
     }
     onOverChipChanged: if (overChip && !keyOpened) armed = true
     onOnBridgeChanged: if (onBridge) armed = true
     onInStripChanged: if (inStrip && !keyOpened) armed = true
 
-    // ---------- Hyprland: echte Mausposition ----------
-    // Mit Klick-Fang (grabFocus) bekommt unter Hyprland nur das Popout die Maus: Bar und Chip melden sofort „weg“, auch
-    // wenn die Maus noch auf dem Knopf steht. Solange die Maus nicht im Popout ist, fragt der Guard deshalb alle 200 ms
-    // `hyprctl cursorpos` ab: oberer Streifen des Monitors (Rand + Bar + windowGap) = noch dran, darunter = weg.
-    readonly property bool hypr: (Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") || "") !== ""
+    function closeNow(): void {
+        if (!popout.visible)
+            return;
+        intended = true;
+        if (typeof popout.close === "function")
+            popout.close();
+        else
+            popout.visible = false;
+    }
+
+    // ---------- Hyprland: eigener Klick-Fang (Maus-Weg) ----------
+    readonly property bool hypr: Popouts.hypr
+    readonly property var barWin: popout.anchor ? popout.anchor.window : null
+    property bool ownGrab: false        // dieses Öffnen läuft über den eigenen Fang
+    property bool grabOn: false         // Fang soll aktiv sein
+    property bool withBar: false        // Bar erst kurz danach dazu: so landet die Tastatur sicher im Popout
+    property real outsideAt: 0          // letzter Klick außerhalb (Fang-Flächen)
+    property var regrabTimes: []        // Neu-Fänge der letzten 10 s (gegen Fokus-Kampf mit fremden Ebenen)
+
+    // Qt-Grab für den Maus-Weg abschalten (sonst ersetzt der xdg-Grab unseren Fang). Die Popouts setzen grabFocus beim
+    // Öffnen (openWith) oder fest auf true; per Taste (keyOpened) bleibt es, wie KeyNav es setzt.
+    function dropQtGrab(): void {
+        if (hypr && !keyOpened && popout.grabFocus === true)
+            popout.grabFocus = false;
+    }
+    Component.onCompleted: dropQtGrab()
+    // Tasten-Weg vorbei (KeyNav setzt keyOpened erst danach zurück): nächstes Öffnen per Maus wieder ohne Qt-Grab
+    onKeyOpenedChanged: if (!keyOpened && !popout.visible) dropQtGrab()
+    Connections {
+        target: g.hypr ? g.popout : null
+        ignoreUnknownSignals: true
+        function onGrabFocusChanged() {
+            g.dropQtGrab();
+        }
+    }
+
+    HyprlandFocusGrab {
+        id: focusGrab
+        active: g.ownGrab && g.grabOn && g.popout.visible && Popouts.modal === 0
+        windows: g.withBar && g.barWin ? [g.popout, g.barWin] : [g.popout]
+        onCleared: g.grabCleared()
+    }
+    // erst fangen, wenn das Popout-Fenster steht; die Bar etwas später dazu
+    Timer {
+        id: grabStart
+        interval: 30
+        onTriggered: {
+            if (g.ownGrab && g.popout.visible) {
+                g.grabOn = true;
+                barAdd.restart();
+            }
+        }
+    }
+    Timer {
+        id: barAdd
+        interval: 60
+        onTriggered: g.withBar = g.grabOn && g.popout.visible
+    }
+    function grabCleared(): void {
+        grabOn = false;
+        withBar = false;
+        if (popout.visible && !intended)
+            decide.restart();
+    }
+    // Ende des Fangs: kurz warten (das Drücken außerhalb und Hyprlands Ereignisse kommen gleich hinterher), dann entscheiden
+    Timer {
+        id: decide
+        interval: 150
+        onTriggered: {
+            if (!g.popout.visible || g.intended || g.grabOn)
+                return;
+            if (Date.now() - g.outsideAt < 800)
+                return g.closeNow();                     // Klick außerhalb (die Fang-Fläche hat ihn gesehen)
+            if (Popouts.modal > 0 || (Popouts.current !== "" && Popouts.current !== g.name))
+                return g.closeNow();                     // Vorrang / anderes Popout
+            // Klick in ein nicht fokussiertes Fenster: Hyprland fokussiert vor dem Klick um, der Fang endet ohne dass
+            // wir den Klick sehen – erkennbar daran, dass sich sonst nichts geändert hat
+            if (Date.now() - Popouts.changedAt > 1200)
+                return g.closeNow();
+            // ein anderes Shell-Fenster (Launcher, Dashboard …) hat die Tastatur: nicht zurückholen
+            if (Qt.application.state === Qt.ApplicationActive && !g.Window.active)
+                return g.closeNow();
+            g.regrab(false);
+        }
+    }
+    function regrab(byUser: bool): void {
+        const now = Date.now();
+        const recent = regrabTimes.filter(t => now - t < 10000);
+        if (!byUser && recent.length >= 4) {
+            regrabTimes = recent;
+            armed = true;           // Grenze: offen ohne Fang, Weghovern schließt
+            return;
+        }
+        recent.push(now);
+        regrabTimes = recent;
+        grabStart.restart();
+    }
+    function outsideClick(): void {
+        outsideAt = Date.now();
+        closeNow();
+    }
+
+    // Fang-Flächen: während des Fangs bekommt das zuletzt berührte Fenster der Liste (Popout oder Bar) auch die Klicks
+    // außerhalb – mit Koordinaten außerhalb des Fensters. Qt reicht sie an Kinder außerhalb weiter (kein Clipping),
+    // also liegt unter allem je eine riesige Fläche: Klick dort = außerhalb.
+    MouseArea {
+        parent: g.popout.contentItem
+        z: -1000
+        x: -100000
+        y: -100000
+        width: 200000
+        height: 200000
+        enabled: g.ownGrab && g.popout.visible
+        acceptedButtons: Qt.AllButtons
+        onPressed: mouse => {
+            const p = mapToItem(g, mouse.x, mouse.y);
+            if (p.x >= 0 && p.y >= 0 && p.x < g.width && p.y < g.height) {
+                mouse.accepted = false;      // leere Stelle in der Karte
+                return;
+            }
+            g.outsideClick();
+        }
+    }
+    MouseArea {
+        parent: g.barWin ? g.barWin.contentItem : null
+        z: -1000
+        x: -100000
+        y: -100000
+        width: 200000
+        height: 200000
+        enabled: !!parent && g.ownGrab && g.popout.visible && g.withBar
+        acceptedButtons: Qt.AllButtons
+        onPressed: mouse => {
+            const p = mapToItem(parent, mouse.x, mouse.y);
+            const strip = Theme.barMargin + Theme.barHeight + Theme.windowGap + 2;
+            if (p.x >= 0 && p.x < parent.width && p.y >= 0 && p.y < strip) {
+                mouse.accepted = false;      // Lücke in der Bar: kein Klick „außerhalb“
+                return;
+            }
+            g.outsideClick();
+        }
+    }
+
+    // ---------- Hyprland, Tasten-Weg: echte Mausposition ----------
+    // Mit Qt-Grab bekommt unter Hyprland nur das Popout die Maus: Bar und Chip melden sofort „weg“. Solange die Maus nicht
+    // im Popout ist, fragt der Guard deshalb alle 200 ms `hyprctl cursorpos` ab: oberer Streifen = noch dran.
     property bool inStrip: false
-    readonly property var barScreen: g.popout.anchor && g.popout.anchor.window ? g.popout.anchor.window.screen : null
+    readonly property var barScreen: barWin ? barWin.screen : null
     Timer {
         interval: 200
         repeat: true
         triggeredOnStart: true
-        running: g.hypr && g.enabled && g.popout.visible && !g.inside && !g.holding
-        onRunningChanged: if (!running && !g.popout.visible) g.inStrip = false
+        running: g.hypr && !g.ownGrab && g.enabled && g.popout.visible && !g.inside && !g.holding
+        onRunningChanged: if (!running) g.inStrip = false
         onTriggered: if (!cursor.running) cursor.running = true
     }
     Process {
@@ -106,83 +248,6 @@ Item {
         }
     }
 
-    // ---------- Hyprland: Hand-Zeiger über den Bar-Chips ----------
-    // Mit Klick-Fang behält das Popout den Zeiger-Fokus, auch über der Bar (Hyprland: „absolute“ xdg_popup-Grabs, die
-    // Bar ist als Layer-Fläche nicht Teil des Grabs). Den Zeiger setzt dann nur das Popout – über den Chips also der
-    // Pfeil des Popouts. Deshalb liegen im Popout-Fenster unsichtbare Flächen genau über den Chips der Bar (außerhalb
-    // des Fensters, das Popout bekommt die Bewegungen dort trotzdem), die nur den Zeiger setzen und keine Klicks nehmen.
-    property var chipRects: []
-    property var _rectChips: []       // Chip je Eintrag in chipRects (gleiche Reihenfolge) – für den Tooltip-Hover
-    function syncChipCursors(): void {
-        const win = g.popout.anchor ? g.popout.anchor.window : null;
-        if (!g.hypr || !g.popout.visible || !win) {
-            if (chipRects.length) {
-                setTipHover(null);
-                chipRects = [];
-                _rectChips = [];
-            }
-            return;
-        }
-        const out = [], chips = [];
-        for (const ch of Popouts.chips) {
-            if (ch.hostWindow !== win || !ch.visible || ch.width <= 0)
-                continue;
-            const p = ch.mapToItem(chipCursors, 0, 0);
-            out.push({ x: Math.round(p.x), y: Math.round(p.y), w: Math.round(ch.width), h: Math.round(ch.height) });
-            chips.push(ch);
-        }
-        _rectChips = chips;
-        if (JSON.stringify(out) !== JSON.stringify(chipRects))
-            chipRects = out;
-    }
-    // Tooltip neben einem offenen Popout: die Bar sieht den Hover nicht (Klick-Fang), die Flächen hier schon → an den Chip melden
-    property var _tipChip: null
-    Component.onDestruction: setTipHover(null)
-    function setTipHover(ch: var): void {
-        if (_tipChip === ch)
-            return;
-        if (_tipChip && _tipChip.tipHover !== undefined)
-            _tipChip.tipHover = false;
-        _tipChip = ch;
-        if (ch && ch.tipHover !== undefined)
-            ch.tipHover = true;
-    }
-    // Lage des Popouts steht erst nach dem configure des Compositors fest, Chips ändern ihre Breite (Titel, Zähler)
-    Timer {
-        interval: 250
-        repeat: true
-        triggeredOnStart: true
-        running: g.hypr && g.popout.visible
-        onTriggered: g.syncChipCursors()
-        onRunningChanged: if (!running) g.syncChipCursors()
-    }
-    Item {
-        id: chipCursors
-        parent: g.popout.contentItem
-        visible: g.hypr && g.popout.visible
-        Repeater {
-            model: g.chipRects
-            MouseArea {
-                required property var modelData
-                required property int index
-                x: modelData.x
-                y: modelData.y
-                width: modelData.w
-                height: modelData.h
-                acceptedButtons: Qt.NoButton
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onContainsMouseChanged: {
-                    const ch = g._rectChips[index] ?? null;
-                    if (containsMouse)
-                        g.setTipHover(ch);
-                    else if (g._tipChip === ch)
-                        g.setTipHover(null);
-                }
-            }
-        }
-    }
-
     Timer {
         id: leave
         interval: g.delay
@@ -193,20 +258,45 @@ Item {
         }
     }
 
+    function restoreGrab(): void {
+        if (!hypr && popout.grabFocus === false)
+            popout.grabFocus = true;        // KWin: nächstes Öffnen per Klick wieder mit Klick-Fang
+        else
+            dropQtGrab();
+    }
+    function reopen(): void {
+        pending = true;
+        reopenTimer.start();
+    }
+
     Connections {
         target: g.popout
         function onVisibleChanged() {
             if (g.popout.visible) {
-                if (!g.pending)
+                if (!g.pending) {
                     g.armed = g.inside || (g.overChip && !g.keyOpened);
+                    g.ownGrab = g.hypr && !g.keyOpened;
+                    g.regrabTimes = [];
+                    if (g.ownGrab)
+                        grabStart.restart();
+                }
                 g.pending = false;
                 g.intended = false;
                 return;
             }
-            // Vom Compositor geschlossen (nicht gewollt) und kein anderes Popout dran: entscheiden, ob es wiederkommt.
+            g.grabOn = false;
+            g.withBar = false;
+            grabStart.stop();
+            decide.stop();
             const byCompositor = !g.intended;
             g.intended = false;
-            if (!g.enabled || !byCompositor || (Popouts.current !== "" && Popouts.current !== g.name)) {
+            // eigener Fang: das Fenster schließt nur, wenn wir es wollen – nie zurückholen
+            if (g.ownGrab) {
+                g.ownGrab = false;
+                return;
+            }
+            // Qt-Grab (Tasten-Weg, KWin): vom Compositor geschlossen und kein anderes Popout dran → wieder auf
+            if (!g.enabled || !byCompositor || Popouts.modal > 0 || (Popouts.current !== "" && Popouts.current !== g.name)) {
                 g.restoreGrab();
                 return;
             }
@@ -214,60 +304,12 @@ Item {
                 g.reopen();
                 return;
             }
-            // Hyprland meldet beim Klick ins Popout erst „Maus weg“ und schließt dann – daher „eben noch drin“ (400 ms)
+            // KWin: Hover der Bar ist verlässlich; „eben noch drin“ (400 ms) = Klick ins Popout
             g.wasInside = g.inside || g.holding || Date.now() - g.lastInside < 400;
-            if (g.hypr) {
-                decideProc.running = true;      // Entscheidung nach der echten Mausposition (unten)
-                return;
-            }
-            // KWin: Hover der Bar ist verlässlich
-            if (g.wasInside && !g.overChip && !Popouts.overBar)
+            if (!g.hypr && g.wasInside && !g.overChip && !Popouts.overBar)
                 g.reopen();
             else
                 g.restoreGrab();
-        }
-    }
-    // Hyprland, vom Compositor geschlossen: echte Mausposition entscheidet
-    //  - auf einem anderen Chip der Bar: Hyprland hat dessen Klick geschluckt → Klick selbst auslösen (Menü wechselt sofort)
-    //  - sonst auf der Bar (eigener Chip, Lücke): zu lassen
-    //  - eben noch im Popout (Klick hinein): wieder auf, sonst (Klick in den Bildschirm): zu lassen
-    Process {
-        id: decideProc
-        command: ["hyprctl", "cursorpos", "-j"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const sc = g.barScreen, win = g.popout.anchor ? g.popout.anchor.window : null;
-                let c = null;
-                try {
-                    c = JSON.parse(text);
-                } catch (e) {
-                    g.restoreGrab();
-                    return;
-                }
-                if (g.popout.visible || (Popouts.current !== "" && Popouts.current !== g.name))
-                    return;
-                const strip = !!sc && c.x >= sc.x && c.x < sc.x + sc.width && c.y >= sc.y
-                    && c.y < sc.y + Theme.barMargin + Theme.barHeight + Theme.windowGap + 2;
-                if (strip) {
-                    g.restoreGrab();
-                    for (const ch of Popouts.chips) {
-                        if (ch === g.chip || ch.hostWindow !== win || !ch.visible || ch.width <= 0)
-                            continue;
-                        const p = ch.mapToItem(null, 0, 0);
-                        if (c.x >= sc.x + p.x && c.x < sc.x + p.x + ch.width && c.y >= sc.y + p.y && c.y < sc.y + p.y + ch.height) {
-                            Popouts.synthChip = ch;
-                            Popouts.synthAt = Date.now();
-                            ch.clicked({ button: Qt.LeftButton, buttons: Qt.LeftButton, modifiers: 0, x: ch.width / 2, y: ch.height / 2, accepted: true });
-                            return;
-                        }
-                    }
-                    return;
-                }
-                if (g.wasInside)
-                    g.reopen();
-                else
-                    g.restoreGrab();
-            }
         }
     }
 
@@ -275,10 +317,10 @@ Item {
         id: reopenTimer
         interval: 0
         onTriggered: {
-            // inzwischen ein anderes Popout dran oder gewollt geschlossen: nicht zurückholen
-            if (Popouts.current !== "" && Popouts.current !== g.name) {
+            // inzwischen ein anderes Popout dran, Vorrang oder gewollt geschlossen: nicht zurückholen
+            if ((Popouts.current !== "" && Popouts.current !== g.name) || Popouts.modal > 0) {
                 g.pending = false;
-                g.popout.grabFocus = true;
+                g.restoreGrab();
                 return;
             }
             g.popout.grabFocus = false;

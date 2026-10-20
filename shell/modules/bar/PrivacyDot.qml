@@ -6,7 +6,8 @@ import qs.services
 import qs.components
 
 // Privatsphäre-Punkte in der Bar: je ein kleines Symbol, solange Mikrofon (amber), Kamera (rot/Terrakotta) oder Bildschirmfreigabe (Akzent)
-// in Benutzung ist. Nichts aktiv = unsichtbar und ohne Platz. Hovern zeigt, welche App (Tooltip). Daten: Privacy.qml. Doku: docs/knowledge/shell-features.md
+// in Benutzung ist. Nichts aktiv = unsichtbar und ohne Platz. Hovern zeigt, welche App (Tooltip). Der Teilen-Punkt ist ein Chip:
+// Klick / Bar-Modus „P“ öffnet das Teilen-Menü (SharePopout.qml), Mittelklick stoppt alle Freigaben. Daten: Privacy.qml. Doku: docs/knowledge/shell-features.md
 Row {
     id: dots
 
@@ -98,11 +99,38 @@ Row {
         apps: Privacy.cams
         tone: Theme.error
     }
-    Dot {
+    // Teilen: klickbar (Chip mit Bar-Buchstabe „P“) – Menü zum Wechseln/Stoppen/Vergessen (SharePopout.qml)
+    Chip {
+        id: shareChip
         anchors.verticalCenter: parent.verticalCenter
-        glyph: "screen_share"
-        title: "Sharing your screen"
-        apps: Privacy.shares
-        tone: Theme.accent
+        visible: Privacy.shares.length > 0
+        width: visible ? 28 : 0
+        implicitHeight: 28
+        padding: 6
+        radius: 14
+        hintKey: BarKeys.keyFor("share")
+        tip: "Sharing your screen: " + Privacy.shares.join(", ") + " · Super+Alt+P · middle-click stops all"
+        active: sharePop.visible
+        color: Theme.flat(Qt.alpha(Theme.accent, active ? 0.4 : hovered ? 0.32 : 0.22))
+        // Klick = Menü (Stop, Quelle wechseln, Vergessen); Mittelklick = alles sofort stoppen
+        onClicked: mouse => {
+            if (mouse && mouse.button === Qt.MiddleButton)
+                sharePop.stopAll();
+            else
+                sharePop.toggle();
+        }
+
+        Icon {
+            name: "screen_share"
+            fill: true
+            size: 16
+            color: Theme.accent
+        }
+
+        SharePopout {
+            id: sharePop
+            barWindow: dots.barWindow
+            chip: shareChip
+        }
     }
 }

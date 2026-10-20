@@ -65,4 +65,31 @@ check("ohne app", sorted(sp.load_memory()), ["discord", "helium", "obs"])
 check("recall kaputt", sp.recall_line({"sel": "screen:DP-2; rm -rf"}, wins, {"DP-2"}), None)
 check("recall leer", sp.recall_line(None, wins, {"DP-2"}), None)
 
+# Ansage der Shell: gilt einmal, nur gültige App-Namen, läuft ab
+sp.DIR = tmp
+sp.EXPECT = os.path.join(tmp, "expect.json")
+check("expect gültig", sp.expect("discord"), True)
+check("take expect", sp.take_expect(), {"app": "discord"})
+check("expect verbraucht", sp.take_expect(), None)
+check("expect kaputter name", sp.expect("../x; rm"), False)
+sp.expect("Discord")
+check("expect klein", sp.take_expect(), {"app": "discord"})
+sp.expect("discord")
+check("expect abgelaufen", sp.take_expect(now=10 ** 12), None)
+
+sp.expect("discord")
+check("expect andere app bleibt", sp.take_expect("xwaylandvideobridge"), None)
+check("expect passende app", sp.take_expect("discord"), {"app": "discord"})
+
+# Wer fragt: offene Portal-Anfrage → Absender → Programmname (Versionsordner egal)
+st = "PID=1\nComm=Discord\nExe=/home/x/.config/discord/app-1.0.164/Discord\nUserUnit=app-discord-1.scope\n"
+check("app_key discord", sp.app_key(st), "discord")
+check("app_key electron → comm", sp.app_key("Exe=/usr/lib/electron/electron\nComm=Signal\n"), "signal")
+check("app_key leer", sp.app_key(""), "")
+tree = "/org/freedesktop/portal/desktop/session/1_9/x\n/org/freedesktop/portal/desktop/request/1_1083/ashpd_9D9q9MUPjc\n"
+check("requester einer", sp.portal_requester(tree, lambda s: st if s == ":1.1083" else ""), "discord")
+tree2 = tree + "/org/freedesktop/portal/desktop/request/1_33/xwaylandvideobridge1\n"
+check("requester mehrdeutig", sp.portal_requester(tree2, lambda s: st), "")
+check("requester keiner", sp.portal_requester("/org\n", lambda s: st), "")
+
 sys.exit(1 if fails else 0)

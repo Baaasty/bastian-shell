@@ -23,6 +23,7 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 
 ## Verworfen
 <!-- mit Grund, damit sie nicht wiederkommt -->
+- **Quelle beim Teilen live wechseln** – „Share something else…“ im Teilen-Menü, ohne den Stream zu beenden — verworfen 2026-10-20: unter Wayland fragt Discord das Portal nicht neu (`presentDesktopSourcePicker` ist ein No-Op), der Weg über Stop + Neustart beendete den Stream; das Portal tauscht keine Quelle einer laufenden Freigabe. Einzige Möglichkeit: virtueller Bildschirm/Headless-Output, der einen Monitor spiegelt und den man intern umschaltet
 - **Login als Quickshell-Greeter** – greetd mit einem Quickshell-Greeter in einem kleinen Hyprland, Farben aus `palette.json` (`theme/gen/login.py`); nur geplant, nicht gebaut (Quelle: docs/setup/migrate.md) — verworfen 2026-10-20: Autologin, Login-Bildschirm wird nie gesehen
 - **Bootstrap ohne Plasma** – `system/packages/dnf.txt` und `system/bootstrap` auf greetd + Keep-Liste umstellen, statt Plasma neu zu holen; „eigene Runde“ (Quelle: docs/setup/migrate.md) — verworfen 2026-10-20: Plasma bleibt eh (Dolphin, Dateidialog, Bluetooth/WLAN)
 - **Tagesziel aus einer eigenen App** – Dashboard zeigt ein Tagesziel über die API einer eigenen App (welche, ist offen) (Quelle: docs/ROADMAP.md „Später“, alte SPEC §2.2) — verworfen 2026-10-20: keine App dafür, To-dos oben links reichen

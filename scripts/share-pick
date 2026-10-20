@@ -17,9 +17,16 @@ Ablauf (Protokoll aus xdph 1.4.1, src/shared/ScreencopyShared.cpp – Details: d
   - Abbruch = keine [SELECTION]-Zeile (Exit 1) → xdph bricht das Teilen ab.
 
 Merken (Haken „Remember this choice“ bzw. „Allow a restore token“ = Flag r): Discord schickt xdph nie einen
-Restore-Token zurück (fragt mit persist_mode 0/1, nie mit restore_data), darum merken wir die Auswahl selbst – je App =
-Klasse des aktiven Fensters (xdph gibt die App-ID nicht weiter), in ~/.local/state/desktop/share-picker.json.
+Restore-Token zurück (fragt mit persist_mode 0/1, nie mit restore_data), darum merken wir die Auswahl selbst – je App
+(siehe „Wer fragt“), in ~/.local/state/desktop/share-picker.json.
 Danach antworten wir ohne Karte (kleine Benachrichtigung). Vergessen: share-pick --forget [app] (scripts/share-picker forget).
+
+Wer fragt (App-Schlüssel für das Merken), in dieser Reihenfolge:
+  1. D-Bus: die offene Portal-Anfrage /org/freedesktop/portal/desktop/request/<Absender>/<Token> → Absender → Programm
+     (busctl status: Exe-Name, z. B. Discord aus ~/.config/discord/app-1.0.164/Discord → „discord“, egal welche Version).
+  2. Ansage der Shell (share-pick --expect <app>, gilt 20 s, einmal; Discord-Popout „Stream“).
+  3. Klasse des aktiven Fensters (alter Weg). Beim Klick in der Bar ist oft VS Code aktiv – so landete Discords Merkung
+     einmal bei „com.microsoft.vscode“ und ging dann an xwaylandvideobridge, das direkt danach fragte.
 
 Rückfall: läuft die Shell nicht (oder startet sie während der Auswahl neu), übernimmt der Standard-Picker
 hyprland-share-picker (gleiche Argumente und Umgebung, seine Ausgabe geht direkt an xdph).
@@ -32,6 +39,8 @@ Formatprüfung ohne Shell und ohne UI (simuliertes Ergebnis):
     share-pick --format 'ok r/screen:DP-2'
 Gemerktes zeigen / vergessen:
     share-pick --remembered      share-pick --forget [app]
+Nächste Anfrage ansagen (Shell, vor dem Start des Teilens):
+    share-pick --expect discord
 """
 import json
 import os
@@ -58,6 +67,10 @@ SEL_RE = re.compile(rf"^(screen:{NAME}|window:\d+|region:{NAME}@-?\d+,-?\d+,\d+,
 STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop")
 LOG = os.path.join(STATE, "share-pick.log")
 MEMORY = os.path.join(STATE, "share-picker.json")
+EXPECT = os.path.join(DIR, "expect.json")
+EXPECT_TTL = 20.0                                              # Sekunden, so lange gilt eine Ansage der Shell
+ANSWERS = os.path.join(DIR, "answers.json")    # zuletzt geteilt je App (Teilen-Menü zeigt „was“), nur im RAM-Ordner
+APP_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 SELECTION_RE = re.compile(r"\[SELECTION\]([^/\s]*)/(\S+)")
 
 
@@ -147,6 +160,90 @@ def requester():
     """Wer teilen will: Klasse des aktiven Fensters (Klick auf „Go Live“ fokussiert Discord). "" = unbekannt."""
     win = hypr_json("activewindow")
     return str(win.get("class") or "").strip().lower() if isinstance(win, dict) else ""
+
+
+def expect(app):
+    """Ansage der Shell: die nächste Anfrage kommt von <app>."""
+    app = (app or "").strip().lower()
+    if not APP_RE.match(app):
+        return False
+    os.makedirs(DIR, mode=0o700, exist_ok=True)
+    tmp = EXPECT + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"app": app, "until": time.time() + EXPECT_TTL}, f)
+    os.replace(tmp, EXPECT)
+    return True
+
+
+def take_expect(app="", now=None):
+    """Ansage lesen und verbrauchen (gilt für genau eine Anfrage). None = keine, abgelaufen oder für eine andere App
+    (dann bleibt sie liegen – z. B. fragt xwaylandvideobridge dazwischen, die Ansage gilt Discord)."""
+    try:
+        with open(EXPECT, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    valid = isinstance(data, dict) and APP_RE.match(str(data.get("app") or "")) \
+        and (now if now is not None else time.time()) <= float(data.get("until") or 0)
+    if valid and app and data["app"] != app:
+        return None
+    try:
+        os.unlink(EXPECT)
+    except OSError:
+        pass
+    return {"app": data["app"]} if valid else None
+
+
+def note_answer(app, line, windows):
+    """Was <app> zuletzt bekommen hat (für die Anzeige im Teilen-Menü; Fenster über die Klasse, nie Titel)."""
+    m = SELECTION_RE.search(line or "")
+    entry = memory_entry(m.group(2), windows) if m and app else None
+    if entry is None:
+        return
+    try:
+        with open(ANSWERS, encoding="utf-8") as f:
+            data = json.load(f)
+        data = data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        data = {}
+    data[app] = dict(entry, at=int(time.time()))
+    try:
+        os.makedirs(DIR, mode=0o700, exist_ok=True)
+        with open(ANSWERS + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(ANSWERS + ".tmp", ANSWERS)
+    except OSError:
+        pass
+
+
+REQUEST_RE = re.compile(r"^/org/freedesktop/portal/desktop/request/(1_\d+)/[A-Za-z0-9_]+$")
+
+
+def app_key(status):
+    """busctl-status-Text → App-Schlüssel: Programmname klein (Exe, sonst Comm), Versionsordner egal."""
+    fields = dict(line.split("=", 1) for line in (status or "").splitlines() if "=" in line)
+    for raw in (os.path.basename(fields.get("Exe", "")), fields.get("Comm", "")):
+        key = re.sub(r"[^a-z0-9._-]", "", raw.strip().lower())
+        if key and key not in ("electron", "python3", "python", "bash", "sh") and APP_RE.match(key):
+            return key
+    return ""
+
+
+def portal_requester(tree=None, status_of=None):
+    """Wer gerade fragt, laut offener Portal-Anfrage auf dem Session-Bus. "" = nicht eindeutig / nicht lesbar."""
+    def run(*a):
+        try:
+            r = subprocess.run(["busctl", "--user", *a], capture_output=True, text=True, timeout=2, stdin=subprocess.DEVNULL)
+            return r.stdout if r.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    if tree is None:
+        tree = run("tree", "--list", "org.freedesktop.portal.Desktop")
+    senders = {m.group(1) for m in (REQUEST_RE.match(line.strip()) for line in tree.splitlines()) if m}
+    if len(senders) != 1:
+        return ""
+    sender = ":" + senders.pop().replace("_", ".")
+    return app_key(status_of(sender) if status_of else run("status", sender))
 
 
 def monitors():
@@ -265,11 +362,11 @@ def instance(wait=8):
     return None
 
 
-def pick(windows, allow_token, demo=False):
+def pick(windows, allow_token, demo=False, app=""):
     os.makedirs(DIR, mode=0o700, exist_ok=True)
     token = secrets.token_hex(8)
     result = os.path.join(DIR, token + ".result")
-    req = {"token": token, "allowToken": allow_token, "windows": windows, "demo": demo}
+    req = {"token": token, "allowToken": allow_token, "windows": windows, "demo": demo, "app": app}
 
     answer = ipc("open", json.dumps(req, ensure_ascii=False))
     if (answer is None or answer.startswith("Not ready")) and reopen(req, tries=6):
@@ -346,6 +443,9 @@ def main():
         save_memory(mem)
         return 0
 
+    if args[:1] == ["--expect"]:   # Shell: nächste Anfrage kommt von <app>
+        return 0 if len(args) > 1 and expect(args[1]) else 1
+
     if args[:1] == ["--parse"]:    # nur Fensterliste prüfen: share-pick --parse '<XDPH_WINDOW_SHARING_LIST>'
         print(json.dumps(parse_list(args[1] if len(args) > 1 else ""), ensure_ascii=False, indent=1))
         return 0
@@ -354,16 +454,24 @@ def main():
     allow_token = "--allow-token" in args
     windows = demo_list() if demo else parse_list(os.environ.get("XDPH_WINDOW_SHARING_LIST", ""))
 
-    app = "" if demo else requester()
+    app, how, hint = "", "", None
+    if not demo:
+        app = portal_requester()
+        hint = take_expect(app)
+        how = "Portal" if app else "Ansage der Shell" if hint else "aktives Fenster"
+        app = app or (hint["app"] if hint else requester())
+        log(f"Anfrage von {app or '?'} ({how})")
     if app:
         line = recall_line(load_memory().get(app), windows, monitors())
         if line:
             sys.stdout.write(line)
             sys.stdout.flush()
+            log(f"gemerkte Auswahl für {app}: {SELECTION_RE.search(line).group(2)}")
+            note_answer(app, line, windows)
             notify(app, line)
             return 0
 
-    state, text = pick(windows, allow_token, demo)
+    state, text = pick(windows, allow_token, demo, app)
     if state == "fallback":
         if demo:
             log(text)
@@ -378,6 +486,7 @@ def main():
     sys.stdout.write(line)
     sys.stdout.flush()
     remember(app, line, windows)
+    note_answer(app, line, windows)
     return 0
 
 

@@ -1,0 +1,129 @@
+#!/usr/bin/python3 -I
+"""Bildschirmfreigaben auflisten und beenden – für jede App gleich, über PipeWire (Teilen-Menü der Bar).
+
+    share-stop list           JSON: [{"node": <id>, "apps": ["Discord", …]}] – je Screencast von xdg-desktop-portal-hyprland
+    share-stop stop <node>    diese Freigabe beenden
+    share-stop stop all       alle beenden
+
+Warum PipeWire: Das Portal kann eine Freigabe nur auf Wunsch der App schließen (Session.Close prüft den Absender), und
+manche Apps (Discord/ashpd) schließen ihre Portal-Session gleich nach dem Start – der Stream läuft dann ohne Session weiter.
+Der Screencast selbst ist aber immer ein Video/Source-Node von xdph. Wird er zerstört (pw-cli destroy), verliert die App ihre
+Quelle und meldet die Freigabe als beendet; xdph räumt den Stream bei Fehler/Trennung selbst auf (pwStreamStateChange).
+Zerstört wird nur, was nachweislich ein xdph-Screencast ist – nie Kameras, Mikrofone oder fremde Nodes.
+Log: ~/.local/state/desktop/share-pick.log
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+XDPH = "xdg-desktop-portal-hyprland"
+STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "desktop")
+LOG = os.path.join(STATE, "share-pick.log")
+
+
+def log(msg):
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(LOG, "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + "share-stop: " + msg + "\n")
+    except OSError:
+        pass
+
+
+def dump():
+    try:
+        r = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        data = json.loads(r.stdout)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
+
+
+def props(o):
+    return ((o.get("info") or {}).get("props") or {}) if isinstance(o, dict) else {}
+
+
+def is_screencast(o):
+    """Screencast-Quelle von xdph (nicht Kamera, nicht Mikro)."""
+    p = props(o)
+    return o.get("type") == "PipeWire:Interface:Node" and p.get("node.name") == XDPH and p.get("media.class") == "Video/Source"
+
+
+def app_name(p):
+    for k in ("application.name", "node.name", "media.name"):
+        v = str(p.get(k) or "").strip()
+        if v:
+            return v
+    return "?"
+
+
+def shares(data):
+    """pw-dump → [{node, apps}] je xdph-Screencast; apps = Programme, die ihn lesen (Links, sonst node.target)."""
+    nodes = {o.get("id"): o for o in data if isinstance(o, dict) and o.get("type") == "PipeWire:Interface:Node"}
+    readers = {}
+    for o in data:
+        if not isinstance(o, dict) or o.get("type") != "PipeWire:Interface:Link":
+            continue
+        info = o.get("info") or {}
+        src, dst = info.get("output-node-id"), info.get("input-node-id")
+        if src in nodes and dst in nodes:
+            readers.setdefault(src, set()).add(dst)
+    for nid, o in nodes.items():
+        tgt = props(o).get("node.target") or props(o).get("target.object")
+        try:
+            tgt = int(tgt)
+        except (TypeError, ValueError):
+            continue
+        if props(o).get("media.class") == "Stream/Input/Video" and tgt in nodes:
+            readers.setdefault(tgt, set()).add(nid)
+    out = []
+    for nid, o in sorted(nodes.items(), key=lambda kv: kv[0] if isinstance(kv[0], int) else 0):
+        if not is_screencast(o):
+            continue
+        apps = sorted({app_name(props(nodes[r])) for r in readers.get(nid, ())})
+        out.append({"node": nid, "apps": apps})
+    return out
+
+
+def stoppable(data, node):
+    """Nur xdph-Screencasts dürfen zerstört werden."""
+    return any(o.get("id") == node and is_screencast(o) for o in data if isinstance(o, dict))
+
+
+def stop(node):
+    try:
+        r = subprocess.run(["pw-cli", "destroy", str(node)], capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def main():
+    args = sys.argv[1:]
+    if args[:1] == ["list"]:
+        print(json.dumps(shares(dump())))
+        return 0
+    if args[:1] == ["stop"] and len(args) == 2:
+        data = dump()
+        cur = shares(data)
+        if args[1] == "all":
+            todo = cur
+        elif args[1].isdigit() and stoppable(data, int(args[1])):
+            todo = [s for s in cur if s["node"] == int(args[1])]
+        else:
+            print("kein Screencast mit dieser Nummer", file=sys.stderr)
+            return 1
+        ok = True
+        for s in todo:
+            done = stop(s["node"])
+            ok = ok and done
+            log(f"Freigabe {s['node']} ({', '.join(s['apps']) or '?'}) beendet" if done else f"Freigabe {s['node']} ließ sich nicht beenden")
+        return 0 if ok else 1
+    print(__doc__.strip())
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

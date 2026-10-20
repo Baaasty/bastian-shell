@@ -17,6 +17,9 @@ Singleton {
     property var mics: []            // App-Namen
     property var cams: []
     property var shares: []
+    // je Freigabe eine Zeile fürs Teilen-Menü: { node, app, raw, stoppable } – node = Screencast-Quelle (xdph), stoppable nur
+    // für xdph-Quellen (scripts/share-stop zerstört nichts anderes); Test-Einträge haben node -1
+    property var shareList: []
     readonly property bool any: mics.length + cams.length + shares.length > 0
 
     // Test: Einträge von Hand (IPC privacy simulate), ersetzen nichts Echtes
@@ -45,7 +48,7 @@ Singleton {
     }
 
     function recompute(): void {
-        const m = [], c = [], s = [];
+        const m = [], c = [], s = [], sl = [];
         for (const g of Pipewire.linkGroups.values) {
             const t = g.target, src = g.source;
             if (!t || !src)
@@ -66,6 +69,9 @@ Singleton {
                 const sp = src.properties || {};
                 const isCam = sp["media.role"] === "Camera" || /^(v4l2|libcamera)/.test(src.name || "");
                 add(isCam ? c : s, AudioOut.appName(t));
+                const raw = AudioOut.appName(t);
+                if (!isCam && !root.ignore.includes(pretty(raw).toLowerCase()) && !sl.some(x => x.node === src.id))
+                    sl.push({ node: src.id, app: pretty(raw), raw: String(raw), stoppable: src.name === "xdg-desktop-portal-hyprland" });
             }
         }
         for (const n of camDirect)
@@ -75,8 +81,10 @@ Singleton {
             add(m, n);
         for (const n of sim.cam)
             add(c, n);
-        for (const n of sim.share)
+        for (const n of sim.share) {
             add(s, n);
+            sl.push({ node: -1, app: pretty(n), raw: n, stoppable: false });
+        }
         if (JSON.stringify(m) !== JSON.stringify(mics))
             mics = m;
         if (JSON.stringify(c) !== JSON.stringify(cams))
@@ -85,6 +93,8 @@ Singleton {
             camLive = live;
         if (JSON.stringify(s) !== JSON.stringify(shares))
             shares = s;
+        if (JSON.stringify(sl) !== JSON.stringify(shareList))
+            shareList = sl;
     }
 
     function summary(): string {

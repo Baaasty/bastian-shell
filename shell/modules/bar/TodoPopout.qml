@@ -138,7 +138,7 @@ PopupWindow {
     // vor KeyNav (preKey): Buchstaben gehen ins Feld (Gedanke weiterschreiben). Ohne Fokus-Griff (Super+T ohne
     // Tasten-Ereignis) reicht die Bar die Tasten nur an KeyNav weiter – dann hier auch Rücktaste und Enter fürs Feld.
     function key(e: var): bool {
-        if (input.activeFocus && pop.grabFocus)
+        if (input.activeFocus && (pop.grabFocus || guard.ownGrab))
             return false;   // das Feld hat die Tasten selbst
         const plain = !(e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier));
         const onInput = nav.current === input || input.activeFocus;

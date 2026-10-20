@@ -6,6 +6,14 @@ Allgemein: IPC-Funktionen heißen `open` statt `show` – `qs ipc` hält „show
 
 # Bar & Popouts
 
+## Bar-Popouts: auf und zu
+Code: `shell/modules/bar/PopoutGuard.qml` (eine Stelle für alle), `shell/services/Popouts.qml` (`claim`, `modal`, `changedAt`)
+- Per Maus geöffnet (Hyprland): kein Qt-Popup-Grab, sondern `hyprland_focus_grab` mit Popout **und** Bar → Chips behalten Hand-Zeiger, Hover, Tooltip; Klick auf einen anderen Chip wechselt direkt.
+- Zu nur durch: Klick außerhalb, Esc, eigener Chip, anderes Popout, Weghovern (800 ms, nur wenn die Maus drin/auf dem Chip war). Endet der Fang ohne Klick (Fenster/Ebene auf/zu, Arbeitsfläche, Discord/Spotify), bleibt das Fenster stehen und fängt neu – kein Zu→Auf-Flackern.
+- Grenze: Ein Klick in ein *nicht fokussiertes* Fenster kommt bei uns nicht an (Hyprland fokussiert vorher um) – erkannt daran, dass in den 1,2 s davor kein Hyprland-Ereignis wie `openwindow`/`openlayer`/`workspace` kam (`Popouts.changedAt`).
+- Vorrang: Share-Picker ruft `Popouts.hold(true)` → alle Popouts zu, keins holt sich Fokus/Fang zurück. Nimmt ein anderes Shell-Fenster die Tastatur (Launcher …), geht das Popout zu. Höchstens 4 Neu-Fänge in 10 s, danach offen ohne Fang.
+- Per Taste geöffnet (Bar-Modus, Super+Alt+…) und KWin: alter Weg (Qt-Grab, schließt der Compositor, kommt es ohne Fang zurück, die Bar reicht die Tasten weiter).
+
 ## Sound-Mixer
 Code: `shell/services/Mixer.qml`, `shell/modules/bar/MixerPopout.qml`, GoXLR-Teil `shell/components/GoxlrPanel.qml` + `GoxlrLevel.qml` · Konfig: `~/.config/desktop/audio.json` (100-%-Wächter, docs/setup/goxlr.md)
 - Ausgangs-/Eingangswahl bewusst entfernt (fest: GoXLR System / Chat Mic); der Mixer schreibt nur in App-Streams, nie in einen Ausgang.
@@ -24,6 +32,7 @@ Code: `shell/modules/bar/FilesChip.qml`, `BrowserChip.qml`, `DownloadsPopout.qml
 - Ordner-Ereignisse über `scripts/inotify-watch` (inotify per Python-ctypes, Ersatz für das fehlende `inotifywait`); endet er (Ordner fehlt), Neustart 2 s … 60 s.
 - Dateimanager fest Dolphin (wie Super+E): `xdg-mime` für `inode/directory` zeigt auf `kitty-open`. Browser-Chip erkennt Helium an der Fensterklasse; Super+B (alt: Super+W) startet ohne Shell Helium direkt.
 - Aufräumen nur per `gio trash`, nie löschen. `gio trash` geht nicht auf tmpfs → Tests mit einem Ordner unter `~` (`downloads testDir`).
+- iCloud jetzt synchronisieren (Launcher, Wolken-Knopf, Dolphin): nur über die Unit, damit Sperre und oneshot wie beim Timer greifen. Der Dolphin-Eintrag steht an jedem Ordner – KIO kann Service-Menüs nicht nach Pfad filtern.
 
 ## Gear (PC-Licht, Maus)
 Code: `shell/modules/bar/GearChip.qml`, `GearPopout.qml`, `shell/services/Devices.qml`, Backends `scripts/rgb`, `scripts/mouse` (Tests `scripts/tests/rgb-test.py`, `mouse-test.py`) · Konfig: `~/.config/desktop/rgb.json`, Zustand `~/.local/state/desktop/rgb-state.json`
@@ -32,7 +41,6 @@ Code: `shell/modules/bar/GearChip.qml`, `GearPopout.qml`, `shell/services/Device
 - Abfragen nur bei offenem Popout (rgb 5 s, Maus 60 s), sonst Maus alle 10 min für die Akku-Warnung (< 15 %, nicht am Laden). Schläft die Maus, bleiben die letzten Werte grau stehen.
 - Einstellungen-Chip (`SettingsChip.qml`): startet `systemsettings.desktop` (Override in `config/applications/` mit `SDL_HIDAPI_LIBUSB=0`, sonst 15–17 s Hänger), Seiten mit derselben Umgebung. KScreen (Display) braucht KWin → keine Display-Seite.
 
-- iCloud jetzt synchronisieren (Launcher, Wolken-Knopf, Dolphin): nur über die Unit, damit Sperre und oneshot wie beim Timer greifen. Der Dolphin-Eintrag steht an jedem Ordner – KIO kann Service-Menüs nicht nach Pfad filtern.
 ## Spotify
 Code: `shell/services/SpotifyApi.qml`, `shell/modules/bar/Spotify*.qml`, Backend `scripts/spotify-api` · Cache: `~/.cache/desktop/spotify/` (`now.json` letzter Stand, `ratelimit.json` Budget/Pause, `blocked-until` Sperre der Shell; löschen = zurücksetzen)
 - Vorladen nur bei laufendem Spotify: 10 s nach Shell-Start, dann still bei Songwechsel (1,2 s warten, höchstens alle 20 s, beim Durchskippen nur einmal); Popout zeigt sofort `now.json` und lädt nur nach, wenn älter als 10 s oder anderer Song.
@@ -79,9 +87,19 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
 - Protokoll gegen xdph 1.4.1 geprüft (wartet auf stdout **und** stderr, schneidet bei `screen:` ein Zeichen ab) – nach xdph-Updates neu prüfen.
 - Log `~/.local/state/desktop/share-pick.log` (xdph verwirft stderr). Equibop überspringt unter Wayland seine eigene Auswahl → unsere Karte kommt.
 - Merken (Haken „Remember this choice“ oder Shift+Enter) macht `share-pick` selbst: Discord schickt xdph nie `restore_data`
-  (fragt mit `persist_mode` 0/1), Restore-Tokens bringen also nichts. Gemerkt je App = Klasse des aktiven Fensters
-  (xdph gibt die App-ID nicht weiter) in `~/.local/state/desktop/share-picker.json`; Fenster über die Klasse, nur wenn eindeutig.
-  Danach teilt es ohne Karte (Benachrichtigung). `scripts/share-picker remembered` · `forget [app]`.
+  (fragt mit `persist_mode` 0/1), Restore-Tokens bringen also nichts. Gemerkt in `~/.local/state/desktop/share-picker.json`
+  je App; Fenster über die Klasse, nur wenn eindeutig. Danach teilt es ohne Karte (Benachrichtigung). `scripts/share-picker remembered` · `forget [app]`.
+- Welche App fragt: xdph gibt die App-ID nicht weiter → `share-pick` liest die offene Portal-Anfrage per `busctl` (Absender →
+  Programmname, Discords Versionsordner egal), sonst Ansage der Shell (`--expect`), sonst aktives Fenster. Früher nur das
+  aktive Fenster: Klick in der Bar bei aktivem VS Code → Merkung landete bei `com.microsoft.vscode`.
+- `xwaylandvideobridge` (Plasma-Autostart) fragt beim Teilen aus Discord gleich mit – die Karte nennt die fragende App.
+- Teilen-Menü am Privatsphäre-Punkt (Klick, Bar-Modus P, Super+Alt+P; Mittelklick = alles stoppen): je Freigabe App + was sie
+  sieht (letzte Antwort von share-pick, `$XDG_RUNTIME_DIR/desktop-share-pick/answers.json`) + Stop. Stop für jede App über
+  `scripts/share-stop` (zerstört nur den Screencast-Node von xdph in PipeWire; Portal-`Session.Close` geht nicht – nur die App
+  darf, und Discord schließt seine Session direkt nach dem Start). Discord mit Plugin stoppt übers Plugin.
+- Live-Quellwechsel geht unter Wayland nicht (Discord fragt das Portal nicht neu; Neustart-Weg beendete den Stream) – verworfen
+  2026-10-20. Andere Quelle = stoppen und in der App neu teilen.
+- Die Karte bricht nur bewusst ab (Esc, Cancel, Klick daneben/auf anderen Monitor); endet ihr Fang ohne Klick, fängt sie neu.
 - GTK-Alternative (hyprland-preview-share-picker, Commit `7e11349` geprüft, `PIN` im Skript) braucht sudo-Pakete; Tastatur erst nach Klick.
 
 # Launcher
@@ -158,6 +176,7 @@ Code: `shell/modules/screenshot/` (`Snip.qml`, `SnipPin.qml`, `SnipToast.qml`), 
 - Bilder nur im RAM (`$XDG_RUNTIME_DIR/desktop-snip/`), OCR-Bild sofort gelöscht, Pins beim Schließen; alles offline.
 - OCR braucht `tesseract tesseract-langpack-deu tesseract-langpack-eng` (sudo). Farbe kommt aus dem eingefrorenen Bild, `hyprpicker` ist unnötig.
 
+- Ohne Maus: Pfeile zielen (Shift/Strg 10 px), Enter/Leertaste = Start, Enter = Ende, dann Aktionen (gilt auch für Super+R und die Pipette). Der echte Zeiger springt per `movecursor` mit, damit Maus und Pfeile sich abwechseln können; die Echo-Bewegung wird über `warps` verworfen.
 ## Absturz-Karten
 Code: `shell/services/Crashes.qml`, `shell/modules/crash/` · DrKonqi: `scripts/hypr drkonqi off|on|status`
 - Nur Apps bekommen eine Karte; CLI-Abstürze werden nur gezählt (`crash list`). Kein Restart für Shell, Hyprland, Portale (die startet systemd).

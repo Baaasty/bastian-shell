@@ -23,8 +23,13 @@ Rückfall: scripts/discord-bridge  offizielle Discord-RPC (discord-ipc-N, OAuth 
   gilt wieder die RPC-Bridge mit ihrem letzten Stand. Das Plugin braucht keine Developer-App und kann zusätzlich Kameras.
 - **Befehle** der Shell ans Plugin: Mic/Taub/Kamera/Bildschirm/Verlassen, Beitreten, Lautstärke/Stumm pro Person, Server-/Kanallisten, Peek,
   Chat öffnen, `pin`/`unpin <key>` (`<userId>` = Kamera, `<userId>:stream` = Übertragung).
-  Kamera/Bildschirm nur übers Plugin (RPC kann das nicht). Bildschirm startet wie Discords Knopf mit `prepicked:screen`,
-  dann fragt das Portal (Share-Picker) – deshalb zeigt der Knopf erst „Live“, wenn Discord den Stream meldet.
+  Kamera/Bildschirm nur übers Plugin (RPC kann das nicht). Bildschirm ruft Discords eigene Picker-Funktion wie das Go-Live-
+  Kürzel (`presentNativeScreenSharePicker("window")` + `NATIVE_SCREEN_SHARE_PICKER_PRESENT`; ohne Stil-Argument wirft Host
+  1.0.164 „Invalid argument count“ → „Couldn’t start the stream“), dann fragt das Portal (Share-Picker) – deshalb zeigt der
+  Knopf erst „Live“, wenn Discord den Stream meldet. Vor jedem Start sagt die Shell dem Share-Picker an, dass Discord fragt
+  (`share-pick --expect`).
+- Live-Quellwechsel geht unter Wayland nicht (Discords „Change Windows“, `presentDesktopSourcePicker`, fragt das Portal nicht
+  neu; Weg über Stop + Neustart beendete den Stream) – verworfen 2026-10-20.
 - **Kameras:** abgegriffen wird nur, was gepinnt ist und solange die Shell verbunden ist: `<video>` in
   `[data-selenium-video-tile="<userId>"]` → OffscreenCanvas → JPEG (360 px, 10 fps, Q 60; einstellbar im Plugin).
   Max. 3 Kacheln unter der Bar rechts auf DP-2, die älteste weicht. Im Vollbild/Spiel fordert die Shell keine Bilder an.
@@ -72,6 +77,9 @@ Discord muss dabei beendet sein. Rückweg: `scripts/equicord uninject`.
   `libnvidia-encode` = **NVENC** im Voice-Modul (Log: `nvidia_media_encoding`, Encoder „nvidia: cuda“ wird minütlich neu
   erzeugt/verworfen). VA-API aus (`app-run`) hilft nicht. Abhilfe (ungetestet): Voice & Video → Video-Codec → Hardware-Beschleunigung aus.
   Prüfen: `coredumpctl info <pid>` + NT_FILE-Mappings (`eu-readelf -n`) des Kerns.
+  20.10. (Host 1.0.164) neu: **SIGABRT** im Renderer 0,4 s nach dem ersten Kamerastart, ohne NVIDIA-Bibliothek, zweiter Start ging.
+  Stack fehlt (Kern abgeschnitten, Crashpad aus wegen Equicords `ELECTRON_ENABLE_STACK_DUMPING`) → `app-run` schreibt
+  stderr nach `~/.local/state/desktop/discord-stderr.log`, dort steht der Stack beim nächsten Absturz.
 - Discord-Updates können DOM-Selektoren und Store-Namen brechen (das Plugin patcht nichts, ist also weniger fragil).
 - Eigener Equicord-Build = Updates nur per `scripts/equicord update`.
 - **Testen ohne Call:** `scripts/cam-fake` gibt sich als Plugin aus (nur bei beendetem Discord). `DESKTOP_CAMS_SOCK` und

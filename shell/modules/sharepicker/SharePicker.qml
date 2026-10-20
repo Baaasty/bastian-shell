@@ -21,9 +21,26 @@ Scope {
     id: root
 
     property bool open: false
+    // Vorrang: solange die Auswahl offen ist, gehen Bar-Popouts zu und holen sich weder Fokus noch Klick-Fang zurück
+    // (sonst sprang z. B. das Discord-Popout nach „Stream“ wieder auf und nahm der Karte den Fang → Abbruch)
+    property bool held: false
+    onOpenChanged: {
+        if (open !== held) {
+            held = open;
+            Popouts.hold(open);
+        }
+    }
+    Component.onDestruction: if (held) Popouts.hold(false)
     property string token: ""
     property bool demo: false             // scripts/share-pick --demo: nur anzeigen, xdph bekommt nichts
     property bool allowToken: false       // Haken „Remember this choice“ = Flag r (Restore-Token)
+    property string requester: ""         // wer fragt (scripts/share-pick: Portal-Absender, z. B. „discord“)
+    readonly property string requesterName: {
+        if (requester === "")
+            return "";
+        const e = DesktopEntries.heuristicLookup(requester);
+        return e && e.name ? e.name : requester.charAt(0).toUpperCase() + requester.slice(1);
+    }
     property string tab: "screens"        // screens | windows | region
     property int screenIndex: 0
     property int windowIndex: 0
@@ -111,6 +128,7 @@ Scope {
         windows = buildWindows(req.windows);
         screensList = buildScreens();
         allowToken = req.allowToken === true;
+        requester = /^[a-z0-9][a-z0-9._-]{0,63}$/.test(String(req.app || "")) ? String(req.app) : "";
         demo = req.demo === true;
         query = "";
         tab = "screens";
@@ -375,18 +393,42 @@ Scope {
             WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             onVisibleChanged: if (visible) search.forceActiveFocus()
 
-            // Klick auf einen anderen Monitor = abbrechen (wie Esc)
+            // Klick-Fang: Klick auf einen anderen Monitor = abbrechen (wie Esc). Abgebrochen wird nur bewusst – Esc,
+            // Cancel, Klick daneben (Grund hier, Fang-Fläche unten für die anderen Monitore). Endet der Fang ohne Klick
+            // (Fokuswechsel, Fenster/Ebene geht auf, Discord-Ereignis), fängt die Karte neu statt abzubrechen.
             HyprlandFocusGrab {
-                active: win.visible
+                id: pickGrab
+                property bool on: true
+                active: win.visible && on
                 windows: [win]
-                // kurz verzögert: beim Neuladen der Shell fällt der Grab auch weg – dann stirbt der Timer mit,
-                // und scripts/share-pick zeigt dieselbe Anfrage in der neuen Shell wieder (kein Abbruch)
-                onCleared: grabLost.restart()
+                onCleared: {
+                    on = false;
+                    regrab.restart();
+                }
             }
             Timer {
-                id: grabLost
-                interval: 250
-                onTriggered: if (root.open && !root.selecting) root.cancel()
+                id: regrab
+                interval: 200
+                onTriggered: pickGrab.on = true
+            }
+            // Fang-Fläche: während des Fangs kommen Klicks auf anderen Monitoren hier an (Koordinaten außerhalb des Fensters)
+            MouseArea {
+                parent: win.contentItem
+                z: -1000
+                x: -100000
+                y: -100000
+                width: 200000
+                height: 200000
+                enabled: win.visible
+                acceptedButtons: Qt.AllButtons
+                onPressed: mouse => {
+                    const p = mapToItem(parent, mouse.x, mouse.y);
+                    if (p.x >= 0 && p.y >= 0 && p.x < parent.width && p.y < parent.height) {
+                        mouse.accepted = false;
+                        return;
+                    }
+                    root.cancel();
+                }
             }
 
             readonly property int pad: root.sp("6", 24) + 4
@@ -451,7 +493,7 @@ Scope {
                                 font.weight: Font.DemiBold
                             }
                             Txt {
-                                text: root.demo ? "Preview · nothing will be shared" : "Choose what the app is allowed to see"
+                                text: root.demo ? "Preview · nothing will be shared" : root.requesterName !== "" ? root.requesterName + " wants to see your screen – choose what it may see" : "Choose what the app is allowed to see"
                                 color: Theme.textFaint
                                 font.pixelSize: 12
                                 font.weight: Font.Normal

@@ -74,6 +74,13 @@ case "$(which_app "$app")" in
                     "$(dirname -- "$(readlink -f -- "$0")")/equicord" watch-update $apps >/dev/null 2>&1 || true
             fi
             unset DESKTOP_DISCORD_HEALED
+            # stderr in eine Datei statt /dev/null: Equicord setzt ELECTRON_ENABLE_STACK_DUMPING (Crashpad aus), der
+            # Stack eines Absturzes landet nur dort – Coredumps sind abgeschnitten (discord.md → Renderer-Absturz)
+            log="${XDG_STATE_HOME:-$HOME/.local/state}/desktop/discord-stderr.log"
+            if mkdir -p "$(dirname -- "$log")" 2>/dev/null; then
+                [ "$(stat -c %s "$log" 2>/dev/null || echo 0)" -gt 4000000 ] && mv -f "$log" "$log.1"
+                ( umask 077; : >>"$log" ) 2>/dev/null && { printf '\n=== %s Start (pid %s)\n' "$(date '+%F %T')" "$$" >>"$log"; exec 2>>"$log"; }
+            fi
             # Kameras/Plugin sollen auch minimiert/weggeräumt weiterlaufen (Chromium drosselt sonst Hintergrund-Fenster)
             set -- --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding "$@"
             # Kamera startet sonst erst nach ~7 s (Format-Abfrage an die Facecam); nur wenn gebaut und nicht abgeschaltet

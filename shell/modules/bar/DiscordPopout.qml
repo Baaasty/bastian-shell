@@ -768,7 +768,13 @@ PopupWindow {
                             icon: Discord.self.stream ? "stop_screen_share" : "screen_share"
                             text: Discord.self.stream ? "Live" : "Stream"
                             primary: Discord.self.stream === true
-                            onClicked: Discord.setStream(!Discord.self.stream)
+                            onClicked: {
+                                const start = !Discord.self.stream;
+                                // Teilen startet: Popout sauber zu, bevor die Auswahl kommt (die hat Vorrang)
+                                if (start)
+                                    pop.close();
+                                Discord.setStream(start);
+                            }
                         }
                         CtlBtn {
                             visible: !Discord.canControl

@@ -22,7 +22,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 
 | Modus | Tasten |
 |---|---|
-| **Bar-Modus** (Super+Leertaste) | Buchstabe an den Chips öffnet das Popout (Direktkürzel in Klammern): F Focus (Super+F) · T Tasks (Super+T) · A Agents (Super+A) · M Music (Super+Alt+M) · C Chat (Super+Alt+C) · V Dev (Super+Alt+V) · H Servers (Super+Alt+H) · R Resources (Super+Alt+R) · L Light (Super+Alt+L) · G Gear (Super+Alt+G) · S Sound (Super+Alt+S) · N Network (Super+Alt+N) · E Files (Super+E) · D Downloads (Super+Alt+D) · B Browser (Super+B) · I Settings (Super+I) · U Updates (Super+Alt+U) · Y Tray (Super+Alt+Y) · Z Notifications (Super+Alt+Z). Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+Leertaste = zu; Esc im Popout = zurück zum Chip |
+| **Bar-Modus** (Super+Leertaste) | Buchstabe an den Chips öffnet das Popout (Direktkürzel in Klammern): F Focus (Super+F) · T Tasks (Super+T) · A Agents (Super+A) · P Sharing (Super+Alt+P) · M Music (Super+Alt+M) · C Chat (Super+Alt+C) · V Dev (Super+Alt+V) · H Servers (Super+Alt+H) · R Resources (Super+Alt+R) · L Light (Super+Alt+L) · G Gear (Super+Alt+G) · S Sound (Super+Alt+S) · N Network (Super+Alt+N) · E Files (Super+E) · D Downloads (Super+Alt+D) · B Browser (Super+B) · I Settings (Super+I) · U Updates (Super+Alt+U) · Y Tray (Super+Alt+Y) · Z Notifications (Super+Alt+Z). Oder ←/→ bzw. Tab wählen, Enter/↓ öffnet. Esc oder nochmal Super+Leertaste = zu; Esc im Popout = zurück zum Chip |
 | **In Popouts** | Pfeile/Tab wählen (Glut-Rahmen), Enter/Leertaste löst aus, Regler: Enter, dann ←/→, Esc zu. Per Taste geöffnet: Tastaturfokus, schließt nicht durch Weghovern |
 | **Tray** (Super+Alt+Y) | ↑↓ Symbol, → zum Menü-Knopf (⋮) oder Auge, Enter; im Menü ↑↓, Enter/→ öffnet Untermenü, ←/Rücktaste zurück |
 | **Benachrichtigungen** (Super+Alt+Z) | ↑↓ Karte, Enter öffnen, 1–3 Knöpfe, S später erinnern (dann 1–4), Entf/X wegklicken, Shift+A alle weg, Esc zu |
@@ -88,6 +88,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + B` | Browser here: new tab, else new window |
 | `Super + W` | Browser |
 | `Super + I` | Settings |
+| `Super + Alt + P` | Screen sharing: stop, forget |
 | `Super + Alt + M` | Music (Spotify) |
 | `Super + Alt + C` | Chat (Discord) |
 | `Super + Alt + V` | Dev services |

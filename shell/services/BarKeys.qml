@@ -20,6 +20,7 @@ Singleton {
         { key: "F", name: "focus", label: "Focus" },
         { key: "T", name: "todo", label: "Tasks" },
         { key: "A", name: "claudehub", label: "Agents" },
+        { key: "P", name: "share", label: "Sharing" },
         { key: "M", name: "spotify", label: "Music" },
         { key: "C", name: "discord", label: "Chat" },
         { key: "V", name: "devservices", label: "Dev" },

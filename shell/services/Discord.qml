@@ -223,10 +223,16 @@ Singleton {
         if (viaPlugin && send("video " + (on ? 1 : 0)))
             hold({ video: on }, 5000);
     }
-    // Start fragt unter Wayland erst das Portal → kein hold, Anzeige folgt Discords Stand
+    // Start fragt unter Wayland erst das Portal → kein hold, Anzeige folgt Discords Stand.
+    // Vorher dem Share-Picker ansagen, dass Discord fragt (sonst zählt das aktive Fenster, oft VS Code, und die
+    // gemerkte Auswahl für Discord griff nicht) – erst danach den Befehl schicken (Screenshare.expect).
     function setStream(on: bool): void {
-        if (viaPlugin)
-            send("stream " + (on ? 1 : 0));
+        if (!viaPlugin)
+            return;
+        if (on)
+            Screenshare.expect("discord", () => root.send("stream 1"));
+        else
+            send("stream 0");
     }
     // Prüfen statt glauben: bleibt Discord nach 4 s im selben Kanal, kurz sagen, dass es nicht ging
     property string leaveFrom: ""

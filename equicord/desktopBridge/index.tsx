@@ -36,6 +36,10 @@ const acquireDirect: (streamId: string) => { stream: MediaStream; release(): voi
 // getDesktopSources liefert unter Wayland nur XWayland-Fenster (window:N) → ebenfalls schwarz.
 // STREAM_START wie Equicords „InstantScreenshare“ (GPL-3.0) bleibt nur als Rückfall, falls der Picker fehlt.
 const startStream = findByCodeLazy('type:"STREAM_START"');
+// Discords eigener Weg (web.js 2026-10, Go-Live-Kürzel, Linux): presentNativeScreenSharePicker("window") + Ereignis
+// NATIVE_SCREEN_SHARE_PICKER_PRESENT. Das Voice-Modul (Host 1.0.164) verlangt den Stil als Argument („Invalid argument
+// count: expected 1“), und erst das Ereignis lässt NativeScreenSharePickerStore nach der Auswahl den Stream starten.
+const presentPicker: (style?: string) => void = findByCodeLazy('type:"NATIVE_SCREEN_SHARE_PICKER_PRESENT"');
 const stopStream = findByCodeLazy('type:"STREAM_STOP"');
 
 const settings = definePluginSettings({
@@ -499,10 +503,18 @@ async function setStream(want: boolean) {
     const channel = cid ? ChannelStore.getChannel(cid) : null;
     if (!channel) return;
     try {
+        try {
+            presentPicker("window");
+            console.log("[DesktopBridge] stream: native picker (Discord)");
+            return;
+        } catch (e) {
+            console.warn("[DesktopBridge] stream: Discords picker function not found", e);
+        }
         const voice = (window as any).DiscordNative?.nativeModules?.requireModule?.("discord_voice");
         if (typeof voice?.presentNativeScreenSharePicker === "function") {
-            console.log("[DesktopBridge] stream: native picker");
-            voice.presentNativeScreenSharePicker();
+            console.log("[DesktopBridge] stream: native picker (voice module)");
+            voice.presentNativeScreenSharePicker("window");
+            FluxDispatcher.dispatch({ type: "NATIVE_SCREEN_SHARE_PICKER_PRESENT", style: "window" });
             return;
         }
         console.log("[DesktopBridge] stream: no native picker, STREAM_START prepicked");

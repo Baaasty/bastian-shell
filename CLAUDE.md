@@ -67,7 +67,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
   (User-Unit `desktop-shell-hyprland`, Log: `journalctl --user -u desktop-shell-hyprland`)
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/hypr panic` (Shell aus, Konsole auf)
 - Discord-Kamera schneller: `scripts/fastprobe build|on|off|status|bench` (wirkt beim nächsten Discord-Start)
-- Bildschirm teilen: `scripts/share-picker status|remembered|forget [app]` (gemerkte Auswahl je App)
+- Bildschirm teilen: `scripts/share-picker status|remembered|forget [app]` (gemerkte Auswahl je App) · laufende Freigaben: `scripts/share-stop list|stop <node>|stop all`
 - Klänge: `scripts/sounds play [notify-urgent]|build|on|off|status` (Probehören, neu erzeugen, Sound-Theme für Apps)
 - Kürzel geändert: `scripts/hotkeys-md` (Cheat-Sheet neu) · Farben geändert: `python3 -I theme/gen/all.py`
 - PC neu aufsetzen: `system/bootstrap` (dry-run, echt mit `--apply`) · Umzug: `docs/setup/migrate.md`
