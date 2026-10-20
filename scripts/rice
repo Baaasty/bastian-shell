@@ -402,8 +402,9 @@ UNIT_DST="$HOME/.config/systemd/user/$UNIT.service"
 KEYLIGHT_UNIT="desktop-keylight-off"
 KEYLIGHT_SRC="$REPO/systemd/$KEYLIGHT_UNIT.service"
 KEYLIGHT_DST="$HOME/.config/systemd/user/$KEYLIGHT_UNIT.service"
-# Mail + Termine/Todos fürs Dashboard: Timer holen per IMAP/CalDAV nach ~/.cache/desktop/{mail,agenda}.json
-FEED_UNITS=(desktop-mail desktop-agenda)
+# Mail + Termine/Todos fürs Dashboard: Timer holen per IMAP/CalDAV nach ~/.cache/desktop/{mail,agenda}.json;
+# desktop-passwords hält den icp-Tresor frisch (alle 15 min, gedrosselt)
+FEED_UNITS=(desktop-mail desktop-agenda desktop-passwords)
 # Kürzel-Wächter: Dauer-Dienst (Schleife alle 30 s), repariert tote KWin-Kürzel
 KEYS_UNIT=desktop-keys-watch
 # Dauerläufer (IMAP IDLE): neue Mails melden, Einmal-Codes kopieren, Code-Mails später in den Papierkorb

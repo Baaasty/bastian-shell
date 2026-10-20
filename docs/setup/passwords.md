@@ -4,7 +4,10 @@ Autofill aus dem iCloud-Schlüsselbund – in der Erweiterung **„Desktop“** 
 Die icp-eigene Erweiterung („Apple Passwords“) wird nicht mehr gebraucht.
 
 Weg der Daten: Erweiterung → Native Host `de.bastian.desktop` (`scripts/chrome-ext`) → `scripts/passwords` → icp (`~/Apps/icp`, nur lesend).
-Login bei icp: `icp login`. Neue Einträge vom iPhone/Mac holen: `scripts/passwords sync`.
+Login bei icp: `icp login`. Aktualisiert wird automatisch: Timer `desktop-passwords` alle 15 min und beim Öffnen von Super+O,
+wenn der Stand älter als 5 min ist (Stand unten links im Panel). icp bremst selbst: höchstens alle 5 min, nach Fehlern
+länger (bis 6 h), im Hintergrund nie Passwort-Login oder 2FA-Push – ist der Login abgelaufen, steht „iCloud login needed“
+im Panel → einmal `icp login` im Terminal. Sofort von Hand: `scripts/passwords sync --force`, Stand: `scripts/passwords status`.
 Geteilte Passwort-Gruppen (z. B. WebBude) kommen beim Sync mit – nur Gruppen, die du **erstellt** hast
 (mit dir geteilte fehlen noch). Im Panel mit Gruppen-Symbol, Suche findet auch den Gruppennamen.
 Prüfen ohne Geheimnisse: `icp diag groups`. Format/Herkunft: `~/Apps/icp/RESEARCH.md` („Shared password groups“).
@@ -51,8 +54,8 @@ Prüfen ohne Geheimnisse: `icp diag groups`. Format/Herkunft: `~/Apps/icp/RESEAR
 
 Im Passwort-Panel (Super+O) steht links an jedem Login das Logo der Website, sonst der Buchstabe.
 
-- **Laden:** im Panel oben **Icons** (Fortschritt „n/N“, nochmal klicken = stoppen). Holt nur fehlende Icons.
-  Unten im Panel: **Auto-load on/off** (holt beim Öffnen nach, höchstens einmal pro Stunde; Standard: aus) und **Refresh all** (alle neu holen).
+- **Laden:** automatisch beim Öffnen (nur fehlende, höchstens einmal pro Stunde). Unten im Panel **Refresh icons** holt alle neu
+  (Fortschritt „Icons n/N“, nochmal klicken = stoppen).
   Ohne Shell: `scripts/favicons run <domain…>` · `scripts/favicons config auto on|off` (Datei `~/.config/desktop/favicons.json`).
 - **Datenschutz:** Der Abruf geht direkt bei den Websites aus deiner Liste (nur die Domain, erste Website des Eintrags), kein
   Dritter (kein Google/DuckDuckGo), keine Cookies, kein Referer. Einträge ohne Website werden nicht abgefragt.
@@ -61,8 +64,8 @@ Im Passwort-Panel (Super+O) steht links an jedem Login das Logo der Website, son
 - **Schutz:** nur http(s) auf Port 80/443; der Name wird vorher aufgelöst und nur öffentliche Adressen werden angesprochen
   (kein localhost/privates Netz/Router). Höchstens 2 Abrufe gleichzeitig, kleine Pause dazwischen.
 - **Cache:** `~/.cache/desktop/favicons/<domain>.png`; „kein Icon gefunden“ merkt sich `<domain>.none` 7 Tage (Netzfehler nicht – die
-  werden beim nächsten Lauf wieder versucht). Neu holen: Datei löschen oder **Refresh all**. Alles weg: Ordner löschen.
-- Funktioniert ein Logo nicht/falsch: andere Website beim Eintrag eintragen (Detail → Websites), dann **Icons**.
+  werden beim nächsten Lauf wieder versucht). Neu holen: Datei löschen oder **Refresh icons**. Alles weg: Ordner löschen.
+- Funktioniert ein Logo nicht/falsch: Website auf iPhone/Mac korrigieren, nach dem Sync **Refresh icons**.
 
 ## Ausblenden (WLAN & Co.)
 
@@ -71,9 +74,9 @@ mit dem Dienst „AirPort“ ab – daran werden sie erkannt (nicht geraten übe
 Buchstaben/Ziffern (z. B. „.“) ohne Website. Einträge mit Website (Router-/Pi-hole-Logins mit IP als Titel) bleiben sichtbar.
 Ausgeblendet heißt nur: nicht angezeigt – nichts wird gelöscht, geändert oder synchronisiert.
 
-- **Kopf:** „N + M hidden“ = sichtbare Anzahl + ausgeblendete.
-- **Fuß:** „M Wi-Fi hidden · Show · Wi-Fi filter on“. **Show** zeigt sie gedimmt (mit durchgestrichenem Auge) wieder an, **Hide again** blendet sie aus,
-  **Wi-Fi filter on/off** schaltet die automatische Erkennung ein/aus. Die Suche findet Ausgeblendete nur bei „Show“.
+- **Kopf:** Anzahl sichtbarer Einträge.
+- **Fuß:** „M Wi-Fi hidden · Show“. **Show** zeigt sie gedimmt (mit durchgestrichenem Auge) wieder an, **Hide again** blendet sie aus.
+  WLAN ist immer ausgeblendet (kein Schalter mehr). Die Suche findet Ausgeblendete nur bei „Show“.
 - **Von Hand:** Maus über die Zeile → Augen-Symbol, oder **Ctrl+H** beim gewählten Eintrag (blendet aus bzw. wieder ein;
   ein fälschlich erkanntes WLAN-Login so wieder sichtbar machen: „Show“ → Ctrl+H).
 - **Favicons:** der Icon-Lauf überspringt Ausgeblendete.
@@ -89,7 +92,7 @@ Ausgeblendet heißt nur: nicht angezeigt – nichts wird gelöscht, geändert od
 | Popup: „Desktop host not reachable“ | `scripts/chrome-ext install --browser helium`, dann bei „Desktop“ ↻ |
 | Popup: „Desktop host is outdated“ | Host-Manifest zeigt auf ein altes Repo (`scripts/chrome-ext status` → „Host: …“) → install aus diesem Repo, ↻ |
 | „cannot open the icp vault …“ | Schlüsselbund gesperrt oder Login abgelaufen: `icp login` |
-| Eintrag fehlt | `scripts/passwords sync`, danach Seite neu laden |
+| Eintrag fehlt | `scripts/passwords sync --force`, danach Seite neu laden |
 | Code wird abgelehnt | Uhrzeit prüfen: `timedatectl` (NTP an?) |
 | „extension reloaded – reload this page“ | Erweiterung wurde neu geladen → Seite neu laden |
 | Fehler ansehen | `helium://extensions` → Desktop → „service worker“ → Console (nur Fehlertexte, nie Werte) |

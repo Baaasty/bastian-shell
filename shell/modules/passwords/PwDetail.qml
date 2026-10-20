@@ -88,8 +88,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.bottom: foot.top
-        anchors.bottomMargin: 12
+        anchors.bottom: parent.bottom
         visible: !!d.e
         clip: true
         contentHeight: col.implicitHeight
@@ -356,43 +355,6 @@ Item {
                 }
             }
 
-        }
-    }
-
-    // ---------------------------------------------------------------- Fuß: Hinweis + Sync-Status
-    Item {
-        id: foot
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 22
-        Row {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: 7
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: "phone_iphone"
-                size: 15
-                color: Theme.textFaint
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Changes to passwords: on iPhone/Mac"
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                color: Theme.textFaint
-            }
-        }
-        Txt {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, parent.width / 2)
-            horizontalAlignment: Text.AlignRight
-            text: d.pw.syncMsg
-            font.pixelSize: 11
-            font.weight: Font.Normal
-            color: d.pw.syncMsg.startsWith("Sync failed") ? Theme.error : Theme.textMuted
         }
     }
 }

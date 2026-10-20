@@ -8,6 +8,8 @@ import qs.services
 
 // Passwort-Speicher (Super+O): iCloud-Schlüsselbund über scripts/passwords (icp, nur lesend).
 // Nur Anzeige: icp liest nur, Titel/Websites/Passwörter ändern auf iPhone/Mac.
+// Aktualisieren ohne Knopf: Timer desktop-passwords (alle 15 min) + beim Öffnen, wenn älter als 5 min;
+// icp bremst selbst (Mindestabstand, Backoff, nie Passwort-Login/2FA im Hintergrund).
 // Geheimnisse bleiben nur so lange im Speicher, wie sie angezeigt werden; Kopieren läuft im CLI
 // (wl-copy --sensitive, nach 30 s geleert), nie über QML.
 Scope {
@@ -21,15 +23,16 @@ Scope {
     property string query: ""
     property int sel: 0
     // Ausblenden (nur Anzeige, nichts wird gelöscht): Einstellungen aus ~/.config/desktop/passwords.json
-    property bool hideWifi: true        // gespeicherte WLAN-Passwörter („AirPort“) ausblenden
+    readonly property bool hideWifi: true   // gespeicherte WLAN-Passwörter („AirPort“) immer ausblenden
     property var hiddenIds: []          // von Hand ausgeblendet
     property var shownIds: []           // trotz hideWifi sichtbar
-    property bool showHidden: false     // „Show hidden“: Ausgeblendete anzeigen (nur diese Sitzung)
+    property bool showHidden: false     // eigene Liste „Hidden“ (Tab): nur Ausgeblendete, manuell zuerst
     readonly property var liveItems: items.filter(e => !isHidden(e))
     readonly property int hiddenWifiCount: items.filter(e => isHidden(e) && !hiddenIds.includes(e.id)).length
     readonly property int hiddenManualCount: items.filter(e => hiddenIds.includes(e.id)).length
     readonly property int hiddenCount: items.length - liveItems.length
-    readonly property var rows: filterRows(showHidden ? items : liveItems, query)
+    readonly property var hiddenItems: items.filter(e => isHidden(e)).sort((a, b) => (hiddenIds.includes(b.id) ? 1 : 0) - (hiddenIds.includes(a.id) ? 1 : 0) || a.title.toLowerCase().localeCompare(b.title.toLowerCase()))
+    readonly property var rows: filterRows(showHidden ? hiddenItems : liveItems, query)
     readonly property var cur: sel >= 0 && sel < rows.length ? rows[sel] : null
 
     // Detail (nur für den gewählten Eintrag)
@@ -40,8 +43,27 @@ Scope {
     property var totp: null             // {code, period, expires(ms)}
     property real now: Date.now()
 
+    // Sync-Stand (scripts/passwords status = icp status --json, kein Netz)
+    property var syncState: null        // {last_success, next_allowed, needs_login, last_error, failures, vault_mtime, now}
     property bool syncBusy: false
-    property string syncMsg: ""
+    property real vaultMtime: 0
+    readonly property int staleSec: 300
+    readonly property string syncText: {
+        const d = syncState;
+        if (syncBusy)
+            return "Updating from iCloud…";
+        if (!d)
+            return "";
+        if (d.needs_login)
+            return "iCloud login needed · run icp login";
+        if (d.failures > 0 && d.next_allowed)
+            return "Update failed · next try " + Qt.formatTime(new Date(d.next_allowed * 1000), "HH:mm");
+        if (!d.last_success)
+            return "";
+        const s = Date.now() / 1000 - d.last_success;
+        return "Updated " + (s < 60 ? "just now" : s < 3600 ? Math.floor(s / 60) + " min ago" : Math.floor(s / 3600) + " h ago");
+    }
+    readonly property bool syncProblem: !!syncState && (syncState.needs_login || syncState.failures > 0)
     property string toast: ""
 
     readonly property string bin: Quickshell.shellDir + "/../scripts/passwords"
@@ -51,6 +73,14 @@ Scope {
     Component.onDestruction: Hypr.setModal("passwords", false)
 
     // ------------------------------------------------------------ Liste / Suche
+    // warum ausgeblendet: "manual" (Ctrl+H) oder "Wi-Fi" (automatisch erkannt)
+    function hiddenKind(e: var): string {
+        return hiddenIds.includes(e.id) ? "manual" : "Wi-Fi";
+    }
+    function toggleHiddenView(): void {
+        showHidden = !showHidden;
+        sel = 0;
+    }
     function isHidden(e: var): bool {
         return hiddenIds.includes(e.id) || (hideWifi && !!e.wifi && !shownIds.includes(e.id));
     }
@@ -112,11 +142,22 @@ Scope {
         screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
         query = "";
         sel = 0;
-        syncMsg = "";
+        showHidden = false;
+        syncIfStale();
         Favicons.refresh();
         loadSettings();
         load();
+        Hypr.panelOpened("passwords");
         open = true;
+    }
+
+    // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
+    Connections {
+        target: Hypr
+        function onPanelOpened(name: string): void {
+            if (name !== "passwords" && root.open)
+                root.close();
+        }
     }
     function close(): void {
         open = false;
@@ -153,7 +194,6 @@ Scope {
     function applySettings(d: var): void {
         if (!d)
             return;
-        hideWifi = d.hideWifi !== false;
         hiddenIds = d.hidden || [];
         shownIds = d.shown || [];
         sel = Math.min(sel, Math.max(0, rows.length - 1));
@@ -169,14 +209,11 @@ Scope {
         runJson([hide ? "hide" : "unhide", e.id], (d, err) => {
             if (d) {
                 applySettings(d);
-                showToast(hide ? "Hidden · use Show hidden to see it again" : "Shown again");
+                showToast(hide ? "Hidden · Tab shows the hidden list" : "Shown again");
             } else {
                 showToast(err || "Could not save");
             }
         });
-    }
-    function setHideWifi(on: bool): void {
-        runJson(["config", "hideWifi", on ? "on" : "off"], d => applySettings(d));
     }
     function load(): void {
         if (loadState !== "ready")
@@ -191,7 +228,8 @@ Scope {
             loadState = "ready";
             if (keep)
                 selectId(keep);
-            if (Favicons.auto && !Favicons.running && Date.now() - Favicons.lastAuto > 3600000)
+            // fehlende Logos immer nachladen, höchstens 1×/h (Abruf direkt bei den Seiten, gedrosselt)
+            if (!Favicons.running && Date.now() - Favicons.lastAuto > 3600000)
                 Favicons.start(iconDomains(), false);
         });
     }
@@ -246,16 +284,32 @@ Scope {
                 totp = { code: d.code, period: d.period || 30, expires: Date.now() + d.remaining * 1000 };
         });
     }
-    function sync(): void {
-        if (syncBusy)
-            return;
-        syncBusy = true;
-        syncMsg = "Syncing with iCloud…";
-        run(["sync"], (t, code, err) => {
-            syncBusy = false;
-            const line = (t || "").trim().split("\n").pop();
-            syncMsg = code === 0 ? (line || "Synced") : "Sync failed" + (err ? ": " + err.split("\n").pop() : "");
-            load();
+    // Stand holen; hat sich der Tresor geändert (Timer hat synchronisiert), Liste still neu laden
+    function refreshStatus(): void {
+        runJson(["status"], d => {
+            if (!d)
+                return;
+            syncState = d;
+            if (vaultMtime && d.vault_mtime && d.vault_mtime !== vaultMtime)
+                load();
+            vaultMtime = d.vault_mtime || 0;
+        });
+    }
+    // beim Öffnen: älter als 5 min -> Hintergrund-Sync. Was icp gerade nicht erlaubt (zu früh, Backoff,
+    // Login nötig), lassen wir aus – icp würde es ohnehin mit Exit 75 ablehnen.
+    function syncIfStale(): void {
+        runJson(["status"], d => {
+            if (!d)
+                return;
+            syncState = d;
+            vaultMtime = d.vault_mtime || 0;
+            if (syncBusy || d.needs_login || d.now - (d.last_success || 0) < staleSec || (d.next_allowed && d.now < d.next_allowed))
+                return;
+            syncBusy = true;
+            run(["sync", "--background"], () => {
+                syncBusy = false;
+                refreshStatus();
+            });
         });
     }
     function showToast(msg: string): void {
@@ -263,6 +317,13 @@ Scope {
         toastTimer.restart();
     }
 
+    // offen: Stand alle 20 s (Anzeige „vor n min“, neuer Tresor vom Timer)
+    Timer {
+        interval: 20000
+        repeat: true
+        running: root.open
+        onTriggered: root.refreshStatus()
+    }
     Timer {
         id: toastTimer
         interval: 2600

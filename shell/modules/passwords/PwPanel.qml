@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 import qs.config
 import qs.components
 import qs.services
@@ -25,67 +26,35 @@ Glass {
         anchors.margins: 22
         width: Math.round(parent.width * 0.44)
 
-        Item {
+        // Kopf: Titel + Zähler, kein Knopf mehr (Sync läuft automatisch, Logos laden selbst nach)
+        RowLayout {
             id: head
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             height: 34
-
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                x: 2
-                spacing: 10
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: "key"
-                    size: 22
-                    color: Theme.accentText
-                }
-                Txt {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Passwords"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
-                }
-                MonoTxt {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.verticalCenterOffset: 1
-                    text: {
-                        const total = panel.pw.showHidden ? panel.pw.items.length : panel.pw.liveItems.length;
-                        return panel.pw.query.trim() ? panel.pw.rows.length + " / " + total : total || "";
-                    }
-                    font.pixelSize: 12
-                    color: Theme.textFaint
-                }
-                MonoTxt {
-                    anchors.verticalCenter: parent.verticalCenter
-                    anchors.verticalCenterOffset: 1
-                    visible: panel.pw.hiddenCount > 0 && !panel.pw.showHidden
-                    text: "+ " + panel.pw.hiddenCount + " hidden"
-                    font.pixelSize: 12
-                    color: Theme.textFaint
-                    opacity: 0.7
-                }
+            spacing: 10
+            Icon {
+                Layout.leftMargin: 2
+                name: "key"
+                size: 22
+                color: Theme.accentText
             }
-            PwBtn {
-                id: iconsBtn
-                anchors.right: syncBtn.left
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                icon: Favicons.running ? "stop_circle" : "imagesearch_roller"
-                text: Favicons.running ? Favicons.done + "/" + Favicons.total : "Icons"
-                enabled: panel.pw.items.length > 0
-                onClicked: panel.pw.loadIcons(false)
+            Txt {
+                text: panel.pw.showHidden ? "Hidden" : "Passwords"
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
             }
-            PwBtn {
-                id: syncBtn
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                icon: "sync"
-                text: panel.pw.syncBusy ? "Syncing…" : "Sync"
-                enabled: !panel.pw.syncBusy
-                onClicked: panel.pw.sync()
+            MonoTxt {
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                elide: Text.ElideRight
+                text: {
+                    const total = panel.pw.showHidden ? panel.pw.hiddenItems.length : panel.pw.liveItems.length;
+                    return panel.pw.query.trim() ? panel.pw.rows.length + " / " + total : String(total || "");
+                }
+                font.pixelSize: 12
+                color: Theme.textFaint
             }
         }
 
@@ -142,9 +111,14 @@ Glass {
                 Keys.onEscapePressed: {
                     if (panel.pw.query !== "")
                         panel.pw.query = "";
+                    else if (panel.pw.showHidden)
+                        panel.pw.toggleHiddenView();
                     else
                         panel.pw.close();
                 }
+                // Tab: zwischen Liste und „Hidden“ wechseln
+                Keys.onTabPressed: panel.pw.toggleHiddenView()
+                Keys.onBacktabPressed: panel.pw.toggleHiddenView()
                 Keys.onReturnPressed: panel.pw.copy("password")
                 Keys.onEnterPressed: panel.pw.copy("password")
                 Keys.onDownPressed: step(1)
@@ -203,7 +177,7 @@ Glass {
             anchors.topMargin: 12
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: hideLine.top
+            anchors.bottom: syncLine.visible ? syncLine.top : hideLine.top
             anchors.bottomMargin: 6
             clip: true
             spacing: 2
@@ -233,7 +207,7 @@ Glass {
                     width: Math.min(implicitWidth, list.width - 40)
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
-                    text: panel.pw.loadState.startsWith("error") ? panel.pw.loadState.slice(6) : panel.pw.loadState === "loading" ? "Opening the keychain…" : "No logins found"
+                    text: panel.pw.loadState.startsWith("error") ? panel.pw.loadState.slice(6) : panel.pw.loadState === "loading" ? "Opening the keychain…" : panel.pw.showHidden && !panel.pw.query.trim() ? "Nothing hidden" : "No logins found"
                     color: Theme.textFaint
                     font.weight: Font.Normal
                 }
@@ -245,23 +219,26 @@ Glass {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            text: "Ctrl+U user  ·  Ctrl+P / ↵ password  ·  Ctrl+T 2FA  ·  Ctrl+E show  ·  Ctrl+H hide"
+            elide: Text.ElideRight
+            text: panel.pw.showHidden ? "Ctrl+H show again  ·  Tab / Esc back  ·  Ctrl+P / ↵ password" : "Ctrl+U user  ·  Ctrl+P / ↵ password  ·  Ctrl+T 2FA  ·  Ctrl+E show  ·  Ctrl+H hide  ·  Tab hidden"
             font.pixelSize: 11
             font.weight: Font.Normal
             color: Theme.textFaint
         }
 
-        // Ausgeblendete (WLAN & Co.): Zähler, Anzeigen-Schalter, Filter an/aus
-        Row {
+        // Ausgeblendete (WLAN immer, dazu von Hand) links · Logos rechts
+        RowLayout {
             id: hideLine
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: iconsLine.top
-            anchors.bottomMargin: 4
+            anchors.bottom: keysHint.top
+            anchors.bottomMargin: 6
             height: 20
             spacing: 6
             Txt {
-                anchors.verticalCenter: parent.verticalCenter
+                Layout.fillWidth: true
+                Layout.minimumWidth: 40
+                elide: Text.ElideRight
                 text: {
                     const w = panel.pw.hiddenWifiCount, m = panel.pw.hiddenManualCount;
                     if (w + m === 0)
@@ -273,16 +250,8 @@ Glass {
                 color: Theme.textFaint
             }
             Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: panel.pw.hiddenCount > 0
-                text: "·"
-                font.pixelSize: 11
-                color: Theme.textFaint
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: panel.pw.hiddenCount > 0
-                text: panel.pw.showHidden ? "Hide again" : "Show"
+                visible: panel.pw.hiddenCount > 0 || panel.pw.showHidden
+                text: panel.pw.showHidden ? "Back to list" : "Show list"
                 font.pixelSize: 11
                 font.weight: Font.Normal
                 color: showArea.containsMouse ? Theme.text : Theme.accentText
@@ -293,89 +262,19 @@ Glass {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        panel.pw.showHidden = !panel.pw.showHidden;
+                        panel.pw.toggleHiddenView();
                         panel.focusSearch();
                     }
                 }
             }
             Txt {
-                anchors.verticalCenter: parent.verticalCenter
                 text: "·"
                 font.pixelSize: 11
                 color: Theme.textFaint
             }
+            // Logos: Fortschritt beim Laden, sonst „Refresh icons“ (alle neu holen)
             Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Wi-Fi filter " + (panel.pw.hideWifi ? "on" : "off")
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                color: wifiArea.containsMouse ? Theme.text : panel.pw.hideWifi ? Theme.accentText : Theme.textFaint
-                MouseArea {
-                    id: wifiArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        panel.pw.setHideWifi(!panel.pw.hideWifi);
-                        panel.focusSearch();
-                    }
-                }
-            }
-        }
-
-        // Icons: Stand + Einstellungen (Abruf direkt bei den Websites, nur die Domain)
-        Row {
-            id: iconsLine
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: keysHint.top
-            anchors.bottomMargin: 6
-            height: 20
-            spacing: 6
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: Favicons.running ? "Loading icons " + Favicons.done + "/" + Favicons.total + "…" : Favicons.haveCount + " icons" + (Favicons.failed > 0 ? " · " + Favicons.failed + " unreachable" : "")
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                color: Theme.textFaint
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "·"
-                font.pixelSize: 11
-                color: Theme.textFaint
-            }
-            Txt {
-                id: autoTxt
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Auto-load " + (Favicons.auto ? "on" : "off")
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                color: autoArea.containsMouse ? Theme.text : Favicons.auto ? Theme.accentText : Theme.textFaint
-                MouseArea {
-                    id: autoArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        Favicons.setAuto(!Favicons.auto);
-                        panel.focusSearch();
-                    }
-                }
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !Favicons.running && Favicons.haveCount > 0
-                text: "·"
-                font.pixelSize: 11
-                color: Theme.textFaint
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: !Favicons.running && Favicons.haveCount > 0
-                text: "Refresh all"
+                text: Favicons.running ? "Icons " + Favicons.done + "/" + Favicons.total : "Refresh icons"
                 font.pixelSize: 11
                 font.weight: Font.Normal
                 color: refArea.containsMouse ? Theme.text : Theme.textFaint
@@ -386,10 +285,35 @@ Glass {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        panel.pw.loadIcons(true);
+                        panel.pw.loadIcons(!Favicons.running);
                         panel.focusSearch();
                     }
                 }
+            }
+        }
+
+        // Sync-Stand: „Updated 3 min ago“, „iCloud login needed …“, „Update failed · next try 14:20“
+        RowLayout {
+            id: syncLine
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: hideLine.top
+            anchors.bottomMargin: 2
+            height: 20
+            spacing: 6
+            visible: panel.pw.syncText !== ""
+            Icon {
+                name: panel.pw.syncBusy ? "sync" : panel.pw.syncProblem ? "cloud_off" : "cloud_done"
+                size: 14
+                color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
+            }
+            Txt {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: panel.pw.syncText
+                font.pixelSize: 11
+                font.weight: Font.Normal
+                color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
             }
         }
     }

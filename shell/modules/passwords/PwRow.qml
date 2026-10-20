@@ -14,7 +14,8 @@ Rectangle {
     readonly property bool hidden: pw.isHidden(modelData)
 
     height: 54
-    opacity: hidden ? 0.55 : 1
+    // in der Hauptliste gibt es keine Ausgeblendeten mehr, in „Hidden“ sind alle es – nicht dimmen
+    opacity: 1
     radius: Theme.radiusMd
     color: selected ? Theme.accentSoft : area.containsMouse ? Theme.raise : "transparent"
     border.width: selected ? 1 : 0
@@ -48,7 +49,7 @@ Rectangle {
         }
         Txt {
             width: parent.width
-            text: [row.modelData.user, row.domain].filter(x => x).join("  ·  ") || "—"
+            text: [row.hidden ? row.pw.hiddenKind(row.modelData) : "", row.modelData.user, row.domain].filter(x => x).join("  ·  ") || "—"
             font.pixelSize: 12
             font.weight: Font.Normal
             color: Theme.textFaint

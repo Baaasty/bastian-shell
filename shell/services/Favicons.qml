@@ -5,7 +5,7 @@ import Quickshell.Io
 
 // Website-Icons für das Passwort-Panel. Abruf macht scripts/favicons (direkt von der Seite, nur die Domain,
 // kein Dritter); Cache ~/.cache/desktop/favicons/<domain>.png. Hier: Liste der vorhandenen Icons, Lauf mit Fortschritt,
-// Einstellung „Auto“ (lädt beim Öffnen des Panels fehlende Icons nach; Datei ~/.config/desktop/favicons.json).
+// Das Passwort-Panel lädt beim Öffnen fehlende Icons nach (höchstens 1×/h); `auto` aus favicons.json nutzt die Shell nicht mehr.
 Singleton {
     id: root
 
