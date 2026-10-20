@@ -24,8 +24,10 @@ Scope {
     // Suche steckt im Dashboard: Menü drücken, lostippen
     onOpenChanged: {
         Hypr.setModal("dashboard", open);
-        if (open)
+        if (open) {
+            Hypr.panelOpened("dashboard");
             Updates.checkIfStale();
+        }
         else
             closed();   // Kacheln leeren ihre Eingaben (Dashboard geht jedes Mal frisch auf)
         if (!launcher)
@@ -33,6 +35,15 @@ Scope {
         launcher.embedded = open;
         if (open)
             launcher.reset();
+    }
+
+    // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
+    Connections {
+        target: Hypr
+        function onPanelOpened(name: string): void {
+            if (name !== "dashboard" && root.open)
+                root.open = false;
+        }
     }
 
     // was aus dem Dashboard ein Fenster öffnet, schließt es

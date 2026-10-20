@@ -194,6 +194,11 @@ Singleton {
         return cmds;
     }
 
+    // ---------- ein Panel zur Zeit ----------
+    // Große Panels (Pakete, Passwörter, Kürzel, Layouts, Launcher, Dashboard) melden beim Öffnen ihren Namen, die anderen
+    // schließen sich. Sonst bleibt das alte offen, sein Fokus-Grab holt sich den Fokus zurück und das neue geht sofort zu.
+    signal panelOpened(string name)
+
     // ---------- Kürzel-Sperre ----------
     // Solange ein Panel mit Tastatur offen ist (Passwörter …), sind die globalen Kürzel aus: Hyprland wechselt in die
     // Submap „modal“ (hypr/binds.conf, dort nur Esc, das Panel-Kürzel und der Not-Aus). Name pro Panel, damit sich

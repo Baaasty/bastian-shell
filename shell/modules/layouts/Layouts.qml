@@ -83,7 +83,17 @@ Scope {
         deleting = "";
         status = "";
         load("");
+        Hypr.panelOpened("layouts");
         open = true;
+    }
+
+    // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
+    Connections {
+        target: Hypr
+        function onPanelOpened(name: string): void {
+            if (name !== "layouts" && root.open)
+                root.close();
+        }
     }
     function close(): void {
         open = false;

@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import Quickshell.Hyprland
 import qs.config
 import qs.components
+import qs.services
 
 // Paketmanager (Super+P): System (dnf) · COPR · Flatpak · AppImage · Updates.
 // Backend: scripts/pkg (JSON). Schreibende Aktionen laufen als systemd-run --user Unit (überleben einen qs-Neustart)
@@ -90,7 +91,17 @@ Scope {
         query = "";
         ensure(page);
         checkUpdates(false);
+        Hypr.panelOpened("packages");
         open = true;
+    }
+
+    // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
+    Connections {
+        target: Hypr
+        function onPanelOpened(name: string): void {
+            if (name !== "packages" && root.open)
+                root.close();
+        }
     }
     function close(): void {
         open = false;

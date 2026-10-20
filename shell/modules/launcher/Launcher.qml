@@ -15,6 +15,16 @@ Scope {
     id: root
 
     property bool open: false
+    onOpenChanged: if (open) Hypr.panelOpened("launcher")
+
+    // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
+    Connections {
+        target: Hypr
+        function onPanelOpened(name: string): void {
+            if (name !== "launcher" && root.open)
+                root.open = false;
+        }
+    }
     property string query: ""
     property int selected: 0
     property var results: []
