@@ -13,6 +13,7 @@ Code: `shell/modules/bar/PopoutGuard.qml` (eine Stelle für alle), `shell/servic
 - Grenze: Ein Klick in ein *nicht fokussiertes* Fenster kommt bei uns nicht an (Hyprland fokussiert vorher um) – erkannt daran, dass in den 1,2 s davor kein Hyprland-Ereignis wie `openwindow`/`openlayer`/`workspace` kam (`Popouts.changedAt`).
 - Vorrang: Share-Picker ruft `Popouts.hold(true)` → alle Popouts zu, keins holt sich Fokus/Fang zurück. Nimmt ein anderes Shell-Fenster die Tastatur (Launcher …), geht das Popout zu. Höchstens 4 Neu-Fänge in 10 s, danach offen ohne Fang.
 - Per Taste geöffnet (Bar-Modus, Super+Alt+…) und KWin: alter Weg (Qt-Grab, schließt der Compositor, kommt es ohne Fang zurück, die Bar reicht die Tasten weiter).
+- Stolperfalle (Qt 6.11 / Quickshell 0.3.2): nie `parent:` per Binding an etwas hängen, das sich mit `QsWindow.window` ändert. Das feuert, während Qt den Baum beim Ein-/Ausblenden eines Fensters (Bar bei Vollbild) durchläuft; das Item zählt das Fenster dann doppelt und zeigt später auf ein gelöschtes → SIGSEGV in `setParentItem`. Deshalb hängt der Guard seine Bar-Fläche verzögert und nur auf ein vorhandenes Fenster um.
 
 ## Sound-Mixer
 Code: `shell/services/Mixer.qml`, `shell/modules/bar/MixerPopout.qml`, GoXLR-Teil `shell/components/GoxlrPanel.qml` + `GoxlrLevel.qml` · Konfig: `~/.config/desktop/audio.json` (100-%-Wächter, docs/setup/goxlr.md)

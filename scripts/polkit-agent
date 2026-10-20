@@ -23,7 +23,18 @@ UNIT=desktop-polkit-agent
 UID_=$(id -u)
 
 mode() { local m; m=$(cat "$MODE_FILE" 2>/dev/null | tr -d '[:space:]'); [ "$m" = kde ] && echo kde || echo shell; }
-shell_pid() { pgrep -u "$UID_" -f -- "qs -p $SHELL_DIR\$" | head -n1; }
+# Nach einem Absturz startet Quickshell sich selbst neu – der neue Prozess heißt nur „/usr/bin/quickshell“ (ohne -p),
+# pgrep auf die Kommandozeile fand ihn nicht: der Wächter hielt die Shell für tot und übergab nie zurück.
+# Rückfall: die PID, die die Shell selbst in $STATE schreibt (Polkit.qml), wenn der Prozess lebt und Quickshell ist.
+# (Nicht `qs list`: kostet ~60 ms CPU je Aufruf, der Wächter fragt alle 2 s.)
+shell_pid() {
+    local pid st
+    pid=$(pgrep -u "$UID_" -f -- "qs -p $SHELL_DIR\$" | head -n1)
+    if [ -z "$pid" ] && read -r st pid < "$STATE" 2>/dev/null; then
+        [ "$(readlink "/proc/$pid/exe" 2>/dev/null)" = /usr/bin/quickshell ] || pid=""
+    fi
+    echo "$pid"
+}
 # Shell lebt UND hat sich als Agent gemeldet (Datei trägt die PID der laufenden Shell)
 shell_registered() {
     local pid st
@@ -114,8 +125,9 @@ case "${1:-status}" in
         log "aus – KDE-Agent (Shell meldet sich in ein paar Sekunden ab)" ;;
     status)
         echo "Modus:    $(mode)"
-        echo "Shell:    $(shell_pid | sed 's/^$/läuft nicht/') (Agent: $(shell_registered && echo ja || echo nein))"
-        echo "KDE-Agent: $(kde_pid | sed 's/^$/aus/')"
+        sp=$(shell_pid); kp=$(kde_pid)
+        echo "Shell:    ${sp:-läuft nicht} (Agent: $(shell_registered && echo ja || echo nein))"
+        echo "KDE-Agent: ${kp:-aus}"
         echo "Wächter:  $(systemctl --user is-active "$UNIT" 2>/dev/null)" ;;
     *) sed -n '2,10p' "$SELF"; exit 1 ;;
 esac

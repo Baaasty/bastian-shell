@@ -100,7 +100,10 @@ Item {
         if (hypr && !keyOpened && popout.grabFocus === true)
             popout.grabFocus = false;
     }
-    Component.onCompleted: dropQtGrab()
+    Component.onCompleted: {
+        dropQtGrab();
+        hostSync.start();
+    }
     // Tasten-Weg vorbei (KeyNav setzt keyOpened erst danach zurück): nächstes Öffnen per Maus wieder ohne Qt-Grab
     onKeyOpenedChanged: if (!keyOpened && !popout.visible) dropQtGrab()
     Connections {
@@ -198,8 +201,23 @@ Item {
             g.outsideClick();
         }
     }
+    // Eltern der Bar-Fläche nie direkt per Binding an barWin: barWin wechselt (über QsWindow.window der Chips) genau
+    // dann, wenn Qt den Baum der Bar beim Ein-/Ausblenden (Vollbild, Windows.bare) an ihr Fenster hängt. Ein Umhängen
+    // mitten darin zählt das Fenster der Fläche doppelt, beim nächsten Einblenden zeigt sie auf das gelöschte Fenster →
+    // SIGSEGV in QQuickItem::setParentItem (2026-10-20, Stolperfalle in docs/knowledge/shell-features.md).
+    // Darum erst nach dem Ereignis umhängen und beim Ausblenden (barWin = null) an der Bar lassen.
+    property Item barHost: null
+    onBarWinChanged: hostSync.restart()
+    Timer {
+        id: hostSync
+        interval: 0
+        onTriggered: {
+            if (g.barWin && g.barWin.contentItem)
+                g.barHost = g.barWin.contentItem;
+        }
+    }
     MouseArea {
-        parent: g.barWin ? g.barWin.contentItem : null
+        parent: g.barHost
         z: -1000
         x: -100000
         y: -100000

@@ -35,7 +35,7 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] UI-Feinschliff über alles: Tastenkappen (Mittelding Workspace-Modus/Bar), Schriftgrößen (Workspace-Modus etwas kleiner), Karten/Abstände überall angleichen (2026-10-20)
 - [x] Launcher nur noch mit Projects/Calculator/Files/Tabs/Claude, Rest ist Websuche; Emoji als Popup an der Eingabe (Super+.) (2026-10-20)
 - [x] Dashboard-Benachrichtigungen per Tastatur bedienbar (wählen, öffnen, löschen) (2026-10-20)
-- [ ] Quickshell stürzt beim Hot-Reload ab (SIGSEGV in QQuickItem::setParentItem aus einem Binding, 4× am 2026-10-20, schon vor dem UI-Umbau) – Ursache finden; danach meldet sich der eigene Polkit-Agent ab
+- [x] Shell-Absturz beim Ein-/Ausblenden der Bar (Vollbild): Fang-Fläche wurde mitten im Fenster-Wechsel umgehängt (seit bb35822); Polkit-Agent übernimmt nach Absturz wieder (2026-10-20)
 
 ## Handtest (Bastian) – je Block „ok“ oder z. B. „A3 kaputt“ melden
 
