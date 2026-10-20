@@ -6,7 +6,8 @@
     "through: kommt auch in der Ruhezeit als Popup durch. critical = dringende Meldungen. rules: Regex auf app (App-Name oder desktop-entry) und/oder summary (Titel), ohne Groß/Klein.",
     "apps: eigene Regeln je App. mode = 'panel' (kein Popup, nur im Panel) oder 'hide' (gar nicht anzeigen, nicht im Panel). when = 'quiet' (nur in den Ruhezeiten) oder 'always' (Standard). enabled:false schaltet eine Regel ab.",
     "Dringende (critical) Meldungen werden von App-Regeln nie versteckt.",
-    "snooze: minutes = Auswahl in Minuten, morning = Uhrzeit für 'Tomorrow' (vor 05:00 gilt das heutige 08:00)."
+    "snooze: minutes = Auswahl in Minuten, morning = Uhrzeit für 'Tomorrow' (vor 05:00 gilt das heutige 08:00).",
+    "sound: leiser, dumpfer Einzelton zum Popup (design/sounds, Logik shell/services/notifsound.js). volume 0…1 (pw-play), urgent = minimal hellerer Ton bei dringenden, cooldownMs = Mindestabstand, skip = Apps mit eigenem Ton (Regex wie oben, auch dringende bleiben still). Ohne Popup kein Ton."
   ],
   "quiet": {
     "enabled": true,
@@ -28,5 +29,15 @@
   "snooze": {
     "minutes": [10, 60],
     "morning": "08:00"
+  },
+  "sound": {
+    "enabled": true,
+    "volume": 0.7,
+    "urgent": true,
+    "cooldownMs": 1500,
+    "skip": [
+      { "app": "discord|vesktop|equibop", "enabled": true },
+      { "app": "spotify", "enabled": true }
+    ]
   }
 }

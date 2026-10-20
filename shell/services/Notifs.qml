@@ -7,6 +7,7 @@ import Quickshell.Services.Notifications
 // Benachrichtigungen: Quickshell übernimmt org.freedesktop.Notifications, sobald Plasmas Applet weg ist.
 // Verlauf-Eintrag = { key, file, app, summary, body, icon, desktop, kind, urgent, time }.
 // Popups: normal 6 s, dringend bis Klick. Fokus-Modus: nur Dringendes poppt auf. Verlauf: letzte 50.
+// Klang zum Popup: Sounds.qml.
 // Später erinnern (Snooze): Meldung verschwindet und kommt zur Zeit als neue Meldung wieder (notify-send, Zustand in
 // ~/.local/state/desktop/notifs-snoozed.json). Ruhezeiten + App-Regeln: NotifRules.qml, Doku docs/knowledge/shell-features.md.
 Singleton {
@@ -15,6 +16,8 @@ Singleton {
     property var popups: []      // aktive Notification-Objekte
     property var history: []     // [{ app, summary, body, icon, time, file }]
     readonly property int popupMs: 6000
+    // hält Sounds ab dem Start wach (Singletons entstehen erst beim ersten Zugriff, sonst fehlt das IPC-Ziel „sounds“)
+    readonly property bool soundOn: Sounds.cfg.enabled !== false
 
     // jede neue Meldung (auch im Fokus-Modus), z. B. für ClaudeChats
     signal received(var n)
@@ -124,8 +127,19 @@ Singleton {
             }].concat(root.history).slice(0, 50);
             root.saveHistory();
             // Fokus-Modus: nur Dringendes poppt auf; Ruhezeit und App-Regeln kommen obendrauf
-            if ((!Focus.active || urgent) && verdict.popup)
+            const shown = (!Focus.active || urgent) && verdict.popup;
+            if (shown)
                 root.popups = root.popups.concat([n]);
+            // leiser Ton nur zum sichtbaren Popup (Regeln: notifsound.js)
+            const ss = n.hints ? n.hints["suppress-sound"] : false;
+            Sounds.notification({
+                app: n.appName,
+                desktop: n.desktopEntry || "",
+                summary: n.summary,
+                urgent: urgent,
+                low: n.urgency === NotificationUrgency.Low,
+                suppress: ss === true || ss === 1 || ss === "true"
+            }, shown);
             if (verdict.held)
                 root.holdBack();
             root.received(n);

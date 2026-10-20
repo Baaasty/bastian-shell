@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# sounds – kurze, warme Systemklänge (ein dumpfer, weicher Einzelton) probehören, neu erzeugen und als Sound-Theme „desktop“
+# für Apps (libcanberra: GTK-/KDE-Apps) ein-/ausschalten. Die Shell selbst spielt ihre Klänge immer direkt
+# (shell/services/Sounds.qml), das Theme braucht sie nicht.
+#
+#   scripts/sounds play [name]   Probehören: notify (Standard) | notify-urgent, Lautstärke aus config/notifications.json
+#   scripts/sounds build         design/sounds/*.wav neu erzeugen (theme/gen/sounds.py)
+#   scripts/sounds on            Sound-Theme „desktop“ nach ~/.local/share/sounds/desktop (Links ins Repo) und als
+#                                Theme setzen (gsettings, kdeglobals [Sounds], GTK-settings.ini) – alte Werte gemerkt
+#   scripts/sounds off           alte Werte zurück, Theme-Ordner weg (Rückweg für „on“)
+#   scripts/sounds status
+set -u
+
+REPO=$(cd "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+SND="$REPO/design/sounds"
+THEME="${XDG_DATA_HOME:-$HOME/.local/share}/sounds/desktop"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/desktop"
+PREV="$STATE/sounds-theme.prev"
+CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
+GTKS=("$CONF/gtk-3.0/settings.ini" "$CONF/gtk-4.0/settings.ini")
+
+# freedesktop-Klangnamen -> unsere Datei. Bewusst wenige: Meldungen und Warnungen, keine Terminal-Glocke
+# (die käme bei jeder Tab-Vervollständigung). Alles andere erbt von ocean/freedesktop.
+NOTIFY=(message-new-instant message-new-email message dialog-information)
+URGENT=(dialog-warning alarm-clock-elapsed)
+
+volume() {
+    python3 -I - "$REPO/config/notifications.json" "$CONF/desktop/notifications.json" <<'EOF' 2>/dev/null || echo 0.7
+import json, sys
+v = 0.7
+for p in sys.argv[1:]:
+    try:
+        s = json.load(open(p)).get("sound")
+        if isinstance(s, dict):
+            v = s.get("volume", 0.7)
+    except Exception:
+        pass
+print(max(0.0, min(1.0, float(v))) if isinstance(v, (int, float)) else 0.7)
+EOF
+}
+
+gtk_get() { sed -n 's/^gtk-sound-theme-name=//p' "$1" 2>/dev/null | head -1; }
+gtk_set() {
+    [ -f "$1" ] || return 0
+    if grep -q '^gtk-sound-theme-name=' "$1"; then
+        sed -i "s/^gtk-sound-theme-name=.*/gtk-sound-theme-name=$2/" "$1"
+    else
+        sed -i "/^\[Settings\]/a gtk-sound-theme-name=$2" "$1"
+    fi
+}
+
+case "${1:-}" in
+    play)
+        name=${2:-notify}
+        [[ $name =~ ^[a-z][a-z-]*$ ]] && [ -f "$SND/$name.wav" ] || { echo "unbekannt: $name (notify | notify-urgent)" >&2; exit 1; }
+        # gleicher Stream-Name wie die Shell (Sounds.qml): nicht die stumm gemerkte Rolle „Notification“
+        pw-play -P '{ application.name = "desktop-sounds" media.name = "desktop-sounds" }' --volume "$(volume)" "$SND/$name.wav" ;;
+    build)
+        python3 -I "$REPO/theme/gen/sounds.py" ;;
+    on)
+        [ -f "$SND/notify.wav" ] || { echo "erst scripts/sounds build" >&2; exit 1; }
+        mkdir -p "$THEME/stereo" "$STATE"
+        printf '[Sound Theme]\nName=desktop\nComment=Leise, warme Klänge (bastian-shell)\nInherits=ocean,freedesktop\nDirectories=stereo\n\n[stereo]\nOutputProfile=stereo\n' > "$THEME/index.theme"
+        for n in "${NOTIFY[@]}"; do ln -sfn "$SND/notify.wav" "$THEME/stereo/$n.wav"; done
+        for n in "${URGENT[@]}"; do ln -sfn "$SND/notify-urgent.wav" "$THEME/stereo/$n.wav"; done
+        # alte Werte nur beim ersten „on“ merken (sonst stünde nach zweimal „on“ „desktop“ als Rückweg drin)
+        if [ ! -f "$PREV" ]; then
+            {
+                echo "gsettings=$(gsettings get org.gnome.desktop.sound theme-name 2>/dev/null | tr -d "'")"
+                echo "kde=$(kreadconfig6 --file kdeglobals --group Sounds --key Theme 2>/dev/null)"
+                for f in "${GTKS[@]}"; do echo "gtk:$f=$(gtk_get "$f")"; done
+            } > "$PREV"
+            # Plasma-Datei vorher sichern (Regel)
+            [ -f "$CONF/kdeglobals" ] && cp -p "$CONF/kdeglobals" "$STATE/kdeglobals.before-sounds"
+        fi
+        gsettings set org.gnome.desktop.sound theme-name desktop 2>/dev/null
+        kwriteconfig6 --file kdeglobals --group Sounds --key Theme desktop
+        for f in "${GTKS[@]}"; do gtk_set "$f" desktop; done
+        echo "an: Sound-Theme „desktop“ ($THEME) – Apps übernehmen es beim nächsten Start. Rückweg: scripts/sounds off" ;;
+    off)
+        if [ -f "$PREV" ]; then
+            while IFS= read -r line; do
+                key=${line%%=*}; val=${line#*=}
+                case "$key" in
+                    gsettings) gsettings set org.gnome.desktop.sound theme-name "${val:-ocean}" 2>/dev/null ;;
+                    kde) if [ -n "$val" ]; then kwriteconfig6 --file kdeglobals --group Sounds --key Theme "$val"
+                         else kwriteconfig6 --file kdeglobals --group Sounds --key Theme --delete; fi ;;
+                    gtk:*) f=${key#gtk:}
+                           if [ -n "$val" ]; then gtk_set "$f" "$val"; elif [ -f "$f" ]; then sed -i '/^gtk-sound-theme-name=/d' "$f"; fi ;;
+                esac
+            done < "$PREV"
+            rm -f "$PREV"
+        fi
+        rm -rf -- "$THEME"
+        rmdir --ignore-fail-on-non-empty "$(dirname "$THEME")" 2>/dev/null
+        echo "aus: altes Sound-Theme zurück ($(gsettings get org.gnome.desktop.sound theme-name 2>/dev/null))" ;;
+    status)
+        echo "Dateien: $(ls "$SND" 2>/dev/null | grep '\.wav$' | tr '\n' ' ')"
+        echo "Lautstärke: $(volume)"
+        echo "gsettings: $(gsettings get org.gnome.desktop.sound theme-name 2>/dev/null) · kdeglobals: $(kreadconfig6 --file kdeglobals --group Sounds --key Theme 2>/dev/null || true)"
+        [ -d "$THEME" ] && echo "Sound-Theme desktop: an ($THEME)" || echo "Sound-Theme desktop: aus" ;;
+    *)
+        sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1 ;;
+esac
