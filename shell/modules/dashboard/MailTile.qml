@@ -5,7 +5,9 @@ import qs.services
 import qs.components
 
 // Mail: links ungelesen gesamt + pro Konto (ruhig), rechts die neuesten ungelesenen (Absender, Betreff, Zeit).
-// Klick auf eine Mail öffnet sie in Thunderbird, Klick auf den Zähler den Posteingang. Daten: Mail-Service (IMAP-Header über scripts/mail-status).
+// Klick auf eine Mail öffnet sie in Thunderbird und markiert sie gelesen; beim Überfahren: Häkchen = nur gelesen,
+// Mülleimer = in den Papierkorb. Klick auf den Zähler = Posteingang. Per Tastatur: Launcher „m “ (↵, Ctrl+R, Ctrl+D).
+// Daten: Mail-Service (IMAP-Header über scripts/mail-status, Aktionen über scripts/mail-action).
 Tile {
     id: tile
 
@@ -148,14 +150,15 @@ Tile {
                         width: parent.width
                         height: tile.rowH
                         radius: Theme.radiusMd
-                        color: area.containsMouse && Mail.clientInstalled ? Qt.alpha(Theme.text, 0.1) : Theme.raise
+                        readonly property bool hovered: area.containsMouse || readArea.containsMouse || trashArea.containsMouse
+                        color: hovered && Mail.clientInstalled ? Qt.alpha(Theme.text, 0.1) : Theme.raise
                         Behavior on color { ColorAnimation { duration: Theme.fade } }
 
                         Txt {
                             id: from
                             x: 12
                             y: 6
-                            width: parent.width - 24 - tm.width - 10
+                            width: parent.width - 24 - Math.max(tm.width, actions.width) - 10
                             text: row.modelData.from || "?"
                         }
                         MonoTxt {
@@ -166,6 +169,7 @@ Tile {
                             text: Mail.when(row.modelData.date)
                             color: Theme.textFaint
                             font.pixelSize: 12
+                            opacity: actions.visible ? 0 : 1
                         }
                         Txt {
                             x: 12
@@ -182,7 +186,42 @@ Tile {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Mail.clientInstalled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: Mail.openMessage(row.modelData.mid || "")
+                            onClicked: Mail.openMessage(row.modelData)
+                        }
+                        // Beim Überfahren statt der Uhrzeit: gelesen / Papierkorb (wie „Später“ bei den Benachrichtigungen)
+                        Row {
+                            id: actions
+                            anchors.right: parent.right
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: from.verticalCenter
+                            spacing: 14
+                            visible: row.hovered && Mail.canMarkRead(row.modelData)
+                            Icon {
+                                name: "mark_email_read"
+                                size: 18
+                                color: readArea.containsMouse ? Theme.accentText : Theme.textFaint
+                                MouseArea {
+                                    id: readArea
+                                    anchors.fill: parent
+                                    anchors.margins: -6
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Mail.markRead(row.modelData)
+                                }
+                            }
+                            Icon {
+                                name: "delete"
+                                size: 18
+                                color: trashArea.containsMouse ? Theme.accentText : Theme.textFaint
+                                MouseArea {
+                                    id: trashArea
+                                    anchors.fill: parent
+                                    anchors.margins: -6
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: Mail.trash(row.modelData)
+                                }
+                            }
                         }
                     }
                 }

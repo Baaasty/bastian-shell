@@ -1,0 +1,395 @@
+#!/usr/bin/python3 -I
+"""Eine Mail in Thunderbird öffnen und/oder als gelesen markieren (Dashboard, Launcher „m “, mail-watch-Meldungen).
+
+  mail-action open --account NAME [--uid UID] [--mid MESSAGE-ID] [--dry-run]
+      Thunderbird auf genau dieser Mail öffnen und sie (mit --uid) per IMAP als gelesen markieren.
+  mail-action seen --account NAME --uid UID [--mid MESSAGE-ID] [--dry-run]
+      nur als gelesen markieren.
+  mail-action trash --account NAME --uid UID [--mid MESSAGE-ID] [--dry-run]
+      in den Papierkorb verschieben (SPECIAL-USE \\Trash, iCloud „Deleted Messages“), nie endgültig löschen.
+  --dry-run: einloggen und prüfen, aber nichts setzen, nichts öffnen, Cache nicht anfassen.
+
+Warum nicht einfach "thunderbird mid:<id>": Thunderbird sucht die Message-ID nur in seinen lokalen Ordner-Indizes
+(*.msf). Frisch gestartet oder vor dem nächsten Abgleich kennt er neue Mails noch nicht -> Dialog „Message for
+message-id … not found“. Darum: steht die ID schon im .msf, sofort mid:; sonst Thunderbird starten/nach vorn holen,
+warten, bis sie im .msf auftaucht, dann mid:. Taucht sie nicht auf, bleibt es beim Posteingang (kein Fehler-Dialog).
+IMAP-fetch-URLs (imap://…/fetch>UID>…) öffnen nur ein leeres Fenster, .eml-Kopien hängen nicht am Ordner.
+
+Konto + Passwort: secrets.json ("accounts", wie scripts/mail-status). Nie Benutzer, Passwort oder Host ausgeben.
+Mit --mid wird vor dem Markieren/Verschieben geprüft, dass die UID noch genau diese Mail ist (sonst nichts markieren, Exit 3).
+"""
+import argparse
+import configparser
+import glob
+import imaplib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import ssl
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+APP_RUN = os.path.join(HERE, "app-run")
+CACHE = os.path.join(os.path.expanduser("~"), ".cache", "desktop", "mail.json")
+# Profil-Wurzeln in der Reihenfolge von scripts/app-run (RPM zuerst, altes Flatpak zuletzt)
+PROFILE_ROOTS = [os.path.join(os.path.expanduser("~"), p) for p in
+                 (".thunderbird", ".config/mozilla/thunderbird", ".var/app/org.mozilla.thunderbird_esr/.thunderbird")]
+WAIT_SECS = 60      # so lange auf den ersten Abgleich nach dem Start warten
+POLL_SECS = 0.5
+TIMEOUT = 20
+
+
+def _mail_status():
+    """Konto-/Login-Helfer aus scripts/mail-status (gleiche Konten, gleiche Logik)."""
+    loader = importlib.machinery.SourceFileLoader("mail_status", os.path.join(HERE, "mail-status"))
+    spec = importlib.util.spec_from_loader("mail_status", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+MS = _mail_status()
+
+
+def say(msg):
+    print("mail-action: " + msg, file=sys.stderr, flush=True)
+
+
+def valid_mid(mid):
+    return mid if mid and re.fullmatch(r"[^\s<>\"']{1,250}", mid) else ""
+
+
+def find_account(name):
+    _, accounts = MS.load_accounts()
+    for a in accounts:
+        if a.get("name") == name and a.get("mail"):
+            return a
+    return None
+
+
+def account_user(acc):
+    return (acc.get("mail") or {}).get("user") or acc.get("user") or ""
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Thunderbird-Profil: wo liegt der Index (.msf) des Ordners?
+
+def profile_dir():
+    """Standardprofil der ersten Wurzel mit profiles.ini (Install-Default vor Default=1 vor erstem Profil)."""
+    for root in PROFILE_ROOTS:
+        ini = os.path.join(root, "profiles.ini")
+        if not os.path.isfile(ini):
+            continue
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(ini, encoding="utf-8")
+        except (OSError, configparser.Error):
+            continue
+        profiles = {s: cp[s] for s in cp.sections() if s.startswith("Profile") and cp[s].get("Path")}
+
+        def resolve(sec):
+            path = sec.get("Path")
+            return os.path.join(root, path) if sec.get("IsRelative", "1") == "1" else path
+        for s in cp.sections():
+            if s.startswith("Install") and cp[s].get("Default"):
+                d = cp[s]["Default"]
+                return os.path.join(root, d) if not os.path.isabs(d) else d
+        for sec in profiles.values():
+            if sec.get("Default") == "1":
+                return resolve(sec)
+        if profiles:
+            return resolve(next(iter(profiles.values())))
+    return None
+
+
+PREF = re.compile(r'user_pref\("mail\.server\.(server\d+)\.([A-Za-z.-]+)",\s*"?(.*?)"?\);')
+
+
+def server_dir(profile, host, user):
+    """Ordner der IMAP-Ablage dieses Kontos (mail.server.serverN.directory[-rel] in prefs.js)."""
+    try:
+        with open(os.path.join(profile, "prefs.js"), encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None
+    servers = {}
+    for key, field, val in PREF.findall(text):
+        servers.setdefault(key, {})[field] = val.replace('\\\\', '\\').replace('\\"', '"')
+    for s in servers.values():
+        if s.get("type", "imap") != "imap" or host not in (s.get("hostname"), s.get("realhostname")):
+            continue
+        if user and s.get("userName") not in (None, user):
+            continue
+        rel = s.get("directory-rel", "")
+        if rel.startswith("[ProfD]"):
+            return os.path.join(profile, rel[len("[ProfD]"):])
+        if s.get("directory"):
+            return s["directory"]
+    return None
+
+
+def msf_paths(sdir, folder):
+    """Index des Ordners (A/B -> A.sbd/B.msf); gibt es den nicht (Sonderzeichen benennt Thunderbird um), alle.
+
+    Nur der eine Ordner, wenn möglich: dieselbe ID kann auch in „Gesendet“ liegen (Antwort an sich selbst)."""
+    parts = [p for p in folder.split("/") if p] if folder.upper() != "INBOX" else ["INBOX"]
+    if parts:
+        first = os.path.join(sdir, *[p + ".sbd" for p in parts[:-1]], parts[-1] + ".msf")
+        if os.path.isfile(first):
+            return [first]
+    return all_msf(sdir)
+
+
+def all_msf(base):
+    return sorted(glob.glob(os.path.join(glob.escape(base), "**", "*.msf"), recursive=True))
+
+
+def mork_forms(mid):
+    """So kann die ID im .msf stehen: roh oder mit Mork-Escapes (\\ vor ) \\ $)."""
+    raw = mid.encode("utf-8")
+    esc = re.sub(rb"([)\\$])", rb"\\\1", raw)
+    return {raw, esc}
+
+
+def known_locally(paths, mid):
+    forms = mork_forms(mid)
+    for p in paths:
+        try:
+            with open(p, "rb") as f:
+                data = f.read()
+        except OSError:
+            continue
+        if any(x in data for x in forms):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Thunderbird starten (eigener Scope, stirbt nicht mit Shell/mail-watch)
+
+def spawn_client(args):
+    if shutil.which("uwsm"):
+        argv = ["uwsm", "app", "-d", "Thunderbird (mail-action)", "--", APP_RUN, "thunderbird"] + args
+    else:
+        argv = ["systemd-run", "--user", "--scope", "--slice=app.slice", "--quiet",
+                "--description=Thunderbird (mail-action)", "--", APP_RUN, "thunderbird"] + args
+    try:
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as e:
+        say("launch failed: " + type(e).__name__)
+
+
+def open_client(acc, mid, dry):
+    """mid: direkt, wenn Thunderbird die Mail schon kennt; sonst Posteingang + warten + mid:."""
+    mid = valid_mid(mid)
+    paths = []
+    prof = profile_dir() if mid else None
+    if prof and acc:
+        cfg = acc.get("mail") or {}
+        sdir = server_dir(prof, cfg.get("host", ""), account_user(acc))
+        if sdir:
+            paths = msf_paths(sdir, cfg.get("folder") or "INBOX")
+    if prof and not paths:
+        # Konto unbekannt (z. B. alte Meldung): alle IMAP-Ordner des Profils
+        paths = all_msf(os.path.join(prof, "ImapMail"))
+    if not mid:
+        plan = "inbox"
+    elif not paths or known_locally(paths, mid):
+        # ohne bekannten Index lieber gleich versuchen (altes Verhalten) als nie
+        plan = "mid" if not paths else "mid-known"
+    else:
+        plan = "wait"
+    if dry:
+        print("dry-run: open via " + plan)
+        return
+    if plan in ("mid", "mid-known"):
+        spawn_client(["mid:" + mid])
+        return
+    spawn_client(["-mail"])
+    if plan == "inbox":
+        return
+    end = time.time() + WAIT_SECS
+    while time.time() < end:
+        time.sleep(POLL_SECS)
+        if known_locally(paths, mid):
+            # kurz Luft: Index ist geschrieben, Ordner-Ansicht lädt noch
+            time.sleep(1.0)
+            spawn_client(["mid:" + mid])
+            return
+    say("message not synced in time, inbox only")
+
+
+# ---------------------------------------------------------------------------------------------------------
+# IMAP: als gelesen markieren
+
+def to_trash(imap, uid, trash):
+    """Nur diese UID in den Papierkorb: MOVE, sonst COPY + \\Deleted + UID EXPUNGE (ohne UIDPLUS kein EXPUNGE –
+    ein Ordner-weites EXPUNGE würde auch fremde, schon als gelöscht markierte Mails endgültig löschen)."""
+    caps = imap.capabilities
+    imap.uid("STORE", str(uid), "+FLAGS.SILENT", r"(\Seen)")
+    if "MOVE" in caps:
+        typ, _ = imap.uid("MOVE", str(uid), MS.quote(trash))
+        return typ == "OK"
+    typ, _ = imap.uid("COPY", str(uid), MS.quote(trash))
+    if typ != "OK":
+        return False
+    imap.uid("STORE", str(uid), "+FLAGS.SILENT", r"(\Deleted)")
+    if "UIDPLUS" in caps:
+        imap.uid("EXPUNGE", str(uid))
+    return True
+
+
+def apply(acc, uid, mid, dry, what="seen"):
+    """what: "seen" (als gelesen) oder "trash" (in den Papierkorb, nie endgültig).
+    0 = erledigt (oder dry-run ok), 2 = Fehler, 3 = UID passt nicht (mehr) zur Message-ID."""
+    cfg = acc.get("mail") or {}
+    folder = cfg.get("folder") or "INBOX"
+    pw = MS.password(acc)
+    if not pw or not account_user(acc):
+        say("account incomplete")
+        return 2
+    imap = None
+    try:
+        imap = imaplib.IMAP4_SSL(cfg.get("host", ""), int(cfg.get("port", 993)),
+                                 ssl_context=ssl.create_default_context(), timeout=TIMEOUT)
+        try:
+            imap.login(account_user(acc), pw)
+        except imaplib.IMAP4.error:
+            say("login failed")
+            return 2
+        finally:
+            pw = None
+        typ, _ = imap.select(MS.quote(folder), readonly=dry)
+        if typ != "OK":
+            say("cannot open folder")
+            return 2
+        typ, data = imap.uid("FETCH", str(uid), "(FLAGS BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        part = next((p for p in data or [] if isinstance(p, tuple)), None) if typ == "OK" else None
+        if part is None:
+            say("message gone")
+            return 3
+        if mid:
+            m = re.search(rb"<([^>]+)>", part[1] or b"")
+            if not m or m.group(1).decode("utf-8", "replace") != mid:
+                say("uid does not match message-id, nothing changed")
+                return 3
+        if what == "trash":
+            trash = MS.find_trash(imap)
+            if not trash or trash == folder:
+                say("no trash folder found, not deleting")
+                return 2
+            if dry:
+                print("dry-run: would move uid %d to trash" % uid)
+                return 0
+            if not to_trash(imap, uid, trash):
+                say("move to trash failed")
+                return 2
+            return 0
+        if dry:
+            print("dry-run: would mark uid %d seen%s" % (uid, " (already seen)" if rb"\Seen" in part[0] else ""))
+            return 0
+        typ, _ = imap.uid("STORE", str(uid), "+FLAGS.SILENT", r"(\Seen)")
+        if typ != "OK":
+            say("store failed")
+            return 2
+        return 0
+    except (OSError, imaplib.IMAP4.error, ssl.SSLError, ValueError) as e:
+        say("imap: " + MS.reason(e))
+        return 2
+    finally:
+        if imap is not None:
+            try:
+                imap.logout()
+            except (OSError, imaplib.IMAP4.error, ssl.SSLError):
+                pass
+
+
+def drop_from_cache(path, account, uid):
+    """Mail sofort aus ~/.cache/desktop/mail.json nehmen (Kachel/Launcher), der nächste Abruf bestätigt es."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return False
+    changed = False
+    for a in d.get("accounts") or []:
+        if a.get("name") != account:
+            continue
+        before = len(a.get("messages") or [])
+        a["messages"] = [m for m in a.get("messages") or [] if m.get("uid") != uid]
+        if len(a["messages"]) != before:
+            a["unread"] = max(0, int(a.get("unread") or 0) - 1)
+            changed = True
+    if not changed:
+        return False
+    d["total"] = sum(int(a.get("unread") or 0) for a in d.get("accounts") or [])
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".mail.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+    return True
+
+
+def refresh():
+    try:
+        subprocess.run(["systemctl", "--user", "start", "--no-block", "desktop-mail.service"],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def apply_and_update(acc, uid, mid, dry, what="seen"):
+    rc = apply(acc, uid, mid, dry, what)
+    if rc == 0 and not dry:
+        drop_from_cache(CACHE, acc["name"], uid)
+        refresh()
+    return rc
+
+
+# ---------------------------------------------------------------------------------------------------------
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="mail-action")
+    ap.add_argument("action", choices=("open", "seen", "trash"))
+    ap.add_argument("--account", default="")
+    ap.add_argument("--uid", type=int, default=0)
+    ap.add_argument("--mid", default="")
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args(argv)
+    mid = valid_mid(a.mid.strip().strip("<>"))
+    acc = find_account(a.account) if a.account else None
+    if a.account and acc is None:
+        say("unknown account")
+    if a.action in ("seen", "trash"):
+        if acc is None or a.uid <= 0:
+            say(a.action + " needs --account and --uid")
+            return 2
+        return apply_and_update(acc, a.uid, mid, a.dry_run, a.action)
+
+    # open: Markieren läuft parallel zum Start, damit Thunderbird nicht auf den IMAP-Login wartet
+    result = {}
+    t = None
+    if acc is not None and a.uid > 0:
+        t = threading.Thread(target=lambda: result.update(rc=apply_and_update(acc, a.uid, mid, a.dry_run)))
+        t.start()
+    open_client(acc, mid, a.dry_run)
+    if t:
+        t.join()
+    return result.get("rc", 0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

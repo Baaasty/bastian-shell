@@ -11,7 +11,8 @@ Ausgabe:
 { "updated": ms, "status": "ok" | "no-config" | "config-error",
   "total": n,
   "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "auth" | "error",
-                 "error", "unread", "messages": [{ "from", "subject", "date" (ms), "mid" (Message-ID ohne <>) }] }] }
+                 "error", "unread", "messages": [{ "from", "subject", "date" (ms), "mid" (Message-ID ohne <>), "uid" }] }] }
+"uid" (IMAP-UID im Ordner) braucht scripts/mail-action (öffnen / als gelesen markieren).
 """
 import email
 import email.policy
@@ -54,6 +55,42 @@ def password(acc):
 
 def quote(folder):
     return folder if re.fullmatch(r"[A-Za-z0-9_./-]+", folder) else '"' + folder.replace('"', '\\"') + '"'
+
+
+# Papierkorb-Namen, falls der Server kein SPECIAL-USE \Trash meldet (mail-watch: Code-Mails, mail-action: Löschen)
+TRASH_NAMES = ("deleted messages", "trash", "papierkorb", "gelöschte elemente", "deleted items", "deleted")
+LIST_RE = re.compile(rb'\((?P<flags>[^)]*)\) (?P<delim>"(?:[^"\\]|\\.)*"|NIL) (?P<name>.+)$')
+
+
+def find_trash(imap):
+    """Papierkorb: SPECIAL-USE \\Trash, sonst übliche Namen. Name roh (modified UTF-7) zurück."""
+    typ, data = imap.list()
+    if typ != "OK":
+        return None
+    boxes = []
+    for item in data or []:
+        if isinstance(item, tuple):          # Name als Literal
+            head, name = item[0], item[1]
+            m = LIST_RE.match(head.rstrip() + b" x")
+            flags = m.group("flags") if m else b""
+        elif isinstance(item, bytes):
+            m = LIST_RE.match(item)
+            if not m:
+                continue
+            flags, name = m.group("flags"), m.group("name").strip()
+            if name.startswith(b'"') and name.endswith(b'"'):
+                name = re.sub(rb'\\(.)', rb'\1', name[1:-1])
+        else:
+            continue
+        boxes.append((flags.lower(), name.decode("utf-8", errors="replace")))
+    for flags, name in boxes:
+        if b"\\trash" in flags.split():
+            return name
+    for want in TRASH_NAMES:
+        for flags, name in boxes:
+            if name.lower().rsplit("/", 1)[-1].rsplit(".", 1)[-1] == want and b"\\noselect" not in flags:
+                return name
+    return None
 
 
 def sender(msg):
@@ -144,10 +181,12 @@ def check(acc):
                 if not isinstance(part, tuple):
                     continue
                 m = re.search(rb'INTERNALDATE "([^"]+)"', part[0])
+                u = re.search(rb"UID (\d+)", part[0])
                 msg = email.message_from_bytes(part[1], policy=email.policy.default)
                 mid = str(msg.get("Message-ID", "")).strip().strip("<>")
                 msgs.append({"from": sender(msg).strip(), "subject": str(msg.get("Subject", "")).strip(),
-                             "date": date_ms(msg, m.group(1) if m else None), "mid": mid})
+                             "date": date_ms(msg, m.group(1) if m else None), "mid": mid,
+                             "uid": int(u.group(1)) if u else 0})
             out["messages"] = sorted(msgs, key=lambda x: x["date"], reverse=True)
         # UNSEEN aus STATUS kann fehlen (manche Server) -> wenigstens die gefundenen zählen
         if not out["unread"]:

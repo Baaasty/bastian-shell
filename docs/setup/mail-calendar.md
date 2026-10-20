@@ -64,7 +64,9 @@ danach `python3 -I theme/gen/thunderbird.py apply` und das Theme einmal aktivier
 Dienst `desktop-mail-watch` (`scripts/mail-watch`, läuft mit `scripts/rice feeds`) hält per IMAP IDLE
 eine Verbindung offen:
 
-- **Neue Mail** → Meldung oben (Absender, Betreff). Klick oder **Open** öffnet genau diese Mail in Thunderbird.
+- **Neue Mail** → Meldung oben (Absender, Betreff). Klick oder **Open** öffnet genau diese Mail in Thunderbird
+  und markiert sie gelesen, **Mark read** markiert nur, **Delete** schiebt sie in den Papierkorb (`scripts/mail-action`).
+  Thunderbirds eigene Meldung ist dafür aus (user.js-Block von `theme/gen/thunderbird.py`, nach Neustart).
   Nur wirklich neue Mails, nicht das schon Ungelesene beim Start. Mehr als 4 auf einmal → eine Sammelmeldung.
 - **Code in der Mail** (Bestätigungs-/Login-/Sicherheitscode, OTP, TAN, 2FA …) → landet in der Zwischenablage,
   Meldung „Code copied“. Erkennung nur mit passendem Schlüsselwort, Datum/Uhrzeit/Beträge/Telefon-/Bestellnummern

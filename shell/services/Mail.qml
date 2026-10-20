@@ -4,7 +4,8 @@ import Quickshell
 import Quickshell.Io
 
 // Ungelesene Mails aus ~/.cache/desktop/mail.json (gepflegt von scripts/mail-status über desktop-mail.timer).
-// Nur Header, nichts wird als gelesen markiert. Lesen/Schreiben macht Thunderbird.
+// Abruf nur Header (nichts wird dabei gelesen). Öffnen / gelesen / Papierkorb: scripts/mail-action (IMAP),
+// Lesen/Schreiben selbst macht Thunderbird.
 Singleton {
     id: root
 
@@ -15,8 +16,8 @@ Singleton {
     readonly property bool configured: status === "ok"
     // Konten, die noch etwas brauchen (Benutzer, Passwort, Login)
     readonly property var problems: accounts.filter(a => a.status !== "ok")
-    // neueste ungelesene über alle Konten
-    readonly property var latest: accounts.reduce((l, a) => l.concat((a.messages || []).map(m => Object.assign({ account: a.label }, m))), [])
+    // neueste ungelesene über alle Konten (accountName = Schlüssel in secrets.json für mail-action)
+    readonly property var latest: accounts.reduce((l, a) => l.concat((a.messages || []).map(m => Object.assign({ account: a.label, accountName: a.name }, m))), [])
         .sort((x, y) => y.date - x.date)
 
     // Konten + app-spezifische Passwörter stehen in secrets.json ("accounts"), Anleitung im Repo
@@ -70,14 +71,55 @@ Singleton {
     function openCalendar(): void {
         openView("-calendar");
     }
-    // genau diese Mail öffnen (Thunderbird kennt mid:<Message-ID>), sonst den Posteingang
-    function openMessage(mid: string): void {
+    // Öffnen + Markieren: scripts/mail-action. Nicht direkt "thunderbird mid:…" – frisch gestartet kennt Thunderbird
+    // neue Mails noch nicht (Dialog „Message … not found“); mail-action wartet, bis sie in seinem Index steht.
+    readonly property string actionBin: Quickshell.shellDir + "/../scripts/mail-action"
+    function canMarkRead(m: var): bool {
+        return !!m && m.uid > 0 && !!m.accountName;
+    }
+    function actionArgs(m: var): var {
+        const a = [];
+        if (m.accountName)
+            a.push("--account", m.accountName);
+        if (m.uid > 0)
+            a.push("--uid", String(m.uid));
+        if (m.mid)
+            a.push("--mid", m.mid);
+        return a;
+    }
+    // genau diese Mail in Thunderbird öffnen und als gelesen markieren; ohne Message-ID den Posteingang
+    function openMessage(m: var): void {
         if (!clientInstalled)
             return;
-        if (mid)
-            Launch.run("thunderbird", ["mid:" + mid]);
-        else
+        if (!m || !m.mid) {
             openClient();
+            return;
+        }
+        // eigener Scope über Launch: mail-action startet Thunderbird und wartet ggf. bis zu 60 s
+        Launch.cmd([actionBin, "open"].concat(actionArgs(m)));
+        if (canMarkRead(m))
+            dropLocally(m);
+    }
+    // nur als gelesen markieren (Thunderbird bleibt zu)
+    function markRead(m: var): void {
+        if (!canMarkRead(m))
+            return;
+        Quickshell.execDetached([actionBin, "seen"].concat(actionArgs(m)));
+        dropLocally(m);
+    }
+    // in den Papierkorb (IMAP, wiederherstellbar), nie endgültig löschen
+    function trash(m: var): void {
+        if (!canMarkRead(m))
+            return;
+        Quickshell.execDetached([actionBin, "trash"].concat(actionArgs(m)));
+        dropLocally(m);
+    }
+    // sofort aus Kachel/Launcher nehmen; mail-action schreibt mail.json gleich mit, der nächste Abruf bestätigt
+    function dropLocally(m: var): void {
+        accounts = accounts.map(a => a.name !== m.accountName ? a : Object.assign({}, a, {
+            unread: Math.max(0, (a.unread || 0) - 1),
+            messages: (a.messages || []).filter(x => x.uid !== m.uid)
+        }));
     }
 
     Process {

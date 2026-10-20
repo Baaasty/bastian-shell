@@ -92,6 +92,9 @@ def userjs_block() -> str:
         f'user_pref("{PREF}", true);',
         "// Kalender: Woche beginnt am Montag (Oberfläche bleibt Englisch)",
         'user_pref("calendar.week.start", 1);',
+        "// Neue Mail meldet die Shell (scripts/mail-watch) – Thunderbirds eigene Meldung + Ton wären doppelt",
+        'user_pref("mail.biff.show_alert", false);',
+        'user_pref("mail.biff.play_sound", false);',
         BLOCK_END,
     ]) + "\n"
 
@@ -176,6 +179,7 @@ if cmd in ("remove", "status"):
         print(f"  {xpi_dst} entfernt")
     print(f"  Hinweis: {PREF} bleibt in prefs.js auf true, wirkt ohne chrome/-Dateien aber nicht."
           " Ganz zurück: about:config → Pref → Zurücksetzen.")
+    print("  Ebenso mail.biff.show_alert / mail.biff.play_sound (eigene Mail-Meldung + Ton): about:config → Zurücksetzen.")
     print("  Thunderbird neu starten." + (" (läuft gerade – wird nicht beendet)" if running else ""))
     sys.exit(0)
 

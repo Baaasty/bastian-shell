@@ -57,6 +57,7 @@ STATE = os.path.join(STATE_DIR, "mail-watch.json")
 
 # Thunderbird: natives RPM zuerst, sonst das Flatpak – entscheidet scripts/app-run (auch fürs Starten)
 APP_RUN = os.path.join(HERE, "app-run")
+MAIL_ACTION = os.path.join(HERE, "mail-action")   # öffnen + als gelesen markieren (wartet, bis Thunderbird die Mail kennt)
 CLIENT_NATIVE = "net.thunderbird.Thunderbird"   # .desktop-ID des Fedora-RPMs (Symbol: thunderbird)
 CLIENT_FLATPAK = "org.mozilla.thunderbird_esr"  # altes Flatpak (Fallback bis zum Umzug)
 
@@ -80,7 +81,6 @@ BURST = 4                    # mehr neue Mails auf einmal -> eine Sammelmeldung
 ACTION_WAIT = 15 * 60        # so lange wartet eine Meldung auf "Open"
 AUTH_RETRY = 15 * 60         # falsches Passwort: nicht hämmern (Apple sperrt sonst)
 DEFAULT_CODES = {"autoCopy": True, "trashAfterMin": 5}
-TRASH_NAMES = ("deleted messages", "trash", "papierkorb", "gelöschte elemente", "deleted items", "deleted")
 
 
 def _mail_status():
@@ -1016,9 +1016,25 @@ def spawn_app(argv, description=None):
         log("launch failed: " + type(e).__name__)
 
 
-def open_mail(mid):
+def open_mail(mid, account=None, uid=None):
+    """Nicht direkt "thunderbird mid:…": frisch gestartet kennt Thunderbird die Mail noch nicht (Fehler-Dialog)."""
     mid = valid_mid(mid)
-    spawn_app([APP_RUN, "thunderbird"] + (["mid:" + mid] if mid else []), description="mail-watch: open Thunderbird")
+    if not mid:
+        spawn_app([APP_RUN, "thunderbird"], description="mail-watch: open Thunderbird")
+        return
+    who = ["--account", account, "--uid", str(int(uid))] if account and uid else []
+    spawn_app([MAIL_ACTION, "open", "--mid", mid] + who, description="mail-watch: open mail")
+
+
+def mail_act(what, account, uid, mid):
+    """mail-action seen|trash für eine Mail aus der Meldung (kurzer Prozess, keine App)."""
+    try:
+        subprocess.Popen([MAIL_ACTION, what, "--account", account, "--uid", str(int(uid))]
+                         + (["--mid", valid_mid(mid)] if valid_mid(mid) else []),
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as e:
+        log(what + " failed: " + type(e).__name__)
 
 
 def open_link(url):
@@ -1035,11 +1051,12 @@ def _close_notification(nid):
                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
 
 
-def notify(summary, body, mid=None, on_open=None, label="Open", quiet=False):
+def notify(summary, body, mid=None, on_open=None, label="Open", quiet=False, account=None, uid=None):
     """Meldung an die Shell (org.freedesktop.Notifications); Klick/"Open" öffnet die Mail (oder den Posteingang).
 
     on_open: statt der Mail das hier ausführen (z. B. Anmelde-Link öffnen), label = Knopftext.
-    quiet:   niedrige Dringlichkeit, keine Aktion, nicht warten."""
+    quiet:   niedrige Dringlichkeit, keine Aktion, nicht warten.
+    account + uid: Open markiert die Mail auch gelesen, dazu Knöpfe "Mark read" und "Delete" (Papierkorb)."""
     entry, icon = client_entry()
     argv = ["notify-send", "-a", "Mail", "-n", icon, "-h", "string:desktop-entry:" + entry]
     if quiet:
@@ -1049,7 +1066,9 @@ def notify(summary, body, mid=None, on_open=None, label="Open", quiet=False):
         except OSError as e:
             log("notify failed: " + type(e).__name__)
         return
-    argv += ["-p", "-A", "default=" + label, "-A", "open=" + label, "--", summary[:200], body[:300]]
+    can_read = bool(account and uid and not on_open)
+    argv += ["-p", "-A", "default=" + label, "-A", "open=" + label] + (["-A", "read=Mark read", "-A", "trash=Delete"] if can_read else []) \
+        + ["--", summary[:200], body[:300]]
 
     def run():
         try:
@@ -1070,11 +1089,16 @@ def notify(summary, body, mid=None, on_open=None, label="Open", quiet=False):
         proc.wait()
         if timer:
             timer.cancel()
-        if any(a in ("default", "open") for a in rest + ([first] if not nid else [])):
+        chosen = rest + ([first] if not nid else [])
+        if any(a in ("default", "open") for a in chosen):
             if on_open:
                 on_open()
             else:
-                open_mail(mid)
+                open_mail(mid, account, uid)
+        elif can_read and "read" in chosen:
+            mail_act("seen", account, uid, mid)
+        elif can_read and "trash" in chosen:
+            mail_act("trash", account, uid, mid)
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -1182,38 +1206,9 @@ def status_numbers(imap, folder):
     return (int(uv.group(1)) if uv else 0), (int(nx.group(1)) if nx else 0)
 
 
-LIST_RE = re.compile(rb'\((?P<flags>[^)]*)\) (?P<delim>"(?:[^"\\]|\\.)*"|NIL) (?P<name>.+)$')
-
-
 def find_trash(imap):
-    """Papierkorb: SPECIAL-USE \\Trash, sonst übliche Namen. Name roh (modified UTF-7) zurück."""
-    typ, data = imap.list()
-    if typ != "OK":
-        return None
-    boxes = []
-    for item in data or []:
-        if isinstance(item, tuple):          # Name als Literal
-            head, name = item[0], item[1]
-            m = LIST_RE.match(head.rstrip() + b" x")
-            flags = m.group("flags") if m else b""
-        elif isinstance(item, bytes):
-            m = LIST_RE.match(item)
-            if not m:
-                continue
-            flags, name = m.group("flags"), m.group("name").strip()
-            if name.startswith(b'"') and name.endswith(b'"'):
-                name = re.sub(rb'\\(.)', rb'\1', name[1:-1])
-        else:
-            continue
-        boxes.append((flags.lower(), name.decode("utf-8", errors="replace")))
-    for flags, name in boxes:
-        if b"\\trash" in flags.split():
-            return name
-    for want in TRASH_NAMES:
-        for flags, name in boxes:
-            if name.lower().rsplit("/", 1)[-1].rsplit(".", 1)[-1] == want and b"\\noselect" not in flags:
-                return name
-    return None
+    """Papierkorb-Erkennung steckt in scripts/mail-status (auch für mail-action)."""
+    return MS.find_trash(imap)
 
 
 def codes_cfg(acc):
@@ -1376,13 +1371,13 @@ class Watcher:
             elif not code and self.handle_link(sender, subject, mid, msg, age, meta.get(uid)):
                 links += 1
             else:
-                normal.append((sender, subject or "(no subject)", mid))
+                normal.append((sender, subject or "(no subject)", mid, uid))
         if self.notify_on and normal:
             if len(normal) <= BURST:
-                for sender, subject, mid in normal:
-                    notify(sender, subject, mid)
+                for sender, subject, mid, uid in normal:
+                    notify(sender, subject, mid, account=self.name, uid=uid)
             else:
-                names = list(dict.fromkeys(s for s, _, _ in normal))
+                names = list(dict.fromkeys(n[0] for n in normal))
                 notify("%d new messages" % len(normal),
                        ", ".join(names[:3]) + (" and others" if len(names) > 3 else ""))
         log("%s: %d new%s%s" % (self.name, len(fresh), ", %d code copied" % codes if codes else "",

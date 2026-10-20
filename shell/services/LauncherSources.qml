@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 
 // Daten für die Launcher-Präfixe, die nicht in eigenen Diensten stecken:
-//  - Wort-Präfixe zerlegen (pw, cal, c + Web-Kürzel aus WebShortcuts)
+//  - Wort-Präfixe zerlegen (pw, cal, m, c + Web-Kürzel aus WebShortcuts)
 //  - Passwörter: nur Metadaten (Titel, Websites, Benutzername) aus scripts/passwords list – nie ein Geheimnis in der Liste.
 //    Kopieren ruft scripts/passwords copy auf (wl-copy --sensitive, nach 30 s geleert), wie das Passwort-Panel.
 //  - Kalender: kommende Termine aus Agenda
@@ -22,7 +22,7 @@ Singleton {
         if (sp > 0) {
             const key = q.slice(0, sp).toLowerCase();
             const rest = q.slice(sp + 1).trim();
-            if (key === "pw" || key === "cal" || key === "c")
+            if (key === "pw" || key === "cal" || key === "c" || key === "m")
                 return { mode: key + " ", term: rest, key: key };
             const w = WebShortcuts.find(key);
             if (w)
@@ -67,24 +67,18 @@ Singleton {
     property var pwItems: []          // [{ id, title, user, urls, hasPassword, hasTotp, wifi }]
     property bool pwReady: false
     property string pwError: ""
-    property bool hideWifi: true
-    property var hiddenIds: []
-    property var shownIds: []
     property real pwLoadedAt: 0
 
     // beim ersten pw-Präfix (und danach höchstens alle 5 min) laden
     function pwEnsure(): void {
-        if (pwList.running || pwConfig.running || (pwReady && Date.now() - pwLoadedAt < 300000))
+        if (pwList.running || (pwReady && Date.now() - pwLoadedAt < 300000))
             return;
-        pwConfig.running = true;
         pwList.running = true;
     }
 
-    // wie PwPanel: WLAN-Einträge und von Hand Ausgeblendete bleiben weg
+    // wie PwPanel: gespeicherte WLAN-Passwörter bleiben weg
     function pwVisible(e: var): bool {
-        if (hiddenIds.includes(e.id))
-            return false;
-        return !(hideWifi && e.wifi && !shownIds.includes(e.id));
+        return !e.wifi;
     }
 
     function hostOf(url: string): string {
@@ -126,20 +120,6 @@ Singleton {
                 } catch (e) {
                     root.pwError = "Passwords not available (scripts/passwords list)";
                 }
-            }
-        }
-    }
-    Process {
-        id: pwConfig
-        command: [root.pwBin, "config"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const d = JSON.parse(text);
-                    root.hideWifi = d.hideWifi !== false;
-                    root.hiddenIds = d.hidden || [];
-                    root.shownIds = d.shown || [];
-                } catch (e) {}
             }
         }
     }
