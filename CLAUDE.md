@@ -104,6 +104,8 @@ Doku im selben Commit wie der Code. **Code ist die Quelle der Wahrheit:** Docs b
 Code steht, und wiederholen nicht, was der Code schon zeigt (Versionen, Feldlisten, IPC-Funktionen) – sie verweisen auf die
 Stelle und erklären das Warum. Widerspricht die Doku dem Code: Doku sofort korrigieren. Ausnahme Planung
 (ROADMAP, BACKLOG) – dort steht Geplantes, klar als geplant markiert. Nur erklären, was man aus dem Code nicht sieht.
+**Nie in Docs:** Tastenkürzel (dafür gibt es `scripts/hotkeys-md`), Befehls-/Flag-Listen, UI-Abläufe Schritt für Schritt,
+Defaults, Grenzwerte, Pfade. Vor dem Schreiben im Code nachsehen, wie es umgesetzt ist – auch in Aufträgen an Agents sagen.
 
 | Auslöser | Doc |
 | --- | --- |
@@ -114,7 +116,7 @@ Stelle und erklären das Warum. Widerspricht die Doku dem Code: Doku sofort korr
 | Grundsatzentscheidung | `docs/DECISIONS.md`: `JJJJ-MM-TT · Entscheidung · Grund · Status` |
 | Scope ändert sich (Ziel, Nicht-Ziel) | `docs/PRD.md` (gilt als PRD) + DECISIONS – nur nach OK |
 | Neues Feature | eine Zeile in `docs/PRD.md` (Kern-Funktionen) |
-| Konfig, Grenze, Stolperfalle eines Features | `docs/knowledge/shell-features.md` (≤ 6 Zeilen je Feature) |
+| Grenze oder Stolperfalle eines Features, die der Code nicht zeigt | `docs/knowledge/shell-features.md` (≤ 6 Zeilen je Feature) |
 | Neues Kürzel | `hypr/binds.conf` mit Titel, dann `scripts/hotkeys-md` |
 | Neuer Befehl, Ordner, Skript | CLAUDE.md „Befehle“ / „Struktur“ |
 | Setup-/Login-Schritt gelernt | `docs/setup/<thema>.md` |

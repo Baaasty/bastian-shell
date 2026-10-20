@@ -1,106 +1,43 @@
-# iCloud-Passwörter im Browser (Helium)
+# iCloud-Passwörter (Panel Super+O und Browser-Autofill)
 
-Autofill aus dem iCloud-Schlüsselbund – in der Erweiterung **„Desktop“** (dieselbe wie die neue Tab-Seite).
-Die icp-eigene Erweiterung („Apple Passwords“) wird nicht mehr gebraucht.
+Quelle ist der iCloud-Schlüsselbund über icp (`~/Apps/icp`, Branch `live`, eigener Fork mit Schreibweg). Code:
+`scripts/passwords` (alles Lesen/Schreiben, Selbsttest `--selftest`), `shell/modules/passwords/`, Browser-Teil
+`scripts/chrome-ext` + Erweiterung „Desktop“ (`theme/gen/`). Sync-Takt und Bremse: `systemd/desktop-passwords.timer`,
+`~/Apps/icp/icp/ratelimit.py`.
 
-Weg der Daten: Erweiterung → Native Host `de.bastian.desktop` (`scripts/chrome-ext`) → `scripts/passwords` → icp (`~/Apps/icp`, Branch `live`: liest und schreibt).
-Login bei icp: `icp login`. Aktualisiert wird automatisch: Timer `desktop-passwords` alle 15 min und beim Öffnen von Super+O,
-wenn der Stand älter als 5 min ist (Stand unten links im Panel). icp bremst selbst: höchstens alle 5 min, nach Fehlern
-länger (bis 6 h), im Hintergrund nie Passwort-Login oder 2FA-Push – ist der Login abgelaufen, steht „iCloud login needed“
-im Panel → einmal `icp login` im Terminal. Sofort von Hand: `scripts/passwords sync --force`, Stand: `scripts/passwords status`.
-Geteilte Passwort-Gruppen (z. B. WebBude) kommen beim Sync mit – nur Gruppen, die du **erstellt** hast
-(mit dir geteilte fehlen noch). Im Panel mit Gruppen-Symbol, Suche findet auch den Gruppennamen.
-Prüfen ohne Geheimnisse: `icp diag groups`. Format/Herkunft: `~/Apps/icp/RESEARCH.md` („Shared password groups“).
+## Einrichten (einmal)
 
-## Einrichten (einmal, in dieser Reihenfolge)
+1. `icp login` im Terminal (Apple-ID, 2FA). Läuft der Login später ab, steht im Panel „iCloud login needed“ – dann wieder das.
+2. `scripts/chrome-ext install --browser helium`, dann `helium://extensions` → Developer mode → „Desktop“ neu laden bzw.
+   **Load unpacked** `theme/out/chrome-desktop-ext`.
+3. Eine alte Erweiterung „Apple Passwords“ (icp) entfernen – sonst zwei Dropdowns.
+4. Heliums eigenen Passwort-Manager aus (`helium://password-manager/settings`: Speichern und Auto-Login aus).
+5. Prüfen: `scripts/chrome-ext status`.
 
-1. Terminal: `scripts/chrome-ext install --browser helium` (baut die Erweiterung, Host-Manifest zeigt auf dieses Repo).
-2. `helium://extensions` → rechts oben **Developer mode** an.
-   - „Desktop“ schon geladen → bei „Desktop“ auf **↻** (Neu laden).
-   - noch nicht → **Load unpacked** → Ordner `~/Workspace/bastian-shell/theme/out/chrome-desktop-ext`
-     (für die Farben dasselbe mit `…/theme/out/chrome-desktop`).
-3. Falls „Apple Passwords“ (icp) dort steht: **Remove** – sonst erscheinen zwei Dropdowns.
-4. Puzzle-Symbol in der Toolbar → bei „Desktop“ die Nadel → Symbol (Holzkachel mit Glutpunkt) = Passwort-Popup.
-5. Heliums eigenen Passwort-Manager aus (sonst bietet er zusätzlich Speichern/Ausfüllen an):
-   `helium://password-manager/settings` → **Offer to save passwords** aus, **Sign in automatically** aus.
-6. Schon offene Tabs einmal neu laden.
-7. Prüfen: `scripts/chrome-ext status` → Helium „Host: dieses Repo (mit Passwörtern)“; Popup auf einer Seite mit Login öffnen → „N saved“.
+## Warum so
 
-## Bedienung
+- **Kein Dritter:** Logos holt `scripts/favicons` direkt bei der Website (nie Google/DuckDuckGo, nie private Adressen), Kopieren
+  geht über `wl-copy --sensitive`, damit Klipper/cliphist nichts speichern.
+- **Browser bekommt nur, was zur Seite passt:** Dropdown im geschlossenen Shadow Root, Werte erst nach echtem Klick, nur https
+  bzw. localhost, nur passende Einträge (geprüft in Erweiterung und Host).
+- **Im Hintergrund nie Passwort-Login oder 2FA-Push:** wiederholte Logins können die Apple-ID sperren.
+- **Bearbeiten speichert im Hintergrund:** holen, schreiben, zurücklesen dauert etliche Sekunden und klappt fast immer – die
+  Liste zeigt den neuen Stand sofort, nur ein Fehler meldet sich.
+- **Website/Benutzer ändern = neuer Eintrag:** Apple-Geräte gleichen Änderungen nur darüber ab; in-place bliebe auf dem iPhone
+  eine Dublette (getestet 2026-10-20). Löschen landet wie in der App unter „Zuletzt gelöscht“.
 
-- **Login-Feld** (Benutzer, E-Mail oder Passwort) anklicken → Dropdown „iCloud Passwords“ mit den Logins der Seite.
-  Klick oder ↓/↑ + Enter füllt Benutzer + Passwort. Tippen im Benutzerfeld filtert. Esc schließt.
-- **E-Mail zuerst** (Google, Microsoft …): im ersten Schritt füllt der Klick nur die E-Mail; im Passwort-Schritt steht
-  derselbe Eintrag oben.
-- **2FA-Feld** (auch 6 Einzelkästchen) → Dropdown „Verification code“; der Code wird erst beim Klick frisch geholt.
-  Ist das 2FA-Feld schon im Login-Formular, wird es beim Ausfüllen gleich mitgefüllt.
-- **Registrierung** (E-Mail-Feld + „Passwort wiederholen“/neues Passwort, oder Sign-up/Register/Konto erstellen in Formular/URL)
-  → „Hide My Email“ mit den aktiven Adressen (passende Website zuerst). Neue Adressen anlegen geht hier nicht (nur in iCloud).
-- **Popup**: Logins der aktuellen Seite – Benutzer, Passwort, 2FA-Code kopieren, **Fill**. Kopiert wird über
-  `passwords copy` (wl-copy `--sensitive`, Klipper/cliphist speichern es nicht), nach 30 s ist die Zwischenablage leer.
-- Seite nicht erkannt (anderer Domainname als im Schlüsselbund)? Im Panel **F2** → Website als weitere Zeile ergänzen
-  (geht nach iCloud, gilt überall). Prüfen: `scripts/passwords match <url>`.
+## Grenzen
 
-## Sicherheit (so gebaut)
-
-- Ohne Klick bekommt eine Seite nichts: das Dropdown zeigt nur Titel/Benutzer und liegt in einem geschlossenen
-  Shadow Root (Seiten-Skripte können es nicht lesen). Synthetische Klicks/Tasten der Seite lösen nichts aus.
-- Passwort/Code gehen nur nach Klick und nur an den anfragenden Frame – nur bei https oder http://localhost, nur im
-  obersten Frame bzw. in Iframes derselben Origin, nur für Einträge, die laut `scripts/passwords match` zur Seite passen
-  (geprüft im Hintergrund **und** im Host). Fremde Iframes und http-Seiten bekommen kein Dropdown; im Popup ist dort nur Kopieren möglich.
-- Nichts wird geloggt oder in `chrome.storage` gespeichert. Der Shell-Socket des Hosts gibt keine Passwörter heraus.
-
-## Favicons
-
-Im Passwort-Panel (Super+O) steht links an jedem Login das Logo der Website, sonst der Buchstabe.
-
-- **Laden:** automatisch beim Öffnen (nur fehlende, höchstens einmal pro Stunde). Unten im Panel **Refresh icons** holt alle neu
-  (Fortschritt „Icons n/N“, nochmal klicken = stoppen).
-  Ohne Shell: `scripts/favicons run <domain…>` · `scripts/favicons config auto on|off` (Datei `~/.config/desktop/favicons.json`).
-- **Datenschutz:** Der Abruf geht direkt bei den Websites aus deiner Liste (nur die Domain, erste Website des Eintrags), kein
-  Dritter (kein Google/DuckDuckGo), keine Cookies, kein Referer. Einträge ohne Website werden nicht abgefragt.
-- **Ablauf je Domain:** Startseite (https, 5 s, max. 512 KB, max. 3 Weiterleitungen) → `<link rel="icon|apple-touch-icon…">`, bestes Icon →
-  sonst `/favicon.ico` → sonst Buchstabe. Bilder werden geprüft (PNG/ICO/SVG/JPEG/WebP, max. 200 KB, nie HTML/Skript) und auf 64×64 gebracht.
-- **Schutz:** nur http(s) auf Port 80/443; der Name wird vorher aufgelöst und nur öffentliche Adressen werden angesprochen
-  (kein localhost/privates Netz/Router). Höchstens 2 Abrufe gleichzeitig, kleine Pause dazwischen.
-- **Cache:** `~/.cache/desktop/favicons/<domain>.png`; „kein Icon gefunden“ merkt sich `<domain>.none` 7 Tage (Netzfehler nicht – die
-  werden beim nächsten Lauf wieder versucht). Neu holen: Datei löschen oder **Refresh icons**. Alles weg: Ordner löschen.
-- Funktioniert ein Logo nicht/falsch: Website auf iPhone/Mac korrigieren, nach dem Sync **Refresh icons**.
-
-## Bearbeiten (F2) – schreibt nach iCloud
-
-Im Passwort-Panel **F2** (oder Stift oben rechts): Titel, Benutzer, Passwort, Websites (eine pro Zeile, erste = Haupt-Website),
-2FA-Schlüssel (Setup-Key oder `otpauth://`-Link; leer = unverändert, Papierkorb = entfernen), Notiz. **Ctrl+S** speichert,
-**Esc** bricht ab, **Delete → Are you sure?** (oder Ctrl+D zweimal) verschiebt nach **„Zuletzt gelöscht“** – auf iPhone/Mac
-wiederherstellbar.
-
-- **Sofort weiter:** das Formular schließt gleich, die Liste zeigt den neuen Stand (Wolken-Symbol = speichert noch). Gespeichert
-  wird im Hintergrund (`scripts/passwords edit --detach`, eigene systemd-Scope, überlebt Shell-Neustarts). Klappt es nicht:
-  Benachrichtigung „Couldn't save …“, **Open** springt zum unveränderten Eintrag.
-- **Wie icp schreibt** (Sicherheit, Grenzen): `~/Apps/icp` README „Editing logins“. Kurz: frisch holen, nur mit aktuellem
-  etag speichern, vorher verschlüsselte Sicherung (`icp restore`), Selbsttest, Bremse (`icp write-state`). Website oder
-  Benutzer ändern = neuer Eintrag + alter gelöscht (sonst Dublette auf den Geräten).
-- **Nicht bearbeitbar:** geteilte Gruppen (icp liest sie nur) und WLAN.
-- Logins mit gleicher Website + Benutzer (http/https, Port) unterscheidet icp über ihre iCloud-ID (`uuid` im Tresor).
-
-## Gruppen und WLAN
-
-- **Chips** unter der Suche: All · Personal · geteilte Gruppen (z. B. WebBude), mit Anzahl. **Tab/Shift+Tab** schaltet, Esc → All.
-- **WLAN-/Hotspot-Passwörter** sind nie zu sehen: der Schlüsselbund legt sie mit dem Dienst „AirPort“ ab (daran erkannt, nicht
-  geraten), dazu Platzhalter ohne Buchstaben/Ziffern und ohne Website. Router-/Pi-hole-Logins mit Website bleiben sichtbar.
+- Geteilte Gruppen nur lesen, und nur selbst erstellte (eigene PCS-Verschlüsselung, mit dir geteilte fehlen noch).
+- WLAN-Passwörter (Dienst „AirPort“) sind nie zu sehen.
 
 ## Fehlerbehebung
 
 | Symptom | Lösung |
 |---|---|
-| Kein Dropdown | Seite neu laden (nach Installieren/↻ nötig). http-Seite oder fremdes Iframe → absichtlich aus. Passt der Eintrag? `scripts/passwords match <url>` |
-| Popup: „Desktop host not reachable“ | `scripts/chrome-ext install --browser helium`, dann bei „Desktop“ ↻ |
-| Popup: „Desktop host is outdated“ | Host-Manifest zeigt auf ein altes Repo (`scripts/chrome-ext status` → „Host: …“) → install aus diesem Repo, ↻ |
+| Kein Dropdown | Seite neu laden. http-Seite oder fremdes Iframe → absichtlich aus. Passt der Eintrag? `scripts/passwords match <url>` |
+| „Desktop host not reachable“ / „outdated“ | `scripts/chrome-ext install --browser helium`, dann „Desktop“ neu laden |
 | „cannot open the icp vault …“ | Schlüsselbund gesperrt oder Login abgelaufen: `icp login` |
-| Eintrag fehlt | `scripts/passwords sync --force`, danach Seite neu laden |
+| Eintrag fehlt | `scripts/passwords sync --force` |
 | Code wird abgelehnt | Uhrzeit prüfen: `timedatectl` (NTP an?) |
-| „extension reloaded – reload this page“ | Erweiterung wurde neu geladen → Seite neu laden |
-| Fehler ansehen | `helium://extensions` → Desktop → „service worker“ → Console (nur Fehlertexte, nie Werte) |
-
-Ganz weg: in `helium://extensions` „Desktop“ entfernen (dann auch ohne Tab-Seite) oder nur die Passwörter: `scripts/chrome-ext remove --browser helium`
-(Tab-Seite läuft weiter, Tabs im Launcher und Passwörter nicht mehr).
+| Speichern gescheitert, Schreiben gesperrt | Grund in `icp write-state`, nach Klärung `icp write-state --clear`; alter Stand: `icp restore` |
