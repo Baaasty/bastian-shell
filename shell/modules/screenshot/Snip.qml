@@ -35,6 +35,10 @@ Scope {
     property var warps: []         // per movecursor angefordert, noch nicht als Bewegung zurückgekommen ([x, y] global)
     property int kx: 0             // Startpixel der Tastatur-Auswahl
     property int ky: 0
+    // zuletzt gezogene Ecke (l/r, t/b): Pfeile im Feinjustier-Modus bewegen genau sie weiter
+    property string cornerX: "r"
+    property string cornerY: "b"
+    property var pressedArea: null    // Maus-Fläche mit gedrückter Taste: Pfeile schieben dann den Zeiger
     property bool dragging: false
     property int shot: 0   // erzwingt neues Laden des Bildes
     property var pendingCrop: null
@@ -64,6 +68,8 @@ Scope {
         aimSet = false;
         kbAim = false;
         warps = [];
+        cornerX = "r";
+        cornerY = "b";
         recordMode = record;
         intent = what;
         pickMode = pick;
@@ -139,6 +145,8 @@ Scope {
     function keyEnd(): void {
         if (!hasSel)
             return;
+        cornerX = ax < kx ? "l" : "r";
+        cornerY = ay < ky ? "t" : "b";
         normalize();
         mode = "adjust";
         kbAim = false; // Zeiger wieder zeigen: jetzt wird an den Griffen gezogen
@@ -167,17 +175,24 @@ Scope {
         const x = selX, y = selY, w = selW, h = selH;
         sx = x; sy = y; ex = x + w; ey = y + h;
     }
-    // Pfeiltasten: verschieben, mit Shift Größe ändern, Strg = 10 px
-    function nudge(dx: int, dy: int, resize: bool): void {
+    // Pfeile bei stehender Auswahl: zuletzt gezogene Ecke weiterschieben (min. 1 px, kein Umklappen),
+    // whole (Strg) = ganze Auswahl verschieben. Alt+Pfeile sind in Hyprland belegt (Arbeitsflächen).
+    function nudge(dx: int, dy: int, whole: bool): void {
         if (mode !== "adjust")
             return;
         normalize();
-        if (resize) {
-            ex = Math.max(sx + 1, ex + dx);
-            ey = Math.max(sy + 1, ey + dy);
-        } else {
+        if (whole) {
             sx += dx; ex += dx; sy += dy; ey += dy;
+            return;
         }
+        if (cornerX === "l")
+            sx = Math.min(ex - 1, sx + dx);
+        else
+            ex = Math.max(sx + 1, ex + dx);
+        if (cornerY === "t")
+            sy = Math.min(ey - 1, sy + dy);
+        else
+            ey = Math.max(sy + 1, ey + dy);
     }
     // saveAs = false: kopieren + Kopie in Bilder/Screenshots · true: "Speichern unter …" (auch kopiert)
     function finish(x: real, y: real, w: real, h: real, saveAs: bool): void {
@@ -561,6 +576,7 @@ Scope {
                     area.fine = false;
                     area.start = null;
                     area.confirmOnRelease = false;
+                    root.pressedArea = null;
                 }
             }
 
@@ -731,12 +747,12 @@ Scope {
                         ? "Arrows move the end (Shift 10 px) · Enter done · Esc back"
                         : root.recordMode
                         ? (root.mode === "adjust"
-                            ? "Enter record · Drag edges (Shift = fine) · Arrows 1 px (Shift: size, Ctrl: 10 px) · Esc"
+                            ? "Enter record · Arrows move the corner · Ctrl+Arrows move all · Shift 10 px · Drag edges · Esc"
                             : "Select area to record · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc")
                         : root.pickMode
                             ? "Click or Enter: copy the color · Arrows aim (Shift 10 px) · Shift = fine aim · Esc " + (root.pickOnly ? "cancel" : "back")
                             : root.mode === "adjust"
-                                ? "Enter " + (root.intent === "text" ? "read text" : root.intent === "pin" ? "pin" : "copy") + " · S save · T text · C color · P pin · Arrows nudge · Esc cancel"
+                                ? "Enter " + (root.intent === "text" ? "read text" : root.intent === "pin" ? "pin" : "copy") + " · S save · T text · C color · P pin · Arrows corner · Ctrl+Arrows move · Shift 10 px · Esc cancel"
                                 : (root.intent === "text" ? "Select the text to read" : root.intent === "pin" ? "Select the area to pin" : "Drag to select")
                                     + (root.intent === "copy" ? " · T text · C color · P pin" : " · C color")
                                     + " · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc cancel"
@@ -882,15 +898,14 @@ Scope {
                     if (!d)
                         return;
                     event.accepted = true;
-                    if (root.pickMode || root.mode === "idle" || root.mode === "key") {
-                        // Zielen: Shift (oder Strg wie beim Verschieben) = 10 px
-                        const step = (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) ? 10 : 1;
+                    // überall gleich: Shift = 10 px · Strg = ganze Auswahl verschieben (nur wenn sie steht)
+                    const step = (event.modifiers & Qt.ShiftModifier) ? 10 : 1;
+                    if (root.pressedArea)
+                        root.pressedArea.nudgePointer(d[0] * step, d[1] * step); // Maustaste gedrückt: Zeiger pixelweise
+                    else if (root.pickMode || root.mode === "idle" || root.mode === "key")
                         root.moveAim(d[0] * step, d[1] * step);
-                    } else {
-                        // Auswahl steht: verschieben, Shift = Größe, Strg = 10 px
-                        const step = (event.modifiers & Qt.ControlModifier) ? 10 : 1;
-                        root.nudge(d[0] * step, d[1] * step, (event.modifiers & Qt.ShiftModifier) !== 0);
-                    }
+                    else
+                        root.nudge(d[0] * step, d[1] * step, (event.modifiers & Qt.ControlModifier) !== 0);
                 }
             }
 
@@ -926,6 +941,33 @@ Scope {
                     lastY = mouse.y;
                     root.kbAim = false;
                     root.setAim(Math.floor(vx) + win.ox, Math.floor(vy) + win.oy);
+                }
+                // gedrückte Maus ziehen lassen (Ecke, Kante, ganze Auswahl oder neue Auswahl) – für Maus und Pfeile gleich
+                function applyDrag() {
+                    const gx = Math.round(vx) + win.ox, gy = Math.round(vy) + win.oy;
+                    if (grab === "move") {
+                        const dx = gx - start.gx, dy = gy - start.gy;
+                        root.sx = start.sx + dx; root.ex = start.ex + dx;
+                        root.sy = start.sy + dy; root.ey = start.ey + dy;
+                    } else if (grab) {
+                        if (grab.includes("l")) root.sx = gx;
+                        if (grab.includes("r")) root.ex = gx;
+                        if (grab.includes("t")) root.sy = gy;
+                        if (grab.includes("b")) root.ey = gy;
+                    } else if (!root.pickMode) {
+                        root.ex = gx;
+                        root.ey = gy;
+                    }
+                }
+                // Pfeile bei gedrückter Maustaste: wie eine Mausbewegung um dx/dy, echter Zeiger springt mit
+                function nudgePointer(dx, dy) {
+                    vx = lastX = Math.max(0, Math.min(win.width - 1, Math.round(vx) + dx));
+                    vy = lastY = Math.max(0, Math.min(win.height - 1, Math.round(vy) + dy));
+                    fine = false;
+                    root.setAim(vx + win.ox, vy + win.oy);
+                    applyDrag();
+                    root.warps = root.warps.concat([[vx + win.ox, vy + win.oy]]).slice(-20);
+                    Hypr.dispatch("movecursor " + Math.round(vx + win.modelData.x) + " " + Math.round(vy + win.modelData.y));
                 }
                 // Zeiger beim Öffnen schon über diesem Monitor: Zielpunkt dort, bevor sich die Maus bewegt
                 onContainsMouseChanged: {
@@ -965,6 +1007,7 @@ Scope {
 
                 onPressed: mouse => {
                     track(mouse);
+                    root.pressedArea = area;
                     if (root.pickMode)
                         return; // Pixel wird beim Loslassen gewählt
                     const gx = Math.round(vx) + win.ox, gy = Math.round(vy) + win.oy;
@@ -982,7 +1025,7 @@ Scope {
                 }
                 onPositionChanged: mouse => {
                     // Echo unseres movecursor (Pfeile): nur Maus-Stand nachziehen, Zielpunkt und Fadenkreuz bleiben
-                    if (!pressed && root.takeWarp(Math.floor(mouse.x) + win.ox, Math.floor(mouse.y) + win.oy)) {
+                    if (root.takeWarp(Math.floor(mouse.x) + win.ox, Math.floor(mouse.y) + win.oy)) {
                         vx = lastX = mouse.x;
                         vy = lastY = mouse.y;
                         fine = false;
@@ -994,26 +1037,23 @@ Scope {
                         zone = zoneAt(gx, gy);
                         return;
                     }
-                    if (grab === "move") {
-                        const dx = gx - start.gx, dy = gy - start.gy;
-                        root.sx = start.sx + dx; root.ex = start.ex + dx;
-                        root.sy = start.sy + dy; root.ey = start.ey + dy;
-                    } else if (grab) {
-                        if (grab.includes("l")) root.sx = gx;
-                        if (grab.includes("r")) root.ex = gx;
-                        if (grab.includes("t")) root.sy = gy;
-                        if (grab.includes("b")) root.ey = gy;
-                    } else {
-                        root.ex = gx;
-                        root.ey = gy;
-                    }
+                    applyDrag();
                 }
                 onReleased: {
+                    root.pressedArea = null;
                     if (root.pickMode) {
                         root.pickAt(win.mx + win.ox, win.my + win.oy);
                         return;
                     }
                     root.dragging = false;
+                    // gezogene Ecke merken, bevor normalize() Start und Ende sortiert (Pfeile schieben sie danach weiter)
+                    if (grab !== "move") {
+                        const l = grab.includes("l"), t = grab.includes("t");
+                        if (!grab || l || grab.includes("r"))
+                            root.cornerX = (l ? root.sx < root.ex : root.ex < root.sx) ? "l" : "r";
+                        if (!grab || t || grab.includes("b"))
+                            root.cornerY = (t ? root.sy < root.ey : root.ey < root.sy) ? "t" : "b";
+                    }
                     if (confirmOnRelease) {
                         confirmOnRelease = false;
                         grab = "";
