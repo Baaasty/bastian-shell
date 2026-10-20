@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.config
 import qs.services
@@ -22,8 +23,18 @@ Scope {
     property real sy: 0
     property real ex: 0
     property real ey: 0
-    // idle = noch nichts gewählt · drag = Ziehen · adjust = Auswahl steht, feinjustieren, Enter kopiert
+    // idle = noch nichts gewählt · drag = Ziehen · key = Startpunkt per Tastatur gesetzt, Zielpunkt zieht das Ende
+    // adjust = Auswahl steht, feinjustieren, Enter kopiert
     property string mode: "idle"
+    // Zielpunkt (Lupe/Fadenkreuz) in globalen Bildkoordinaten, ganze Pixel: Maus und Pfeiltasten teilen ihn,
+    // damit man abwechseln kann (Maus bewegt → Pfeile machen dort weiter und umgekehrt)
+    property int ax: 0
+    property int ay: 0
+    property bool aimSet: false
+    property bool kbAim: false     // zuletzt per Pfeil bewegt: eigenes Fadenkreuz statt Zeiger
+    property var warps: []         // per movecursor angefordert, noch nicht als Bewegung zurückgekommen ([x, y] global)
+    property int kx: 0             // Startpixel der Tastatur-Auswahl
+    property int ky: 0
     property bool dragging: false
     property int shot: 0   // erzwingt neues Laden des Bildes
     property var pendingCrop: null
@@ -50,6 +61,9 @@ Scope {
             return;
         busy = true;
         mode = "idle";
+        aimSet = false;
+        kbAim = false;
+        warps = [];
         recordMode = record;
         intent = what;
         pickMode = pick;
@@ -64,12 +78,70 @@ Scope {
         pickMode = false;
         intent = "copy";
     }
-    // Esc: in der Pipette (aus der Auswahl heraus) erst zurück zur Auswahl, sonst alles abbrechen
+    // Esc: in der Pipette (aus der Auswahl heraus) erst zurück zur Auswahl, Tastatur-Startpunkt verwerfen, sonst abbrechen
     function goBack(): void {
         if (pickMode && !pickOnly)
             pickMode = false;
+        else if (mode === "key")
+            mode = "idle";
         else
             cancel();
+    }
+    // Zielpunkt setzen (Maus oder Pfeile); bei Tastatur-Auswahl zieht er das Ende mit.
+    // Start- und Endpixel gehören beide zur Auswahl (+1), so wie die Lupe sie markiert.
+    function setAim(x: int, y: int): void {
+        ax = x;
+        ay = y;
+        aimSet = true;
+        if (mode === "key") {
+            sx = Math.min(kx, x);
+            ex = Math.max(kx, x) + 1;
+            sy = Math.min(ky, y);
+            ey = Math.max(ky, y) + 1;
+        }
+    }
+    // Pfeile im Ziel-Modus: über Monitorgrenzen nur, wo wirklich ein Monitor ist, sonst am Rand stehen bleiben.
+    // Der echte Zeiger springt mit (movecursor), damit die Maus von dort weitermacht.
+    function moveAim(dx: int, dy: int): void {
+        let nx = ax + dx, ny = ay + dy;
+        if (!aimSet) {
+            // Zeiger noch nicht gesehen: Mitte des fokussierten Monitors
+            const m = Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
+            nx = Math.floor(m.x + m.width / 2 - originX);
+            ny = Math.floor(m.y + m.height / 2 - originY);
+        } else if (!screenAt(nx + originX, ny + originY)) {
+            const s = screenAt(ax + originX, ay + originY);
+            nx = s ? Math.max(s.x - originX, Math.min(s.x + s.width - 1 - originX, nx)) : ax;
+            ny = s ? Math.max(s.y - originY, Math.min(s.y + s.height - 1 - originY, ny)) : ay;
+        }
+        kbAim = true;
+        setAim(nx, ny);
+        warps = warps.concat([[nx, ny]]).slice(-20);
+        Hypr.dispatch("movecursor " + Math.round(nx + originX) + " " + Math.round(ny + originY));
+    }
+    // Bewegung, die nur unser movecursor ausgelöst hat? Dann verbrauchen statt den Zielpunkt zu versetzen.
+    function takeWarp(gx: int, gy: int): bool {
+        const i = warps.findIndex(w => w[0] === gx && w[1] === gy);
+        warps = i < 0 ? [] : warps.slice(i + 1);
+        return i >= 0;
+    }
+    // Enter/Leertaste: 1. = Startpunkt, 2. = Endpunkt (Auswahl steht, danach greifen die Aktionstasten)
+    function keyStart(): void {
+        if (!aimSet) {
+            moveAim(0, 0);
+            return;
+        }
+        kx = ax;
+        ky = ay;
+        mode = "key";
+        setAim(ax, ay);
+    }
+    function keyEnd(): void {
+        if (!hasSel)
+            return;
+        normalize();
+        mode = "adjust";
+        kbAim = false; // Zeiger wieder zeigen: jetzt wird an den Griffen gezogen
     }
     // T / P / Enter-Ziel: steht schon eine Auswahl, wird sofort ausgeführt
     function chooseAction(what: string): void {
@@ -282,15 +354,20 @@ Scope {
     // Fertig = Breite gelesen (kommt nur, wenn grim geklappt hat); Fehler = Exit-Code ≠ 0.
     Process {
         id: capture
-        command: ["sh", "-c", "mkdir -p \"$0\" && grim \"$0/full.png\" && od -An -tu1 -j16 -N4 \"$0/full.png\"", root.dir]
+        // dazu die Zeigerposition: Pfeile starten dort, auch wenn sich die Maus noch nicht bewegt hat
+        command: ["sh", "-c", "mkdir -p \"$0\" && grim \"$0/full.png\" && od -An -tu1 -j16 -N4 \"$0/full.png\" && { hyprctl cursorpos 2>/dev/null || true; }", root.dir]
         stdout: StdioCollector {
             onStreamFinished: {
-                const b = text.trim().split(/\s+/).map(Number);
+                const lines = text.trim().split("\n");
+                const b = lines[0].trim().split(/\s+/).map(Number);
                 if (b.length !== 4 || !root.busy)
                     return;
                 const imgW = ((b[0] * 256 + b[1]) * 256 + b[2]) * 256 + b[3];
                 const logicalW = Math.max(...Quickshell.screens.map(s => s.x + s.width)) - root.originX;
                 root.px = imgW > 0 && logicalW > 0 ? imgW / logicalW : 1;
+                const c = /^(-?\d+),\s*(-?\d+)$/.exec((lines[1] ?? "").trim());
+                if (c && root.screenAt(Number(c[1]), Number(c[2])))
+                    root.setAim(Number(c[1]) - root.originX, Number(c[2]) - root.originY);
                 root.captured();
             }
         }
@@ -503,9 +580,10 @@ Scope {
             // Auswahl in lokalen Koordinaten
             readonly property real lx: root.selX - win.ox
             readonly property real ly: root.selY - win.oy
-            // Maus (lokal, ganze Pixel)
-            property int mx: 0
-            property int my: 0
+            // Zielpunkt (lokal, ganze Pixel) und ob er auf diesem Monitor liegt
+            readonly property int mx: root.ax - ox
+            readonly property int my: root.ay - oy
+            readonly property bool aimHere: root.aimSet && mx >= 0 && my >= 0 && mx < width && my < height
 
             // abdunkeln außer Auswahl
             Item {
@@ -649,17 +727,19 @@ Scope {
                 Txt {
                     id: hint
                     anchors.centerIn: parent
-                    text: root.recordMode
+                    text: root.mode === "key" && !root.pickMode
+                        ? "Arrows move the end (Shift 10 px) · Enter done · Esc back"
+                        : root.recordMode
                         ? (root.mode === "adjust"
                             ? "Enter record · Drag edges (Shift = fine) · Arrows 1 px (Shift: size, Ctrl: 10 px) · Esc"
-                            : "Select area to record · Shift = fine aim · Click = whole screen · Esc")
+                            : "Select area to record · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc")
                         : root.pickMode
-                            ? "Click a pixel to copy its color · Shift = fine aim · Esc " + (root.pickOnly ? "cancel" : "back")
+                            ? "Click or Enter: copy the color · Arrows aim (Shift 10 px) · Shift = fine aim · Esc " + (root.pickOnly ? "cancel" : "back")
                             : root.mode === "adjust"
                                 ? "Enter " + (root.intent === "text" ? "read text" : root.intent === "pin" ? "pin" : "copy") + " · S save · T text · C color · P pin · Arrows nudge · Esc cancel"
                                 : (root.intent === "text" ? "Select the text to read" : root.intent === "pin" ? "Select the area to pin" : "Drag to select")
                                     + (root.intent === "copy" ? " · T text · C color · P pin" : " · C color")
-                                    + " · Shift = fine aim · Click = whole screen · Esc cancel"
+                                    + " · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc cancel"
                     color: Theme.textMuted
                     font.weight: Font.Normal
                 }
@@ -670,7 +750,7 @@ Scope {
                 id: loupe
                 readonly property int cells: 17
                 readonly property int zoom: 8
-                visible: area.containsMouse && (root.mode !== "adjust" || area.pressed || root.pickMode)
+                visible: win.aimHere && (area.containsMouse || root.kbAim) && (root.mode !== "adjust" || area.pressed || root.pickMode)
                 width: cells * zoom + 2
                 height: cells * zoom + 2 + 24
                 radius: Theme.radiusSm
@@ -736,9 +816,9 @@ Scope {
                 }
             }
 
-            // Fadenkreuz im Fein-Modus (echter Cursor ist dann ausgeblendet)
+            // Fadenkreuz im Fein-Modus und beim Zielen mit Pfeilen (echter Cursor ist dann ausgeblendet)
             Item {
-                visible: area.fine && area.containsMouse
+                visible: (area.fine && area.containsMouse) || (root.kbAim && win.aimHere)
                 x: win.mx
                 y: win.my
                 Rectangle { x: -10; y: 0; width: 7; height: 1; color: Theme.accent }
@@ -752,9 +832,23 @@ Scope {
                 focus: root.active
                 Keys.onEscapePressed: root.goBack()
                 Keys.onPressed: event => {
-                    // Enter = kopieren bzw. Aufnahme starten
-                    if (!root.pickMode && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
-                        root.confirm(false);
+                    const enter = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
+                    const space = event.key === Qt.Key_Space;
+                    if (root.pickMode) {
+                        // Pipette: Enter/Leertaste nimmt den Pixel unter dem Zielpunkt
+                        if ((enter || space) && root.aimSet) {
+                            root.pickAt(root.ax, root.ay);
+                            event.accepted = true;
+                            return;
+                        }
+                    } else if (enter || space) {
+                        // ohne Maus: 1. Enter = Start, 2. = Ende · danach Enter = kopieren bzw. Aufnahme starten
+                        if (root.mode === "idle")
+                            root.keyStart();
+                        else if (root.mode === "key")
+                            root.keyEnd();
+                        else if (enter)
+                            root.confirm(false);
                         event.accepted = true;
                         return;
                     }
@@ -784,12 +878,18 @@ Scope {
                             return;
                         }
                     }
-                    const step = (event.modifiers & Qt.ControlModifier) ? 10 : 1;
-                    const resize = (event.modifiers & Qt.ShiftModifier) !== 0;
-                    const d = { [Qt.Key_Left]: [-step, 0], [Qt.Key_Right]: [step, 0], [Qt.Key_Up]: [0, -step], [Qt.Key_Down]: [0, step] }[event.key];
-                    if (d) {
-                        root.nudge(d[0], d[1], resize);
-                        event.accepted = true;
+                    const d = { [Qt.Key_Left]: [-1, 0], [Qt.Key_Right]: [1, 0], [Qt.Key_Up]: [0, -1], [Qt.Key_Down]: [0, 1] }[event.key];
+                    if (!d)
+                        return;
+                    event.accepted = true;
+                    if (root.pickMode || root.mode === "idle" || root.mode === "key") {
+                        // Zielen: Shift (oder Strg wie beim Verschieben) = 10 px
+                        const step = (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) ? 10 : 1;
+                        root.moveAim(d[0] * step, d[1] * step);
+                    } else {
+                        // Auswahl steht: verschieben, Shift = Größe, Strg = 10 px
+                        const step = (event.modifiers & Qt.ControlModifier) ? 10 : 1;
+                        root.nudge(d[0] * step, d[1] * step, (event.modifiers & Qt.ShiftModifier) !== 0);
                     }
                 }
             }
@@ -824,8 +924,16 @@ Scope {
                     fine = f;
                     lastX = mouse.x;
                     lastY = mouse.y;
-                    win.mx = Math.floor(vx);
-                    win.my = Math.floor(vy);
+                    root.kbAim = false;
+                    root.setAim(Math.floor(vx) + win.ox, Math.floor(vy) + win.oy);
+                }
+                // Zeiger beim Öffnen schon über diesem Monitor: Zielpunkt dort, bevor sich die Maus bewegt
+                onContainsMouseChanged: {
+                    if (containsMouse && !root.aimSet) {
+                        vx = lastX = mouseX;
+                        vy = lastY = mouseY;
+                        root.setAim(Math.floor(mouseX) + win.ox, Math.floor(mouseY) + win.oy);
+                    }
                 }
 
                 function zoneAt(gx, gy) {
@@ -842,7 +950,7 @@ Scope {
                     return z;
                 }
                 cursorShape: {
-                    if (fine)
+                    if (fine || root.kbAim)
                         return Qt.BlankCursor;
                     if (root.pickMode)
                         return Qt.CrossCursor;
@@ -873,6 +981,13 @@ Scope {
                     root.dragging = true;
                 }
                 onPositionChanged: mouse => {
+                    // Echo unseres movecursor (Pfeile): nur Maus-Stand nachziehen, Zielpunkt und Fadenkreuz bleiben
+                    if (!pressed && root.takeWarp(Math.floor(mouse.x) + win.ox, Math.floor(mouse.y) + win.oy)) {
+                        vx = lastX = mouse.x;
+                        vy = lastY = mouse.y;
+                        fine = false;
+                        return;
+                    }
                     track(mouse);
                     const gx = Math.round(vx) + win.ox, gy = Math.round(vy) + win.oy;
                     if (!pressed) {
