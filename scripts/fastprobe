@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# fastprobe – Discord-Kamera schneller starten: LD_PRELOAD-Bibliothek aus tools/v4l2-fastprobe bauen, ein-/ausschalten,
+# messen. Hintergrund (warum ~7 s ohne): docs/knowledge/hardware.md → Facecam.
+#
+#   scripts/fastprobe build     bauen nach ~/.local/lib/desktop/libfastprobe.so (gcc)
+#   scripts/fastprobe on|off    für Discord ein-/ausschalten (Merker ~/.config/desktop/fastprobe.off), wirkt beim nächsten Discord-Start
+#   scripts/fastprobe status    gebaut? an? (Exit 0 = wird beim Discord-Start geladen)
+#   scripts/fastprobe preload   Pfad für LD_PRELOAD ausgeben, wenn gebaut und an (sonst nichts, Exit 1) – nutzt scripts/app-run
+#   scripts/fastprobe bench     Format-Abfrage wie Discord ohne/mit Bibliothek messen und Antworten vergleichen (Kamera muss frei sein)
+#
+# Rückweg: scripts/fastprobe off (oder rm ~/.local/lib/desktop/libfastprobe.so), danach Discord neu starten.
+set -u
+
+REPO=$(cd "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+SRC="$REPO/tools/v4l2-fastprobe"
+LIB="$HOME/.local/lib/desktop/libfastprobe.so"
+OFF="${XDG_CONFIG_HOME:-$HOME/.config}/desktop/fastprobe.off"
+
+case "${1:-}" in
+    build)
+        mkdir -p "$(dirname "$LIB")"
+        tmp="$LIB.tmp.$$"
+        gcc -O2 -Wall -Wextra -fPIC -shared -o "$tmp" "$SRC/fastprobe.c" -ldl -lpthread || { rm -f "$tmp"; exit 1; }
+        mv -f "$tmp" "$LIB"          # atomar: ein laufendes Discord behält seine alte Kopie
+        echo "gebaut: $LIB" ;;
+    on)  rm -f "$OFF"; echo "an (ab dem nächsten Discord-Start)" ;;
+    off) mkdir -p "$(dirname "$OFF")"; : > "$OFF"; echo "aus (ab dem nächsten Discord-Start)" ;;
+    status)
+        [ -f "$LIB" ] && echo "gebaut: $LIB" || echo "nicht gebaut (scripts/fastprobe build)"
+        [ -e "$OFF" ] && echo "aus ($OFF)" || echo "an"
+        pids=$(pgrep -f 'discord.*--type=renderer' || true)
+        for p in $pids; do grep -q libfastprobe "/proc/$p/maps" 2>/dev/null && echo "geladen in Discord-PID $p"; done
+        [ -f "$LIB" ] && [ ! -e "$OFF" ] ;;
+    preload)
+        [ -f "$LIB" ] && [ ! -e "$OFF" ] || exit 1
+        echo "$LIB" ;;
+    bench)
+        dev=${2:-/dev/video0}
+        [ -f "$LIB" ] || { echo "erst scripts/fastprobe build" >&2; exit 1; }
+        if fuser "$dev" >/dev/null 2>&1; then echo "$dev ist belegt – erst Kamera freigeben" >&2; exit 1; fi
+        a=$(python3 -I "$SRC/bench.py" "$dev") || exit 1
+        b=$(LD_PRELOAD="$LIB" python3 -I "$SRC/bench.py" "$dev") || exit 1
+        python3 -I -c '
+import json, sys
+a, b = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+diff = [(x, y) for x, y in zip(a["answers"], b["answers"]) if x != y]
+print("ohne: %.2f s · mit: %.2f s · %d Abfragen · Abweichungen: %d" % (a["seconds"], b["seconds"], a["n"], len(diff)))
+for x, y in diff[:10]:
+    print("  ohne", x, "\n  mit ", y)
+sys.exit(1 if diff else 0)' "$a" "$b" ;;
+    *)
+        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2
+        exit 2 ;;
+esac

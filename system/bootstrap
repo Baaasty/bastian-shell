@@ -389,6 +389,9 @@ if want 6; then
         else run "git clone https://github.com/Equicord/Equicord '$EQUICORD_DIR'"; fi
         if [ -f "$EQUICORD_DIR/dist/desktop/patcher.js" ]; then ok "Equicord gebaut"
         else run "'$REPO/scripts/equicord' build"; fi
+        # Discord-Kamera ohne ~7 s Format-Abfrage (LD_PRELOAD, lädt scripts/app-run; docs/knowledge/hardware.md)
+        if [ -f "$HOME/.local/lib/desktop/libfastprobe.so" ]; then ok "fastprobe gebaut"
+        else run "'$REPO/scripts/fastprobe' build"; fi
     fi
 fi
 

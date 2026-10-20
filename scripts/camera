@@ -7,7 +7,7 @@ per VIDIOC_S_CTRL mit der ID gehen sie trotzdem.
 
   scripts/camera status            {"device":"/dev/video0","busy":true,"auto":true,"exposure":200,"brightness":35,"powerLine":2}
   scripts/camera set brightness N  Helligkeit 0-255 (nur bei laufendem Stream)
-  scripts/camera apply N           Auto-Belichtung an, Anti-Flimmern 50 Hz, Helligkeit N
+  scripts/camera apply N           Auto-Belichtung an, Anti-Flimmern 50 Hz, Helligkeit N (wartet einmal 2 s auf den Stream)
 """
 import fcntl
 import json
@@ -48,8 +48,18 @@ def find():
     return None, None
 
 
+# URBs je 250 ms (gemessen 2026-10-20): Leerlauf 0, Format-Abfrage vor dem Start 45-75
+# (Discord/WebRTC probiert ~6 s lang 195x VIDIOC_TRY_FMT, jeder ein USB-Probe), Stream 540p MJPG ~150,
+# 720p MJPG ~270, 1080p MJPG ~600. Die alte Schwelle 20 hielt schon die Abfrage für einen Stream.
+STREAM_URBS = 100
+
+
+def is_stream(urbs):
+    return urbs > STREAM_URBS
+
+
 def streaming(usb):
-    """Läuft ein Stream? Dann zählt der USB-Knoten ~1000 URBs/s, im Leerlauf fast keine.
+    """Läuft ein Stream? Gezählt wird am USB-Knoten (`urbnum`), siehe STREAM_URBS.
     (Nicht per GET prüfen: ohne Stream schreibt uvcvideo bei jedem Versuch eine Fehlerzeile ins Kernel-Log.)"""
     path = os.path.join(usb, "urbnum")
     try:
@@ -60,7 +70,7 @@ def streaming(usb):
             b = int(f.read())
     except (OSError, ValueError):
         return False
-    return b - a > 20
+    return is_stream(b - a)
 
 
 def get(fd, cid):
@@ -81,12 +91,18 @@ def die(msg, code=1):
     sys.exit(code)
 
 
-def open_streaming():
+def open_streaming(retry=0.0):
+    """retry: einmal so viele Sekunden warten und erneut prüfen – beim Einschalten kommt der Stream
+    oft erst nach dem Ende der Format-Abfrage."""
     dev, usb = find()
     if not dev:
         die("no Facecam")
     if not streaming(usb):
-        die("camera is off (settings only apply while it streams)", 2)
+        if retry <= 0:
+            die("camera is off (settings only apply while it streams)", 2)
+        time.sleep(retry)
+        if not streaming(usb):
+            die("camera is off (settings only apply while it streams)", 2)
     try:
         return os.open(dev, os.O_RDWR | os.O_NONBLOCK)
     except OSError as e:
@@ -136,7 +152,7 @@ def main(argv):
             os.close(fd)
     elif cmd == "apply" and len(argv) == 3:
         v = brightness_arg(argv[2])
-        fd = open_streaming()
+        fd = open_streaming(retry=2.0)
         failed = []
         for name, cid, val in (("auto_exposure", CID_AUTO_EXPOSURE, AUTO),
                                ("power_line_frequency", CID_POWER_LINE, POWER_LINE_50HZ),

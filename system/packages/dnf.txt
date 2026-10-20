@@ -57,7 +57,7 @@ libnotify                      # notify-send
 python3-pillow                 # theme/gen/wallpaper.py
 socat                          # Sockets (Discord-Brücke, Kamera-Relay)
 qt6-qttools                    # qdbus-qt6
-gcc                            # Linker für cargo-Builds (hyprflow, Share-Picker); früher auch scripts/screencast.c (KWin)
+gcc                            # Linker für cargo-Builds (hyprflow, Share-Picker), baut tools/v4l2-fastprobe; früher auch scripts/screencast.c (KWin)
 wireplumber                    # wpctl (Lautstärke, GoXLR-Routing)
 pipewire-utils
 

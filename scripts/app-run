@@ -66,6 +66,10 @@ case "$(which_app "$app")" in
             "$(dirname -- "$(readlink -f -- "$0")")/equicord" inject --if-needed || true
             # Kameras/Plugin sollen auch minimiert/weggeräumt weiterlaufen (Chromium drosselt sonst Hintergrund-Fenster)
             set -- --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding "$@"
+            # Kamera startet sonst erst nach ~7 s (Format-Abfrage an die Facecam); nur wenn gebaut und nicht abgeschaltet
+            if fp=$("$(dirname -- "$(readlink -f -- "$0")")/fastprobe" preload 2>/dev/null); then
+                export LD_PRELOAD="$fp${LD_PRELOAD:+:$LD_PRELOAD}"
+            fi
         fi
         if [ "$app" = discord ] || [ "$app" = equibop ]; then
             # Absturz alle paar Minuten im Call (SIGSEGV in libnvcuvid): Video-Dekodieren über VA-API → nvidia-vaapi-driver

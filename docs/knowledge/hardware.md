@@ -20,6 +20,19 @@ Stand 2026-10-18 · Firmware 4.09 · Kernel 7.2. Umsetzung: `scripts/camera` (Py
   21 AE-Geschwindigkeit, 25 AE-Lock. **Nie anfassen:** 19 (Service-Mode), 26–28 (unbekannt) und das HID-Interface
   (`hidraw`: Profile, Firmware, Bootloader). `gain`/`backlight_compensation` fehlen, kein voll manueller Belichtungsmodus.
 - Werte sind flüchtig (RAM, nach Abstecken weg). Auf den Flash schreibt nur Camera Hub über HID – das fassen wir nicht an.
+- „Streamt“ heißt > 100 URBs je 250 ms (`STREAM_URBS`): die Format-Abfrage vor dem Start erzeugt 45–75, ein Stream ab ~150
+  (540p MJPG). `apply` wartet einmal 2 s, falls der Stream noch nicht läuft.
+- **Discord-Kamera braucht ~7 s bis zum Bild** (gemessen 2026-10-20, `~/.config/discord/logs/discord-webrtc_0`,
+  `CreateCapabilityMap`): Discords natives Voice-Modul öffnet `/dev/video0` direkt (kein PipeWire) und probiert wie WebRTC
+  15 Formate × 13 Größen per `VIDIOC_TRY_FMT` – uvcvideo schickt dafür jedes Mal einen USB-Probe, die Facecam antwortet in
+  ~32 ms → 195 × 32 ms ≈ 6,3 s, danach ~0,5 s bis zum ersten Bild. USB-Autosuspend kostet nur ~0,15 s (einmal Aufwachen),
+  daher bleibt er an.
+- **Abhilfe `fastprobe`** (`tools/v4l2-fastprobe/fastprobe.c`, LD_PRELOAD, `scripts/app-run discord` lädt sie): beantwortet
+  `VIDIOC_TRY_FMT` nur für die Facecam aus dem Zwischenspeicher – Ziel wie uvcvideo gewählt (fourcc sonst Standardformat,
+  nächste Größe), je Ziel einmal echt gefragt (≤ 7 Probes). Alles andere geht unverändert durch. Gemessen 6,27 s → 0,17 s,
+  alle 195 Antworten gleich (`scripts/fastprobe bench`). Geht nur, weil das Voice-Modul `ioctl` aus der libc importiert
+  (kein Syscall direkt) – nach Discord-Updates prüfen: `nm -D …/discord_voice.node | grep ioctl`.
+  Rückweg: `scripts/fastprobe off` (oder `.so` löschen) + Discord neu starten; Env `DESKTOP_FASTPROBE=0`, `…_DEBUG=1`.
 - Hängt sich die Kamera beim Starten/Stoppen von Streams auf, hilft nur Abstecken.
 - **Offen:** ob `brightness` im Auto-Modus das AE-Ziel verschiebt oder nur aufhellt. Reicht es nicht, der Reihe nach:
   Metering auf Mitte (Sel 8, die eigentliche Gegenlicht-Lösung), AE-Lock (Sel 25), zuletzt Software-Filter per

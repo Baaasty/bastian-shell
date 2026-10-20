@@ -50,6 +50,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - `shell/` Quickshell-Config (`shell.qml`, `services/`, `components/`, `modules/`)
 - `hypr/` Hyprland-Konfig (binds, rules, monitors) · `config/` App- und Shell-Einstellungen (`*.json`)
 - `scripts/` Hilfsprogramme für Shell und Kürzel · `systemd/` User-Dienste (`desktop-shell-hyprland` u. a.)
+- `tools/` eigene C-Quellen, gebaut nach `~/.local/lib/desktop/` (`v4l2-fastprobe`: schnellerer Kamerastart in Discord, `scripts/fastprobe`)
 - `theme/` `palette.json` + Generatoren `theme/gen/` für alle Apps · `design/` Inspos, Design-Brief, `preview.html`
 - `projects/` Projekt-Registry (`projects.json`: Farbe, Ports, Öffnen, Links – nur über `scripts/project`) · `profiles/` Desktop-Vorlagen
 - `equicord/` Discord-Plugin `desktopBridge` · alter KWin-Weg: `plasma/`, `bridge/kwin/`
@@ -66,6 +67,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - Einrichten: `scripts/hypr install|uninstall|status|check` · Shell neu starten: `scripts/hypr restart`
   (User-Unit `desktop-shell-hyprland`, Log: `journalctl --user -u desktop-shell-hyprland`)
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/hypr panic` (Shell aus, Konsole auf)
+- Discord-Kamera schneller: `scripts/fastprobe build|on|off|status|bench` (wirkt beim nächsten Discord-Start)
 - Kürzel geändert: `scripts/hotkeys-md` (Cheat-Sheet neu) · Farben geändert: `python3 -I theme/gen/all.py`
 - PC neu aufsetzen: `system/bootstrap` (dry-run, echt mit `--apply`) · Umzug: `docs/setup/migrate.md`
 - Checks: `scripts/check` (Tests unter `scripts/tests/`, qmllint wenn installiert) – läuft auch als Git-Hook

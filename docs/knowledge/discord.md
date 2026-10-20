@@ -29,6 +29,8 @@ Rückfall: scripts/discord-bridge  offizielle Discord-RPC (discord-ipc-N, OAuth 
   Größe/Auto-Pin von Hand in `~/.config/desktop/cams.json`.
 - **Datenschutz:** fremde Bilder verlassen Discord nur zu eigenen lokalen Prozessen, liegen nur im RAM, werden beim
   Entpinnen/Trennen gelöscht; nichts geht ins Netz oder auf die Platte.
+- **Eigene Kamera:** Discords Voice-Modul öffnet `/dev/video0` direkt (V4L2, kein PipeWire) und fragt vor jedem Start
+  195 Formate ab – bei der Facecam ~6,5 s. `scripts/app-run` lädt dafür `fastprobe` (Details `hardware.md` → Facecam).
 
 Warum so: Ein Plugin, das Frames lokal liefert, war der einzige Weg zu Kameras pro Person. Verworfen: Discord-Pop-out
 (nur ein Fenster für alle), Chromium-PiP (eine Kamera, Nutzergeste nötig), Fenster-Capture (Fenster muss sichtbar bleiben,
