@@ -2,8 +2,8 @@ import QtQuick
 import qs.config
 import qs.components
 
-// Rechte Seite (nur Anzeige – icp liest nur, Änderungen auf iPhone/Mac): Titel, Benutzer, Passwort (verdeckt),
-// 2FA-Code mit Ring, Notiz (verdeckt), Websites
+// Rechte Seite: Titel, Benutzer, Passwort (verdeckt), 2FA-Code mit Ring, Notiz (verdeckt), Websites.
+// Bearbeiten (F2 / Stift) zeigt stattdessen PwEdit.
 Item {
     id: d
 
@@ -122,11 +122,20 @@ Item {
                     strongTone: true
                     letterSize: 22
                 }
+                PwBtn {
+                    id: editBtn
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: !!(d.e && d.e.editable)
+                    icon: "edit"
+                    onClicked: d.pw.startEdit()
+                }
                 Txt {
                     id: titleTxt
                     anchors.left: avatar.right
                     anchors.leftMargin: 16
-                    anchors.right: parent.right
+                    anchors.right: editBtn.visible ? editBtn.left : parent.right
+                    anchors.rightMargin: editBtn.visible ? 10 : 0
                     y: 8
                     elide: Text.ElideRight
                     text: d.e ? d.e.title : ""

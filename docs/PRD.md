@@ -69,7 +69,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 - **F21** Kürzel-Übersicht Super+K, erzeugt aus `hypr/binds.conf` plus App-Kürzel.
 - **F22** OSD (Lautstärke, Helligkeit per DDC/CI, Medien) und Power-Menü (Super+Esc, Strg+Alt+Entf).
 - **F23** Morgen-Übersicht: einmal am Morgen Termine, Mails, Wetter, To-dos, Inbox ([MORNING.md](knowledge/shell-features.md)).
-- **F24** Passwörter (Super+O): iCloud-Schlüsselbund nur lesend, Kopieren mit Auto-Leeren.
+- **F24** Passwörter (Super+O): iCloud-Schlüsselbund lesen und bearbeiten (F2: alles inkl. Websites, 2FA, Löschen nach „Zuletzt gelöscht“, Speichern im Hintergrund), Gruppen-Chips, Kopieren mit Auto-Leeren ([setup/passwords.md](setup/passwords.md)).
 
 ### Fokus & Alltag
 

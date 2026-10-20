@@ -41,7 +41,7 @@ Glass {
                 color: Theme.accentText
             }
             Txt {
-                text: panel.pw.showHidden ? "Hidden" : "Passwords"
+                text: "Passwords"
                 font.pixelSize: 18
                 font.weight: Font.DemiBold
             }
@@ -50,7 +50,7 @@ Glass {
                 Layout.topMargin: 2
                 elide: Text.ElideRight
                 text: {
-                    const total = panel.pw.showHidden ? panel.pw.hiddenItems.length : panel.pw.liveItems.length;
+                    const total = panel.pw.groupItems.length;
                     return panel.pw.query.trim() ? panel.pw.rows.length + " / " + total : String(total || "");
                 }
                 font.pixelSize: 12
@@ -111,14 +111,14 @@ Glass {
                 Keys.onEscapePressed: {
                     if (panel.pw.query !== "")
                         panel.pw.query = "";
-                    else if (panel.pw.showHidden)
-                        panel.pw.toggleHiddenView();
+                    else if (panel.pw.group !== "")
+                        panel.pw.group = "";
                     else
                         panel.pw.close();
                 }
-                // Tab: zwischen Liste und „Hidden“ wechseln
-                Keys.onTabPressed: panel.pw.toggleHiddenView()
-                Keys.onBacktabPressed: panel.pw.toggleHiddenView()
+                // Tab / Shift+Tab: Gruppen-Chips (All · Personal · geteilte Gruppen)
+                Keys.onTabPressed: panel.pw.stepGroup(1)
+                Keys.onBacktabPressed: panel.pw.stepGroup(-1)
                 Keys.onReturnPressed: panel.pw.copy("password")
                 Keys.onEnterPressed: panel.pw.copy("password")
                 Keys.onDownPressed: step(1)
@@ -143,10 +143,10 @@ Glass {
                         } else if (event.key === Qt.Key_E) {
                             panel.pw.toggleReveal();
                             event.accepted = true;
-                        } else if (event.key === Qt.Key_H) {
-                            panel.pw.toggleHide(panel.pw.cur);
-                            event.accepted = true;
                         }
+                    } else if (event.key === Qt.Key_F2) {
+                        panel.pw.startEdit();
+                        event.accepted = true;
                     }
                 }
 
@@ -157,6 +157,34 @@ Glass {
                     color: Theme.textFaint
                     font.pixelSize: 16
                     font.weight: Font.Normal
+                }
+            }
+        }
+
+        // Gruppen-Chips: nur wenn es geteilte Gruppen gibt
+        Row {
+            id: chips
+            anchors.top: sf.bottom
+            anchors.topMargin: 10
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: 4
+            clip: true
+            visible: panel.pw.groups.length > 0
+            height: visible ? 32 : 0
+            Repeater {
+                model: panel.pw.groups
+                delegate: Tab {
+                    required property string modelData
+                    text: panel.pw.groupLabel(modelData)
+                    icon: modelData === "" ? "" : modelData === panel.pw.ownGroup ? "person" : "group"
+                    count: panel.pw.groupCount(modelData)
+                    current: panel.pw.group === modelData
+                    onPicked: {
+                        panel.pw.group = modelData;
+                        panel.pw.sel = 0;
+                        panel.focusSearch();
+                    }
                 }
             }
         }
@@ -173,8 +201,8 @@ Glass {
                 panel.focusSearch();
             }
 
-            anchors.top: sf.bottom
-            anchors.topMargin: 12
+            anchors.top: chips.visible ? chips.bottom : sf.bottom
+            anchors.topMargin: chips.visible ? 8 : 12
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: syncLine.visible ? syncLine.top : hideLine.top
@@ -207,7 +235,7 @@ Glass {
                     width: Math.min(implicitWidth, list.width - 40)
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
-                    text: panel.pw.loadState.startsWith("error") ? panel.pw.loadState.slice(6) : panel.pw.loadState === "loading" ? "Opening the keychain…" : panel.pw.showHidden && !panel.pw.query.trim() ? "Nothing hidden" : "No logins found"
+                    text: panel.pw.loadState.startsWith("error") ? panel.pw.loadState.slice(6) : panel.pw.loadState === "loading" ? "Opening the keychain…" : "No logins found"
                     color: Theme.textFaint
                     font.weight: Font.Normal
                 }
@@ -219,14 +247,17 @@ Glass {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            elide: Text.ElideRight
-            text: panel.pw.showHidden ? "Ctrl+H show again  ·  Tab / Esc back  ·  Ctrl+P / ↵ password" : "Ctrl+U user  ·  Ctrl+P / ↵ password  ·  Ctrl+T 2FA  ·  Ctrl+E show  ·  Ctrl+H hide  ·  Tab hidden"
+            // zweizeilig statt abgeschnitten
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            lineHeight: 1.15
+            text: ["↵ copy password", "Ctrl+U user", "Ctrl+T 2FA", "Ctrl+E show", "F2 edit"].concat(panel.pw.groups.length ? ["Tab group"] : []).join("  ·  ")
             font.pixelSize: 11
             font.weight: Font.Normal
             color: Theme.textFaint
         }
 
-        // Ausgeblendete (WLAN immer, dazu von Hand) links · Logos rechts
+        // Logos rechts
         RowLayout {
             id: hideLine
             anchors.left: parent.left
@@ -235,42 +266,8 @@ Glass {
             anchors.bottomMargin: 6
             height: 20
             spacing: 6
-            Txt {
+            Item {
                 Layout.fillWidth: true
-                Layout.minimumWidth: 40
-                elide: Text.ElideRight
-                text: {
-                    const w = panel.pw.hiddenWifiCount, m = panel.pw.hiddenManualCount;
-                    if (w + m === 0)
-                        return "Nothing hidden";
-                    return [w > 0 ? w + " Wi-Fi" : "", m > 0 ? m + " manual" : ""].filter(x => x).join(" + ") + " hidden";
-                }
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                color: Theme.textFaint
-            }
-            Txt {
-                visible: panel.pw.hiddenCount > 0 || panel.pw.showHidden
-                text: panel.pw.showHidden ? "Back to list" : "Show list"
-                font.pixelSize: 11
-                font.weight: Font.Normal
-                color: showArea.containsMouse ? Theme.text : Theme.accentText
-                MouseArea {
-                    id: showArea
-                    anchors.fill: parent
-                    anchors.margins: -4
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        panel.pw.toggleHiddenView();
-                        panel.focusSearch();
-                    }
-                }
-            }
-            Txt {
-                text: "·"
-                font.pixelSize: 11
-                color: Theme.textFaint
             }
             // Logos: Fortschritt beim Laden, sonst „Refresh icons“ (alle neu holen)
             Txt {
@@ -341,7 +338,26 @@ Glass {
         anchors.topMargin: 22
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 22
+        visible: !panel.pw.editing
         pw: panel.pw
+    }
+
+    // Bearbeiten (F2) an derselben Stelle
+    PwEdit {
+        id: editForm
+        anchors.fill: detail
+        visible: panel.pw.editing
+        pw: panel.pw
+    }
+    Connections {
+        target: panel.pw
+        function onEditingChanged() {
+            if (panel.pw.editing)
+                editForm.begin();
+        }
+        function onEditEnded() {
+            panel.focusSearch();
+        }
     }
 
     // Rückmeldung (kopiert, Fehler)

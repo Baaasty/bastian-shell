@@ -3,7 +3,7 @@
 Autofill aus dem iCloud-Schlüsselbund – in der Erweiterung **„Desktop“** (dieselbe wie die neue Tab-Seite).
 Die icp-eigene Erweiterung („Apple Passwords“) wird nicht mehr gebraucht.
 
-Weg der Daten: Erweiterung → Native Host `de.bastian.desktop` (`scripts/chrome-ext`) → `scripts/passwords` → icp (`~/Apps/icp`, nur lesend).
+Weg der Daten: Erweiterung → Native Host `de.bastian.desktop` (`scripts/chrome-ext`) → `scripts/passwords` → icp (`~/Apps/icp`, Branch `live`: liest und schreibt).
 Login bei icp: `icp login`. Aktualisiert wird automatisch: Timer `desktop-passwords` alle 15 min und beim Öffnen von Super+O,
 wenn der Stand älter als 5 min ist (Stand unten links im Panel). icp bremst selbst: höchstens alle 5 min, nach Fehlern
 länger (bis 6 h), im Hintergrund nie Passwort-Login oder 2FA-Push – ist der Login abgelaufen, steht „iCloud login needed“
@@ -38,8 +38,8 @@ Prüfen ohne Geheimnisse: `icp diag groups`. Format/Herkunft: `~/Apps/icp/RESEAR
   → „Hide My Email“ mit den aktiven Adressen (passende Website zuerst). Neue Adressen anlegen geht hier nicht (nur in iCloud).
 - **Popup**: Logins der aktuellen Seite – Benutzer, Passwort, 2FA-Code kopieren, **Fill**. Kopiert wird über
   `passwords copy` (wl-copy `--sensitive`, Klipper/cliphist speichern es nicht), nach 30 s ist die Zwischenablage leer.
-- Seite nicht erkannt (anderer Domainname als im Schlüsselbund)? Am besten die Website auf iPhone/Mac ergänzen und `sync`. Notlösung lokal (nur Kommandozeile):
-  `scripts/passwords match <url>` (zeigt, was passt) und `scripts/passwords add-url <id> <url>`.
+- Seite nicht erkannt (anderer Domainname als im Schlüsselbund)? Im Panel **F2** → Website als weitere Zeile ergänzen
+  (geht nach iCloud, gilt überall). Prüfen: `scripts/passwords match <url>`.
 
 ## Sicherheit (so gebaut)
 
@@ -67,22 +67,27 @@ Im Passwort-Panel (Super+O) steht links an jedem Login das Logo der Website, son
   werden beim nächsten Lauf wieder versucht). Neu holen: Datei löschen oder **Refresh icons**. Alles weg: Ordner löschen.
 - Funktioniert ein Logo nicht/falsch: Website auf iPhone/Mac korrigieren, nach dem Sync **Refresh icons**.
 
-## Ausblenden (WLAN & Co.)
+## Bearbeiten (F2) – schreibt nach iCloud
 
-Im Passwort-Panel (Super+O) sind gespeicherte **WLAN-/Hotspot-Passwörter** standardmäßig ausgeblendet. Der iCloud-Schlüsselbund legt sie
-mit dem Dienst „AirPort“ ab – daran werden sie erkannt (nicht geraten über Titel = Benutzer). Dazu Platzhalter-Einträge ohne
-Buchstaben/Ziffern (z. B. „.“) ohne Website. Einträge mit Website (Router-/Pi-hole-Logins mit IP als Titel) bleiben sichtbar.
-Ausgeblendet heißt nur: nicht angezeigt – nichts wird gelöscht, geändert oder synchronisiert.
+Im Passwort-Panel **F2** (oder Stift oben rechts): Titel, Benutzer, Passwort, Websites (eine pro Zeile, erste = Haupt-Website),
+2FA-Schlüssel (Setup-Key oder `otpauth://`-Link; leer = unverändert, Papierkorb = entfernen), Notiz. **Ctrl+S** speichert,
+**Esc** bricht ab, **Delete → Are you sure?** (oder Ctrl+D zweimal) verschiebt nach **„Zuletzt gelöscht“** – auf iPhone/Mac
+wiederherstellbar.
 
-- **Kopf:** Anzahl sichtbarer Einträge.
-- **Fuß:** „M Wi-Fi hidden · Show“. **Show** zeigt sie gedimmt (mit durchgestrichenem Auge) wieder an, **Hide again** blendet sie aus.
-  WLAN ist immer ausgeblendet (kein Schalter mehr). Die Suche findet Ausgeblendete nur bei „Show“.
-- **Von Hand:** Maus über die Zeile → Augen-Symbol, oder **Ctrl+H** beim gewählten Eintrag (blendet aus bzw. wieder ein;
-  ein fälschlich erkanntes WLAN-Login so wieder sichtbar machen: „Show“ → Ctrl+H).
-- **Favicons:** der Icon-Lauf überspringt Ausgeblendete.
-- **Von Hand pflegen:** `~/.config/desktop/passwords.json` `{ "hideWifi": true, "hidden": ["<id>"], "shown": ["<id>"] }`
-  (`hidden` = zusätzlich ausblenden, `shown` = trotz Filter zeigen; ids aus `scripts/passwords list`).
-  Per Befehl: `scripts/passwords config [hideWifi on|off]` · `scripts/passwords hide|unhide <id>`.
+- **Sofort weiter:** das Formular schließt gleich, die Liste zeigt den neuen Stand (Wolken-Symbol = speichert noch). Gespeichert
+  wird im Hintergrund (`scripts/passwords edit --detach`, eigene systemd-Scope, überlebt Shell-Neustarts). Klappt es nicht:
+  Benachrichtigung „Couldn't save …“, **Open** springt zum unveränderten Eintrag.
+- **Wie icp schreibt** (Sicherheit, Grenzen): `~/Apps/icp` README „Editing logins“. Kurz: frisch holen, nur mit aktuellem
+  etag speichern, vorher verschlüsselte Sicherung (`icp restore`), Selbsttest, Bremse (`icp write-state`). Website oder
+  Benutzer ändern = neuer Eintrag + alter gelöscht (sonst Dublette auf den Geräten).
+- **Nicht bearbeitbar:** geteilte Gruppen (icp liest sie nur) und WLAN.
+- Logins mit gleicher Website + Benutzer (http/https, Port) unterscheidet icp über ihre iCloud-ID (`uuid` im Tresor).
+
+## Gruppen und WLAN
+
+- **Chips** unter der Suche: All · Personal · geteilte Gruppen (z. B. WebBude), mit Anzahl. **Tab/Shift+Tab** schaltet, Esc → All.
+- **WLAN-/Hotspot-Passwörter** sind nie zu sehen: der Schlüsselbund legt sie mit dem Dienst „AirPort“ ab (daran erkannt, nicht
+  geraten), dazu Platzhalter ohne Buchstaben/Ziffern und ohne Website. Router-/Pi-hole-Logins mit Website bleiben sichtbar.
 
 ## Fehlerbehebung
 

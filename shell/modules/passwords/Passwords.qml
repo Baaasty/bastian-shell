@@ -6,8 +6,9 @@ import Quickshell.Hyprland
 import qs.config
 import qs.services
 
-// Passwort-Speicher (Super+O): iCloud-Schlüsselbund über scripts/passwords (icp, nur lesend).
-// Nur Anzeige: icp liest nur, Titel/Websites/Passwörter ändern auf iPhone/Mac.
+// Passwort-Speicher (Super+O): iCloud-Schlüsselbund über scripts/passwords (icp).
+// F2 bearbeitet den gewählten Login (PwEdit) und schreibt über icp zurück nach iCloud;
+// geteilte Gruppen und WLAN bleiben nur lesbar.
 // Aktualisieren ohne Knopf: Timer desktop-passwords (alle 15 min) + beim Öffnen, wenn älter als 5 min;
 // icp bremst selbst (Mindestabstand, Backoff, nie Passwort-Login/2FA im Hintergrund).
 // Geheimnisse bleiben nur so lange im Speicher, wie sie angezeigt werden; Kopieren läuft im CLI
@@ -22,17 +23,25 @@ Scope {
     property string loadState: ""       // "" | loading | ready | error:…
     property string query: ""
     property int sel: 0
-    // Ausblenden (nur Anzeige, nichts wird gelöscht): Einstellungen aus ~/.config/desktop/passwords.json
-    readonly property bool hideWifi: true   // gespeicherte WLAN-Passwörter („AirPort“) immer ausblenden
-    property var hiddenIds: []          // von Hand ausgeblendet
-    property var shownIds: []           // trotz hideWifi sichtbar
-    property bool showHidden: false     // eigene Liste „Hidden“ (Tab): nur Ausgeblendete, manuell zuerst
-    readonly property var liveItems: items.filter(e => !isHidden(e))
-    readonly property int hiddenWifiCount: items.filter(e => isHidden(e) && !hiddenIds.includes(e.id)).length
-    readonly property int hiddenManualCount: items.filter(e => hiddenIds.includes(e.id)).length
-    readonly property int hiddenCount: items.length - liveItems.length
-    readonly property var hiddenItems: items.filter(e => isHidden(e)).sort((a, b) => (hiddenIds.includes(b.id) ? 1 : 0) - (hiddenIds.includes(a.id) ? 1 : 0) || a.title.toLowerCase().localeCompare(b.title.toLowerCase()))
-    readonly property var rows: filterRows(showHidden ? hiddenItems : liveItems, query)
+    // Speichern läuft im Hintergrund (scripts/passwords edit --detach): bis icp fertig ist, zeigt die Liste
+    // schon den neuen Stand. id -> {title, user, urls, hasTotp, hasNotes} bzw. {deleted: true}
+    property var pending: ({})
+    readonly property var shownItems: items.filter(e => !(pending[e.id] && pending[e.id].deleted)).map(e => pending[e.id] ? Object.assign({}, e, pending[e.id], { saving: true }) : e)
+    // Gespeicherte WLAN-Passwörter (Schlüsselbund-Dienst „AirPort“, scripts/passwords is_wifi) sind nie zu sehen
+    readonly property var liveItems: shownItems.filter(e => !e.wifi)
+    // Chips oben: "" = alle, "\u0001own" = eigener Schlüsselbund, sonst Name der geteilten Gruppe
+    readonly property string ownGroup: "\u0001own"
+    property string group: ""
+    readonly property var groups: {
+        const names = [];
+        for (const e of liveItems)
+            if (e.group && !names.includes(e.group))
+                names.push(e.group);
+        names.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        return names.length ? ["", ownGroup].concat(names) : [];
+    }
+    readonly property var groupItems: group === "" ? liveItems : liveItems.filter(e => (e.group || ownGroup) === group)
+    readonly property var rows: filterRows(groupItems, query)
     readonly property var cur: sel >= 0 && sel < rows.length ? rows[sel] : null
 
     // Detail (nur für den gewählten Eintrag)
@@ -42,6 +51,14 @@ Scope {
     property bool notesOn: false
     property var totp: null             // {code, period, expires(ms)}
     property real now: Date.now()
+
+    // Bearbeiten (F2): Formular rechts statt Details, Speichern über scripts/passwords edit → icp
+    property bool editing: false
+    property bool editBusy: false
+    property string editError: ""
+    property string editNotes: ""       // Notiz im Klartext fürs Formular, nur solange es offen ist
+    property string editId: ""          // fest beim Start – die Liste kann im Hintergrund neu laden
+    signal editEnded()                  // Fokus zurück in die Suche (PwPanel)
 
     // Sync-Stand (scripts/passwords status = icp status --json, kein Netz)
     property var syncState: null        // {last_success, next_allowed, needs_login, last_error, failures, vault_mtime, now}
@@ -73,16 +90,19 @@ Scope {
     Component.onDestruction: Hypr.setModal("passwords", false)
 
     // ------------------------------------------------------------ Liste / Suche
-    // warum ausgeblendet: "manual" (Ctrl+H) oder "Wi-Fi" (automatisch erkannt)
-    function hiddenKind(e: var): string {
-        return hiddenIds.includes(e.id) ? "manual" : "Wi-Fi";
+    function groupLabel(g: string): string {
+        return g === "" ? "All" : g === ownGroup ? "Personal" : g;
     }
-    function toggleHiddenView(): void {
-        showHidden = !showHidden;
+    function groupCount(g: string): int {
+        return g === "" ? liveItems.length : liveItems.filter(e => (e.group || ownGroup) === g).length;
+    }
+    // Tab / Shift+Tab: nächster bzw. vorheriger Chip
+    function stepGroup(d: int): void {
+        if (groups.length === 0)
+            return;
+        const i = Math.max(0, groups.indexOf(group));
+        group = groups[(i + d + groups.length) % groups.length];
         sel = 0;
-    }
-    function isHidden(e: var): bool {
-        return hiddenIds.includes(e.id) || (hideWifi && !!e.wifi && !shownIds.includes(e.id));
     }
     function hostOf(url: string): string {
         return (url || "").replace(/^[a-z]+:\/\//i, "").split("/")[0].replace(/^www\./, "");
@@ -121,7 +141,7 @@ Scope {
     // ------------------------------------------------------------ Website-Icons (scripts/favicons, Service Favicons)
     // Domains aller Logins, ab dem gewählten Eintrag (sichtbare/nahe zuerst); nur Einträge mit Website
     function iconDomains(): var {
-        // Ausgeblendete werden übersprungen
+        // WLAN wird übersprungen
         return Favicons.domainsOf(liveItems, e => Favicons.hostOf(domainOf(e)), Math.max(0, liveItems.findIndex(e => cur && e.id === cur.id)));
     }
     // force: alle neu holen/aktualisieren; sonst nur fehlende (bereits Gecachtes/„kein Icon“ übersprungen das Skript)
@@ -139,13 +159,12 @@ Scope {
     function openIt(): void {
         if (open)
             return;
-        screenName = Hyprland.focusedMonitor?.name ?? Config.mainScreen;
+        screenName = Config.mainScreen;     // große Panels immer mittig auf dem Hauptmonitor
         query = "";
+        group = "";
         sel = 0;
-        showHidden = false;
         syncIfStale();
         Favicons.refresh();
-        loadSettings();
         load();
         Hypr.panelOpened("passwords");
         open = true;
@@ -161,6 +180,9 @@ Scope {
     }
     function close(): void {
         open = false;
+        if (!editBusy)
+            editing = false;
+        editNotes = "";
         resetDetail();
     }
     function resetDetail(): void {
@@ -191,30 +213,6 @@ Scope {
             cb(d, err);
         });
     }
-    function applySettings(d: var): void {
-        if (!d)
-            return;
-        hiddenIds = d.hidden || [];
-        shownIds = d.shown || [];
-        sel = Math.min(sel, Math.max(0, rows.length - 1));
-    }
-    function loadSettings(): void {
-        runJson(["config"], d => applySettings(d));
-    }
-    // Eintrag ausblenden bzw. wieder einblenden (Taste Ctrl+H / Knopf in der Zeile)
-    function toggleHide(e: var): void {
-        if (!e)
-            return;
-        const hide = !isHidden(e);
-        runJson([hide ? "hide" : "unhide", e.id], (d, err) => {
-            if (d) {
-                applySettings(d);
-                showToast(hide ? "Hidden · Tab shows the hidden list" : "Shown again");
-            } else {
-                showToast(err || "Could not save");
-            }
-        });
-    }
     function load(): void {
         if (loadState !== "ready")
             loadState = "loading";
@@ -226,8 +224,12 @@ Scope {
             }
             items = d;
             loadState = "ready";
-            if (keep)
+            if (pendingSel) {
+                selectId(pendingSel);
+                pendingSel = "";
+            } else if (keep) {
                 selectId(keep);
+            }
             // fehlende Logos immer nachladen, höchstens 1×/h (Abruf direkt bei den Seiten, gedrosselt)
             if (!Favicons.running && Date.now() - Favicons.lastAuto > 3600000)
                 Favicons.start(iconDomains(), false);
@@ -312,6 +314,103 @@ Scope {
             });
         });
     }
+    // ------------------------------------------------------------ Bearbeiten
+    function startEdit(): void {
+        const e = cur;
+        if (!e || editing)
+            return;
+        if (!e.editable) {
+            showToast(e.group ? "Shared groups are read-only for now" : "Wi-Fi passwords can't be edited here");
+            return;
+        }
+        if (e.saving) {
+            showToast("Still saving the last change…");
+            return;
+        }
+        editError = "";
+        editId = e.id;
+        if (!e.hasNotes) {
+            editNotes = "";
+            editing = true;
+            return;
+        }
+        run(["get", e.id, "notes"], (t, code) => {
+            if (code === 0 && cur && cur.id === e.id) {
+                editNotes = t;
+                editing = true;
+            }
+        });
+    }
+    function cancelEdit(): void {
+        if (editBusy)
+            return;
+        editing = false;
+        editNotes = "";
+        editError = "";
+        editEnded();
+    }
+    // form = {title, user, notes, urls, password?, totp?, removeTotp?} – geht als JSON-Zeile über stdin
+    // Prüfen geht schnell (lokal), gespeichert wird im Hintergrund: Formular sofort zu, Liste zeigt den neuen
+    // Stand; Ergebnis kommt per IPC (editDone / editFailed), ein Fehler auch als Benachrichtigung.
+    function saveEdit(form: var): void {
+        const id = editId;
+        if (!id || editBusy)
+            return;
+        editBusy = true;
+        editError = "";
+        jobComp.createObject(root, {
+            command: [bin, "edit", id, "--detach"],
+            input: JSON.stringify(form) + "\n",
+            cb: (text, code, err) => {
+                editBusy = false;
+                let d = null;
+                try {
+                    d = code === 0 ? JSON.parse(text) : null;
+                } catch (x) {
+                    d = null;
+                }
+                if (!d) {
+                    editError = err || "Could not save";
+                    return;
+                }
+                setPending(id, form);
+                editing = false;
+                editNotes = "";
+                showToast(form.delete ? "Moving to Recently Deleted…" : "Saving to iCloud in the background");
+                editEnded();
+            },
+            running: true
+        });
+    }
+    function setPending(id: string, form: var): void {
+        const p = Object.assign({}, pending);
+        if (form.delete) {
+            p[id] = { deleted: true };
+        } else {
+            const o = {};
+            if (form.title)
+                o.title = form.title;
+            if (form.user !== undefined)
+                o.user = form.user;
+            if (form.urls)
+                o.urls = form.urls.map(u => /^[a-z]+:\/\//i.test(u) ? u : "https://" + u);
+            if (form.notes !== undefined)
+                o.hasNotes = form.notes !== "";
+            if (form.totp)
+                o.hasTotp = true;
+            else if (form.removeTotp)
+                o.hasTotp = false;
+            p[id] = o;
+        }
+        pending = p;
+    }
+    function clearPending(id: string): void {
+        const p = Object.assign({}, pending);
+        delete p[id];
+        pending = p;
+    }
+    property string pendingSel: ""      // nach dem Laden diesen Eintrag wählen (neue id bei neuer Website/Benutzer)
+
     function showToast(msg: string): void {
         toast = msg;
         toastTimer.restart();
@@ -350,8 +449,18 @@ Scope {
             id: job
 
             property var cb
+            property string input: ""       // Geheimnisse (Passwort, Notiz) gehen über stdin, nie als Argument
             property int left: 3            // stdout fertig + stderr fertig + beendet
             property int code: -1
+
+            stdinEnabled: input !== ""
+            onStarted: {
+                if (input !== "") {
+                    write(input);
+                    input = "";
+                    stdinEnabled = false;   // EOF
+                }
+            }
 
             function step(): void {
                 if (--left > 0)
@@ -394,9 +503,31 @@ Scope {
         function icons(force: bool): void {
             root.loadIcons(force);
         }
-        // Ausgeblendete anzeigen (zum Testen)
-        function hidden(show: bool): void {
-            root.showHidden = show;
+        // von scripts/passwords _edit-worker: Hintergrund-Speichern fertig bzw. gescheitert
+        function editDone(id: string, newId: string): void {
+            if (root.cur && root.cur.id === id && newId)
+                root.pendingSel = newId;
+            root.clearPending(id);
+            root.load();
+        }
+        function editFailed(id: string, message: string): void {
+            root.clearPending(id);
+            root.load();
+            if (root.open)
+                root.showToast("Couldn't save · " + message);
+        }
+        // Klick auf die Fehler-Benachrichtigung: Panel am (unveränderten) Eintrag öffnen
+        function openAt(id: string): void {
+            root.pendingSel = id;
+            if (root.open)
+                root.load();
+            else
+                root.openIt();
+        }
+        // Gruppen-Chip wählen ("" = alle, "own" = eigene, sonst Gruppenname) – zum Testen
+        function group(name: string): void {
+            root.group = name === "own" ? root.ownGroup : name;
+            root.sel = 0;
         }
         // zum Testen: Suchtext setzen
         function search(text: string): void {

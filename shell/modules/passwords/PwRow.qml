@@ -11,11 +11,8 @@ Rectangle {
     required property int index
     readonly property bool selected: pw.sel === index
     readonly property string domain: pw.domainOf(modelData)
-    readonly property bool hidden: pw.isHidden(modelData)
 
     height: 54
-    // in der Hauptliste gibt es keine Ausgeblendeten mehr, in „Hidden“ sind alle es – nicht dimmen
-    opacity: 1
     radius: Theme.radiusMd
     color: selected ? Theme.accentSoft : area.containsMouse ? Theme.raise : "transparent"
     border.width: selected ? 1 : 0
@@ -49,7 +46,7 @@ Rectangle {
         }
         Txt {
             width: parent.width
-            text: [row.hidden ? row.pw.hiddenKind(row.modelData) : "", row.modelData.user, row.domain].filter(x => x).join("  ·  ") || "—"
+            text: [row.modelData.user, row.domain].filter(x => x).join("  ·  ") || "—"
             font.pixelSize: 12
             font.weight: Font.Normal
             color: Theme.textFaint
@@ -63,29 +60,12 @@ Rectangle {
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         spacing: 6
-        // Hover: ausblenden / wieder einblenden
+        // Änderung wird gerade im Hintergrund nach iCloud gespeichert
         Icon {
-            visible: area.containsMouse || hideArea.containsMouse
-            name: row.hidden ? "visibility" : "visibility_off"
+            visible: !!row.modelData.saving
+            name: "cloud_sync"
             size: 16
-            color: hideArea.containsMouse ? Theme.text : Theme.textFaint
-            MouseArea {
-                id: hideArea
-                anchors.fill: parent
-                anchors.margins: -6
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    row.pw.toggleHide(row.modelData);
-                    row.ListView.view.focusSearch();
-                }
-            }
-        }
-        Icon {
-            visible: row.hidden && !area.containsMouse && !hideArea.containsMouse
-            name: "visibility_off"
-            size: 15
-            color: Theme.textFaint
+            color: Theme.accentText
         }
         // aus einer geteilten Passwort-Gruppe (Name steht in den Details)
         Icon {
