@@ -14,8 +14,15 @@ Rectangle {
     property int padding: 10
     property bool alignLeft: false   // in Menüs: Inhalt linksbündig
     property string hintKey: ""      // Bar-Modus (Super+Leertaste): Buchstabe, der dieses Popout öffnet (BarKeys.qml)
-    property string tip: ""          // Tooltip beim Verweilen (ChipTip.qml); leer = keiner
+    property string tip: ""          // Tooltip beim Verweilen (ChipTip.qml); leer = Name + Kürzel aus dem Bar-Modus
     property bool _tipOff: false     // nach einem Klick bis zum Verlassen keiner mehr
+    // Hover, den ein offenes Popout meldet (PopoutGuard): mit Klick-Fang bekommt unter Hyprland nur das Popout die Maus,
+    // die Bar sieht dann kein containsMouse – sonst gäbe es neben einem offenen Popout nie einen Tooltip
+    property bool tipHover: false
+    readonly property bool _hovered: area.containsMouse || tipHover
+    on_HoveredChanged: if (!_hovered) _tipOff = false
+    // ohne eigenen Text: „Resources · Super+Alt+R“ aus BarKeys (nur Chips mit Bar-Buchstaben)
+    readonly property string tipText: tip !== "" ? tip : BarKeys.tipFor(hintKey)
     signal clicked(var mouse)
     signal doubleClicked(var mouse)
 
@@ -38,10 +45,11 @@ Rectangle {
     }
 
     LazyLoader {
-        active: chip.tip !== "" && area.containsMouse && !chip.active && !chip._tipOff && !BarKeys.modeOn
+        active: chip.tipText !== "" && chip._hovered && !chip.active && !chip._tipOff && !BarKeys.modeOn
         ChipTip {
-            chip: chip
-            text: chip ? chip.tip : ""
+            // die eigene Property „chip“ verdeckt hier die id → Chip über die MouseArea holen
+            chip: area.parent
+            text: area.parent.tipText
         }
     }
 
@@ -52,7 +60,6 @@ Rectangle {
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
         cursorShape: Qt.PointingHandCursor
         onPressed: chip._tipOff = true
-        onContainsMouseChanged: if (!containsMouse) chip._tipOff = false
         onClicked: mouse => {
             // schon von PopoutGuard ausgelöst (Hyprland hatte den Klick geschluckt) – nicht doppelt
             if (Popouts.synthChip === chip && Date.now() - Popouts.synthAt < 700)

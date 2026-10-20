@@ -106,7 +106,9 @@ Singleton {
         }
         if (current && prev > 0 && now - prev < 90000)
             _add(current, prev, now);
-        current = counting && deskProject ? deskProject.id : "";
+        // beim Abbau (Reload) kann deskProject schon weg sein, während counting noch true ist
+        const p = deskProject;
+        current = counting && p && p.id ? String(p.id) : "";
     }
 
     // Leerlauf beginnt erst nach idleSec ohne Eingabe: diese Zeit war schon Leerlauf -> wieder abziehen

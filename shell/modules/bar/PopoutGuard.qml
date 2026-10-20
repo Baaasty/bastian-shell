@@ -112,22 +112,40 @@ Item {
     // Pfeil des Popouts. Deshalb liegen im Popout-Fenster unsichtbare Flächen genau über den Chips der Bar (außerhalb
     // des Fensters, das Popout bekommt die Bewegungen dort trotzdem), die nur den Zeiger setzen und keine Klicks nehmen.
     property var chipRects: []
+    property var _rectChips: []       // Chip je Eintrag in chipRects (gleiche Reihenfolge) – für den Tooltip-Hover
     function syncChipCursors(): void {
         const win = g.popout.anchor ? g.popout.anchor.window : null;
         if (!g.hypr || !g.popout.visible || !win) {
-            if (chipRects.length)
+            if (chipRects.length) {
+                setTipHover(null);
                 chipRects = [];
+                _rectChips = [];
+            }
             return;
         }
-        const out = [];
+        const out = [], chips = [];
         for (const ch of Popouts.chips) {
             if (ch.hostWindow !== win || !ch.visible || ch.width <= 0)
                 continue;
             const p = ch.mapToItem(chipCursors, 0, 0);
             out.push({ x: Math.round(p.x), y: Math.round(p.y), w: Math.round(ch.width), h: Math.round(ch.height) });
+            chips.push(ch);
         }
+        _rectChips = chips;
         if (JSON.stringify(out) !== JSON.stringify(chipRects))
             chipRects = out;
+    }
+    // Tooltip neben einem offenen Popout: die Bar sieht den Hover nicht (Klick-Fang), die Flächen hier schon → an den Chip melden
+    property var _tipChip: null
+    Component.onDestruction: setTipHover(null)
+    function setTipHover(ch: var): void {
+        if (_tipChip === ch)
+            return;
+        if (_tipChip && _tipChip.tipHover !== undefined)
+            _tipChip.tipHover = false;
+        _tipChip = ch;
+        if (ch && ch.tipHover !== undefined)
+            ch.tipHover = true;
     }
     // Lage des Popouts steht erst nach dem configure des Compositors fest, Chips ändern ihre Breite (Titel, Zähler)
     Timer {
@@ -146,6 +164,7 @@ Item {
             model: g.chipRects
             MouseArea {
                 required property var modelData
+                required property int index
                 x: modelData.x
                 y: modelData.y
                 width: modelData.w
@@ -153,6 +172,13 @@ Item {
                 acceptedButtons: Qt.NoButton
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: {
+                    const ch = g._rectChips[index] ?? null;
+                    if (containsMouse)
+                        g.setTipHover(ch);
+                    else if (g._tipChip === ch)
+                        g.setTipHover(null);
+                }
             }
         }
     }

@@ -23,6 +23,8 @@ Singleton {
     // App über ihre .desktop-ID (mit oder ohne ".desktop")
     function app(desktopId: string): void {
         const id = String(desktopId).replace(/\.desktop$/, "");
+        if (bringParked(id))
+            return;
         if (uwsm) {
             Quickshell.execDetached(["uwsm", "app", "--", id + ".desktop"]);
         } else {
@@ -47,7 +49,21 @@ Singleton {
 
     // Discord (Chat-Client, Name steht in Chat.qml), Spotify, Thunderbird, Equibop (alter Rückfall): natives RPM zuerst, sonst das Flatpak (entscheidet scripts/app-run beim Start)
     readonly property string appRun: Quickshell.shellDir + "/../scripts/app-run"
+    // Hintergrund-App (Spotify, Chat) läuft schon, liegt aber weggeräumt: ein zweiter Start reicht nur an die laufende
+    // Instanz weiter und zeigt nichts → stattdessen das Fenster aus special:parked holen.
+    function bringParked(id: string): bool {
+        const a = String(id).toLowerCase();
+        const part = Parked.apps.find(p => a.indexOf(p) >= 0);
+        if (!part || !Hypr.toplevels.values.some(t => Hypr.appId(t).toLowerCase().indexOf(part) >= 0))
+            return false;
+        Parked.focus(part);
+        launched();
+        return true;
+    }
+
     function run(name: string, args: var): void {
+        if (!(args && args.length) && bringParked(name))
+            return;
         cmd([appRun, name].concat(args || []));
     }
 

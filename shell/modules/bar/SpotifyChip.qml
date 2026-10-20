@@ -116,9 +116,9 @@ Row {
                 width: 16
                 height: 16
                 visible: root.player === null
-                // natives RPM (spotify-client), sonst das Flatpak-Symbol
-                source: "spotify-client"
-                fallback: "com.spotify.Client"
+                // natives RPM (negativo17) bringt das Symbol „spotify“ mit; „spotify-client“ hieß es beim lpf-Paket
+                source: "spotify"
+                fallback: "spotify-client"
             }
         }
         Txt {

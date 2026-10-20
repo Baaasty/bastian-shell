@@ -75,6 +75,15 @@ Singleton {
         const e = entries.find(x => x.name === name);
         return e ? e.key : "";
     }
+    // Einzelkürzel ohne Alt (hypr/binds.conf, Abschnitt Topbar); alle anderen Buchstaben: Super+Alt+<Buchstabe>
+    readonly property var superOnly: ["F", "T", "A", "E", "B", "I"]
+    // Tooltip für Chips ohne eigenen Text (Chip.tipText): „Resources · Super+Alt+R“
+    function tipFor(key: string): string {
+        const e = key !== "" ? entries.find(x => x.key === key) : null;
+        if (!e)
+            return "";
+        return e.label + " · " + (superOnly.includes(e.key) ? "Super+" : "Super+Alt+") + e.key;
+    }
     function openMode(): void {
         note = "";
         sel = "";
