@@ -1,0 +1,9 @@
+{
+  "_hilfe": [
+    "Apps, die jeden Desktop-Wechsel mitmachen (shell/services/Hypr.qml follows/followCmds, Doku: docs/knowledge/shell-features.md). Datei wird live gelesen.",
+    "Eintrag = Teil der Fensterklasse (klein, Teilstring), z. B. \"spotify\". \"discord\" trifft den ganzen Chat-Client (Discord RPM/Flatpak, Equibop, Vesktop).",
+    "Mit kommen nur sichtbare Fenster: weggeräumte (Super+Q, special:parked…), minimierte, angepinnte und Vollbild-Fenster bleiben, wo sie sind.",
+    "Das Fenster behält Monitor, Kacheln/Schweben und Fokus. Eigene Liste in ~/.config/desktop/follow.json: { \"apps\": [ … ] } ersetzt die hier."
+  ],
+  "apps": ["discord", "spotify"]
+}

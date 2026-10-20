@@ -46,11 +46,11 @@ Singleton {
             impl.focus(name === chatKey || name === "chat" ? chatPart() : name.toLowerCase());
     }
 
-    // ---------- auf allen Workspaces sichtbar (gekachelt, ohne Pin) ----------
-    // Nicht pinnen (Hyprland sperrt dann movetoworkspace → Wegräumen ginge nicht) und nicht floaten: gekachelte,
-    // nicht weggeräumte Discord/Spotify-Fenster ziehen nach jedem Workspace-Wechsel auf den aktiven Workspace
-    // ihres Monitors nach, links→rechts (Reihenfolge bleibt). Hypr.switchCmds schiebt sie schon vor dem Umschalten
-    // mit (kein Flackern); das hier fängt alle anderen Wechsel ab. Weggeräumte (special:parked) bleiben liegen.
+    // ---------- auf allen Workspaces sichtbar (ohne Pin) ----------
+    // Nicht pinnen (Hyprland sperrt dann movetoworkspace → Wegräumen ginge nicht): sichtbare Fenster der
+    // mitkommenden Apps (Hypr.follows, config/follow.json) ziehen nach jedem Workspace-Wechsel auf den aktiven
+    // Workspace ihres Monitors nach, links→rechts (Reihenfolge bleibt). Hypr.switchCmds schiebt sie schon vor dem
+    // Umschalten mit (kein Flackern); das hier fängt alle anderen Wechsel ab. Weggeräumte (special:parked) bleiben liegen.
     // Gegen Endlosschleifen: ein Fenster wird höchstens alle 400 ms angefasst, und ohne Abweichung passiert nichts.
     property var _sent: ({})   // Adresse → Zeitpunkt des letzten Nachziehens
     function _follow(): void {
@@ -81,7 +81,8 @@ Singleton {
     property double _layoutUntil: 0
     property double _layoutSent: 0
     function _pair(): var {
-        const vis = t => Hypr.follows(t) && !Hypr.isStashed(t) && !Hypr.isMinimized(t);
+        // nur Kacheln: schwebende Discord/Spotify folgen auch, behalten aber ihre Größe
+        const vis = t => Hypr.follows(t) && Hypr.ipc(t).floating !== true && !Hypr.isStashed(t) && !Hypr.isMinimized(t);
         // laufen zwei Chat-Clients (Umstieg Equibop -> Discord), zählt der bevorzugte (Chat.parts-Reihenfolge)
         const chats = Hypr.toplevels.values.filter(t => vis(t) && Chat.matches(Hypr.appId(t)));
         const chat = chats.find(t => Chat.partOf(Hypr.appId(t)) === Chat.parts[0]) || chats[0];

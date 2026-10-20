@@ -158,6 +158,20 @@ Code: `shell/services/Servers.qml`, Reiter in `DevPopout.qml`, `scripts/sshs`, `
 - Upload fragt nie: Schlüssel nicht im Agenten → „Login failed“ → einmal per Terminal verbinden, dann neu. Nur ein Upload gleichzeitig.
 - Der Watcher gibt nach 3 min ohne Prompt auf.
 
+## Workspace-Leiste: Fenster ziehen
+Code: `shell/modules/workbar/WorkBar.qml` (`wdMon`, `monAt`), `shell/services/Hypr.qml` (`moveToSlot`)
+- Symbol auf einen Mini-Monitor = Workspace dieses Desktops auf diesem Monitor (`slot*100+desk`), auch in derselben Kachel; Kopf/Rand der Kachel = wie früher (gleicher Monitor-Platz). Lücken zwischen den Mini-Monitoren zählen als Rand.
+- `movetoworkspacesilent`: Fokus bleibt, wo er war. Schwebende Fenster behalten ihre Lage relativ zum Monitor und schrumpfen auf den Zielmonitor (ohne reservierte Ränder) – Hyprland allein schiebt nur die rechte Kante hinein, ein 1440p-Fenster ragte dann auf den Nachbarn.
+- Tastatur (aktives Fenster): erst Monitor mit Super+Shift+←/→ oder Super+Shift+1…3 (`scripts/winmove`, Fokus folgt), dann Alt antippen + Shift+Ziffer (Workspace, Monitor bleibt).
+- Mitkommende Apps (Discord/Spotify, siehe nächster Abschnitt): auf einen anderen Desktop ziehen hält nicht, ein anderer Monitor schon.
+
+## Mitkommende Apps (Discord, Spotify)
+Code: `shell/services/Hypr.qml` (`follows`, `followCmds`, `switchCmds`), `shell/services/Parked.qml` (`_follow`) · Konfig: `config/follow.json` (`apps`, Teil der Fensterklasse; `"discord"` = ganzer Chat-Client), eigene Liste in `~/.config/desktop/follow.json` (ersetzt, live gelesen)
+- Kein Hyprland-`pin`: gepinnte Fenster lehnen `movetoworkspace` ab (Wegräumen/Holen ginge nicht) und `pin` gibt es nur schwebend. Stattdessen `movetoworkspacesilent` auf `slot*100+desk` ihres Monitors.
+- Shell-Wechsel (Alt+1…9, Alt+←/→, Leiste, Klick auf Fenster, neuer Workspace) schieben vorher mit (kein Flackern); jeder andere Wechsel (Hyprland direkt) zieht nach dem Event nach.
+- Monitor, Kacheln/Schweben, Lage und Fokus bleiben. Weggeräumte (`special:parked…`), minimierte, angepinnte und Vollbild-Fenster kommen nicht mit.
+- Prüfen: `qs ipc … call hypr status` → `follow` zeigt die aktive Liste.
+
 ## Quicklinks & Git/CI
 Code: `shell/modules/workbar/QuickLinksPopup.qml`, `QuickLinksDots.qml`, `QuickLinksTip.qml`, `QuickLinksStats.qml`, `shell/services/GitInfo.qml` (`projectFor`, `gitEvery`/`ciEvery`), `scripts/gitinfo` · Konfig: `projects/projects.json` (nur über `scripts/project link …`)
 - Projekt-Workspace = eigener Workspace-Name gleich Projekt-ID oder Anzeigename; „Workspace 2“ ohne Namen hat kein Projekt.

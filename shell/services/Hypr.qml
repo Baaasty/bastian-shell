@@ -118,24 +118,66 @@ Singleton {
     function deskOfWs(id: int): int {
         return id > 0 ? id % 100 : 0;
     }
-    // Chat-Client (Chat.qml) und Spotify (gekachelt, nicht weggeräumt) folgen jedem Workspace-Wechsel: siehe followCmds und Parked.qml.
-    // Ungepinnt und ungefloatet, damit Kacheln, Wegräumen (Parked) und Verschieben normal funktionieren.
+    // „Mitkommende“ Apps (config/follow.json, Standard Discord + Spotify) folgen jedem Workspace-Wechsel auf ihrem
+    // Monitor: siehe followCmds (vor dem Umschalten) und Parked._follow (alle anderen Wechsel). Nur sichtbare
+    // Fenster: weggeräumte/minimierte (Spezial-Workspace, id < 0) bleiben im Versteck. Nicht per Hyprland-pin:
+    // gepinnte lehnt movetoworkspace ab (Wegräumen ginge nicht), und pin gilt nur für schwebende Fenster.
+    // Ausgenommen: angepinnte (sind eh überall), Vollbild (Spiel/Stream bleibt, wo es ist).
+    property var followBase: ["discord", "spotify"]
+    property var followUser: null
+    // Einträge klein, Teilstring der Fensterklasse; "discord" steht für den ganzen Chat-Client (Chat.parts)
+    readonly property var followApps: followUser ?? followBase
+    onFollowAppsChanged: bump()   // neue Liste → Parked._follow zieht gleich nach
+    function followsApp(appId: string): bool {
+        const a = (appId || "").toLowerCase();
+        return a !== "" && followApps.some(p => a.indexOf(p) >= 0 || (p === "discord" && Chat.matches(a)));
+    }
     function follows(t): bool {
-        return ipc(t).floating !== true && wsId(t) > 0 && !isFullscreen(t) && (/spotify/i.test(appId(t)) || Chat.matches(appId(t)));
+        const o = ipc(t);
+        return o.pinned !== true && wsId(t) > 0 && !isFullscreen(t) && followsApp(appId(t));
     }
     // Befehle, die folgende Fenster auf ihren Ziel-Workspace schieben (target(t) = Workspace-ID, 0 = bleibt).
-    // Von links nach rechts, damit die Reihenfolge (Discord links, Spotify rechts) bleibt; die Breite
-    // des linken wird danach wiederhergestellt (sonst teilt die neue Kachel 50:50).
+    // movetoworkspacesilent: kein Fokuswechsel; der Ziel-Workspace liegt per Regel (monitors.conf) auf demselben
+    // Monitor, Schwebende behalten dort ihre Lage. Von links nach rechts, damit die Reihenfolge der Kacheln
+    // (Discord links, Spotify rechts) bleibt; die Breite der linken Kachel wird danach wiederhergestellt (sonst 50:50).
     function followCmds(target): var {
         const list = toplevels.values.filter(follows).map(t => ({ t: t, to: target(t) })).filter(x => x.to > 0 && x.to !== wsId(x.t))
             .sort((a, b) => geo(a.t).x - geo(b.t).x);
         const cmds = list.map(x => "dispatch movetoworkspacesilent " + x.to + "," + sel(x.t));
-        if (list.length > 1 && list[0].to === list[list.length - 1].to) {
-            const g = geo(list[0].t);
+        const tiled = list.filter(x => ipc(x.t).floating !== true);
+        if (tiled.length > 1 && tiled.every(x => x.to === tiled[0].to)) {
+            const g = geo(tiled[0].t);
             if (g.width > 0)
-                cmds.push("dispatch resizewindowpixel exact " + Math.round(g.width) + " " + Math.round(g.height) + "," + sel(list[0].t));
+                cmds.push("dispatch resizewindowpixel exact " + Math.round(g.width) + " " + Math.round(g.height) + "," + sel(tiled[0].t));
         }
         return cmds;
+    }
+    function _followList(text: string, which: string): var {
+        try {
+            const a = JSON.parse(text).apps;
+            if (Array.isArray(a))
+                return a.filter(p => typeof p === "string" && p.trim() !== "").map(p => p.trim().toLowerCase());
+        } catch (e) {}
+        if (text.trim() !== "")
+            console.warn("Hypr: " + which + " has no valid \"apps\" list, ignoring it");
+        return null;
+    }
+    FileView {
+        path: Quickshell.shellDir + "/../config/follow.json"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.followBase = root._followList(text(), "config/follow.json") ?? ["discord", "spotify"]
+    }
+    FileView {
+        path: Quickshell.env("HOME") + "/.config/desktop/follow.json"
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.followUser = root._followList(text(), "~/.config/desktop/follow.json")
+        onLoadFailed: root.followUser = null
     }
 
     // Desktop eines Fensters (minimierte zählen zu ihrem Desktop, weggeräumte zu keinem)
@@ -284,8 +326,32 @@ Singleton {
     }
     // auf Desktop d (gleicher Monitor-Platz) schieben, ohne mitzugehen
     function moveToDesk(t, desk: int): void {
-        if (t && desk > 0)
-            dispatch("movetoworkspacesilent " + wsFor(slotOf(t), desk) + "," + sel(t));
+        moveToSlot(t, slotOf(t), desk);
+    }
+    // auf Desktop d und Monitor-Platz slot schieben, ohne mitzugehen (Leiste: Fenster auf einen Mini-Monitor gezogen).
+    // Gekachelte reihen sich ein. Schwebende schiebt Hyprland nur so weit, dass die rechte/untere Kante passt – ein
+    // 1440p-Fenster auf 1080p ragte dann links auf den Nachbarmonitor. Deshalb: gleiche Lage relativ zum Monitor,
+    // höchstens Monitorgröße minus Rand.
+    function moveToSlot(t, slot: int, desk: int): void {
+        const ws = wsFor(slot, desk);
+        if (!t || desk <= 0 || ws === wsId(t))
+            return;
+        const cmds = ["dispatch movetoworkspacesilent " + ws + "," + sel(t)];
+        const to = monitors.values.find(m => slotOfMonitor(m.name) === slot);
+        const from = monitors.values.find(m => m.name === monitorName(t));
+        const g = geo(t);
+        if (ipc(t).floating === true && to && from && to !== from && g.width > 0) {
+            // Monitorgröße logisch (width/height sind Pixel des Modus, Lagen logisch), ohne reservierte Ränder
+            // (Top-Bar; reserved = links, oben, rechts, unten)
+            const r = to.lastIpcObject?.reserved ?? [0, 0, 0, 0], pad = 24;
+            const ax = to.x + r[0], ay = to.y + r[1];
+            const aw = to.width / (to.scale || 1) - r[0] - r[2], ah = to.height / (to.scale || 1) - r[1] - r[3];
+            const w = Math.round(Math.min(g.width, aw - 2 * pad)), h = Math.round(Math.min(g.height, ah - 2 * pad));
+            const x = Math.round(ax + Math.max(pad, Math.min(g.x - from.x - r[0], aw - w - pad)));
+            const y = Math.round(ay + Math.max(pad, Math.min(g.y - from.y - r[1], ah - h - pad)));
+            cmds.push("dispatch resizewindowpixel exact " + w + " " + h + "," + sel(t), "dispatch movewindowpixel exact " + x + " " + y + "," + sel(t));
+        }
+        batch(cmds, null);
     }
     // weg (Hintergrund-App): unsichtbar, merkt sich den Monitor
     function stash(t): void {
@@ -433,7 +499,7 @@ Singleton {
                 refreshTop.restart();
         }
         function status(): string {
-            return JSON.stringify({ running: root.running, currentDesk: root.currentDesk, slots: root.slots, noWarps: root.noWarps,
+            return JSON.stringify({ running: root.running, currentDesk: root.currentDesk, slots: root.slots, noWarps: root.noWarps, follow: root.followApps,
                 monitors: root.monitors.values.map(m => ({ name: m.name, x: m.x, ws: m.activeWorkspace?.id ?? null, focused: m.focused })),
                 workspaces: Hyprland.workspaces.values.map(w => ({ id: w.id, name: w.name, monitor: w.monitor?.name ?? null })) });
         }

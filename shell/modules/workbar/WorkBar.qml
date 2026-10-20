@@ -111,11 +111,11 @@ Scope {
         interval: 2500
         onTriggered: root.modeNote = ""
     }
-    // Diese Fenster bleiben beim Entfernen eines Workspaces offen: Chat-Client und Spotify (folgen allen Workspaces),
-    // geparkte/weggeräumte Fenster
+    // Diese Fenster bleiben beim Entfernen eines Workspaces offen: Chat-Client und Spotify, mitkommende Apps
+    // (config/follow.json, folgen allen Workspaces), geparkte/weggeräumte Fenster
     function keeps(t) {
         const id = Hypr.appId(t);
-        return Parked.isParked(id) || Chat.matches(id) || /spotify/i.test(id) || Hypr.isStashed(t);
+        return Parked.isParked(id) || Chat.matches(id) || /spotify/i.test(id) || Hypr.followsApp(id) || Hypr.isStashed(t);
     }
     // Fenster eines Workspaces, die beim Entfernen schließen (auch minimierte)
     function closableOn(id) {
@@ -319,6 +319,19 @@ Scope {
                 property real wdX: 0
                 property real wdY: 0
                 property int wdTo: -1
+                // Ziel-Monitor in der Ziel-Kachel ("" = Kopf/Rand: alter Weg, gleicher Monitor-Platz) und dessen Workspace
+                property string wdMon: ""
+                property int wdWs: 0
+                // Monitor (Name) unter Leisten-Koordinate (px, py) in der Mini-Vorschau von Kachel i, sonst ""
+                function monAt(i, px, py) {
+                    const it = deskRep.itemAt(i);
+                    if (!it || !it.miniItem)
+                        return "";
+                    const m = it.miniItem, p = m.mapToItem(bar, 0, 0);
+                    const lx = root.vx + (px - p.x) / m.width * root.vw, ly = root.vy + (py - p.y) / m.height * root.vh;
+                    const s = root.screens.find(s => lx >= s.x && lx < s.x + s.width && ly >= s.y && ly < s.y + s.height);
+                    return s ? s.name : "";
+                }
                 // Workspace-Kachel unter Leisten-Koordinate (px, py), sonst -1
                 function deskAt(px, py) {
                     for (let i = 0; i < deskRep.count; i++) {
@@ -716,8 +729,9 @@ Scope {
                                     : (deskArea.pressed && !dragging ? Theme.surfaceSunken : hovered ? Qt.lighter(Theme.surfaceRaised, 1.18) : Theme.surfaceRaised)
                                 Behavior on color { ColorAnimation { duration: Theme.fade } }
                                 // beim Ziehen (Tile oder Fenster): Ziel bekommt einen hellen Rahmen, der gezogene Workspace folgt der Maus
+                                // Fenster über einem Mini-Monitor: dann markiert nur der Monitor (siehe unten), nicht die Kachel
                                 readonly property bool dropHere: (root.dragFrom >= 0 && root.dragTo === index && index !== root.dragFrom)
-                                    || (win.wdActive && win.wdTo === index && Desktops.ids[index] !== win.wdFrom)
+                                    || (win.wdActive && win.wdTo === index && win.wdMon === "" && Desktops.ids[index] !== win.wdFrom)
                                 border.width: dropHere ? 3 : isCurrent ? 0 : 1
                                 border.color: dropHere ? Theme.text : (hovered ? Theme.borderStrong : Theme.border)
                                 property bool dragging: false
@@ -727,6 +741,7 @@ Scope {
                                 opacity: dragging ? 0.9 : 1
                                 transform: Translate { x: desk.dragging ? desk.dragDx : 0 }
                                 property bool tipShown: false
+                                readonly property Item miniItem: mini
 
                                 function endDrag(apply) {
                                     if (!dragging)
@@ -839,14 +854,17 @@ Scope {
                                             model: root.screens
                                             Rectangle {
                                                 required property var modelData
+                                                // Fenster wird hierher gezogen (anderer Workspace oder anderer Monitor als jetzt)
+                                                readonly property bool dropMon: win.wdActive && win.wdTo === desk.index && win.wdMon === modelData.name
+                                                    && win.wdWs > 0 && win.wdWs !== Hypr.wsId(win.wdWin)
                                                 x: (modelData.x - root.vx) / root.vw * mini.width
                                                 y: (modelData.y - root.vy) / root.vh * mini.height
                                                 width: modelData.width / root.vw * mini.width
                                                 height: modelData.height / root.vh * mini.height
                                                 radius: 4
-                                                color: Theme.surfaceSunken
-                                                border.width: 1
-                                                border.color: desk.isCurrent ? Qt.alpha(Theme.onAccent, 0.5) : Theme.border
+                                                color: dropMon ? Theme.accentFill : Theme.surfaceSunken
+                                                border.width: dropMon ? 3 : 1
+                                                border.color: dropMon ? Theme.accentText : desk.isCurrent ? Qt.alpha(Theme.onAccent, 0.5) : Theme.border
                                             }
                                         }
 
@@ -896,7 +914,8 @@ Scope {
                                                     source: thumb.here ? Hypr.iconPath(thumb.modelData) : ""
                                                 }
 
-                                                // Klick = Fenster nach vorn (wechselt den Workspace), Ziehen auf einen anderen Workspace = Fenster dorthin
+                                                // Klick = Fenster nach vorn (wechselt den Workspace), Ziehen auf einen anderen Workspace = Fenster dorthin;
+                                                // auf einen Mini-Monitor (auch in derselben Kachel) = genau dieser Workspace auf genau diesem Monitor
                                                 MouseArea {
                                                     id: thumbArea
                                                     anchors.fill: parent
@@ -924,17 +943,23 @@ Scope {
                                                             win.wdX = p.x;
                                                             win.wdY = p.y;
                                                             win.wdTo = win.deskAt(p.x, p.y);
+                                                            win.wdMon = win.wdTo >= 0 ? win.monAt(win.wdTo, p.x, p.y) : "";
+                                                            win.wdWs = win.wdMon !== "" ? Hypr.wsFor(Hypr.slotOfMonitor(win.wdMon), Number(Desktops.ids[win.wdTo])) : 0;
                                                         }
                                                     }
                                                     onReleased: mouse => {
                                                         const was = moved;
-                                                        const to = win.wdTo;
+                                                        const to = win.wdTo, mon = win.wdMon;
                                                         moved = false;
                                                         win.wdActive = false;
                                                         win.wdTo = -1;
+                                                        win.wdMon = "";
+                                                        win.wdWs = 0;
                                                         win.stick();
                                                         if (was) {
-                                                            if (to >= 0 && Desktops.ids[to] !== String(desk.modelData))
+                                                            if (to >= 0 && mon !== "")
+                                                                Hypr.moveToSlot(thumb.modelData, Hypr.slotOfMonitor(mon), Number(Desktops.ids[to]));
+                                                            else if (to >= 0 && Desktops.ids[to] !== String(desk.modelData))
                                                                 Hypr.moveToDesk(thumb.modelData, Number(Desktops.ids[to]));
                                                         } else if (containsMouse) {
                                                             Hypr.activate(thumb.modelData);
@@ -944,6 +969,8 @@ Scope {
                                                         moved = false;
                                                         win.wdActive = false;
                                                         win.wdTo = -1;
+                                                        win.wdMon = "";
+                                                        win.wdWs = 0;
                                                     }
                                                 }
                                             }
