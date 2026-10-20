@@ -41,9 +41,8 @@
 | Thunderbird | `thunderbird.py apply\|remove\|status` → Theme-XPI + `userChrome.css`/`userContent.css`, einmal Theme aktivieren |
 | Discord (RPM + Equicord) | `discord.py` → `scripts/discord-theme install\|off\|status`, ggf. einmal in Equicord → Themes einschalten |
 | Equibop (alt) | `equibop.py` → `scripts/equibop-theme` (bleibt nur für den alten Client) |
-| Lockscreen (Plasma) + Login | `lockscreen_theme.py` → `plasma/shells/de.bastian.desktop/contents/lockscreen/DesktopTheme.qml`, `scripts/shellpkg install`, `scripts/loginscreen` ([setup/loginscreen.md](../setup/loginscreen.md)) |
+| Login-Bildschirm | `lockscreen_theme.py` → `plasma/loginscreen/DesktopTheme.qml`, `scripts/loginscreen apply` ([setup/loginscreen.md](../setup/loginscreen.md)) |
 | Sperre unter Hyprland | liest `Theme` live; Notfall-hyprlock bekommt Palette-Farben aus `scripts/lock` |
-| KWin-Fensterwechsler (alt) | `switcher.py` → `bridge/kwin/desktop-switcher/`, `scripts/rice switcher` |
 | Spotify | bewusst nicht (siehe Stolperfallen) |
 
 `all.py --alles` erzeugt zusätzlich `design/palette.js`, Lockscreen- und Fensterwechsler-Theme.
@@ -150,4 +149,9 @@ Server aus dem Terminal (`scripts/sshs`, Befehle: `sshs --help`; Reiter in der B
 - Kitty- und zsh-Kürzel stehen in `config/kitty/kitty.conf` und `config/zsh/zshrc`, Übersicht per Super+K ([hotkeys.md](hotkeys.md)).
   Kitty nutzt nur Strg+Shift (Super gehört Hyprland, Alt den Workspaces), alle Kitty-Standardkürzel sind aus.
 - Textdateien öffnen in einem schlichten VS-Code-Fenster (`config/applications/code-simple.desktop`, per `xdg-mime default`).
-- Offen: Systemklänge, KDE-Systemschrift prüfen, Icon-Theme in `rice theme on/off` einbinden, Login-Look einschalten.
+- Klänge: ein einzelner neutraler, dumpfer Ton („Tupf“) statt Piepton, aus Rechnung erzeugt (`theme/gen/sounds.py` → `design/sounds/*.wav`, keine Fremd-Samples):
+  fast nur Grundton (×2/×3 kaum), 5-ms-Einsatz, doppelter Tiefpass ~1,8 kHz. Normal F#4 (370 Hz), 150 ms; dringend A4, minimal heller, 180 ms.
+  Bewusst keine Tonfolge und nichts Helles (Zwei-Ton-„pling“ und G5/C6 waren Bastian zu viel/zu hoch). Tief = wirkt leiser → `volume` 0.7.
+  Zu dumpfe, tiefe Klicks (520 Hz, 50 ms Abklingen) gingen auf dem GoXLR-Kanal „System“ unter – ein Ton braucht Mitten um 0,7–1 kHz und ~100 ms Nachklang.
+  Hängt nicht an der Palette (läuft nur mit `all.py --alles`). Shell spielt direkt per `pw-play`; Apps nur mit `scripts/sounds on`.
+- Offen: KDE-Systemschrift prüfen, Icon-Theme in `rice theme on/off` einbinden, Login-Look einschalten.

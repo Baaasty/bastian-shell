@@ -62,9 +62,10 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 ### Dashboard & Launcher
 
 - **F17** Dashboard (Super antippen): Uhr & Wetter, Agenda, Mail, Fokus, Spotify, Discord, Licht & Sound, Benachrichtigungen, Stats.
-- **F18** Launcher: Apps, Fenster, Projekte ohne Präfix; `#` `=` `:` `;` `/` `@` `pw`, `cal`, `g`/`yt`/`gh` (mit Leerzeichen), `c` fragt Claude, `?` listet alles ([LAUNCHER.md](knowledge/shell-features.md)).
-- **F19** Zwischenablage (Super+V) und Emoji (Super+.) als Launcher-Modi.
-- **F20** Benachrichtigungen: Popups + Verlauf, Snooze, Ruhezeiten, Hover hält an; Super+Alt+Z/X ([NOTIFICATIONS.md](knowledge/shell-features.md)).
+  Mail: öffnen in Thunderbird, nur als gelesen markieren oder in den Papierkorb – auch per Tastatur über den Launcher `m ` (↵ / Ctrl+R / Ctrl+D).
+- **F18** Launcher: Apps, Fenster, Projekte ohne Präfix; `#` `=` `:` `;` `/` `@` `pw`, `cal`, `m`, `g`/`yt`/`gh` (mit Leerzeichen), `c` fragt Claude, `?` listet alles ([LAUNCHER.md](knowledge/shell-features.md)).
+- **F19** Zwischenablage (Super+V) als Popup an der Eingabe – Enter fügt direkt ein; Zwischenablage (`;`) und Emoji (Super+.) auch als Launcher-Modi.
+- **F20** Benachrichtigungen: Popups + Verlauf, Snooze, Ruhezeiten, Hover hält an, leiser, dumpfer Einzelton zum Popup; Super+Alt+Z/X ([NOTIFICATIONS.md](knowledge/shell-features.md)).
 - **F21** Kürzel-Übersicht Super+K, erzeugt aus `hypr/binds.conf` plus App-Kürzel.
 - **F22** OSD (Lautstärke, Helligkeit per DDC/CI, Medien) und Power-Menü (Super+Esc, Strg+Alt+Entf).
 - **F23** Morgen-Übersicht: einmal am Morgen Termine, Mails, Wetter, To-dos, Inbox ([MORNING.md](knowledge/shell-features.md)).

@@ -1,140 +1,69 @@
-# Roadmap – Desktop
+# Roadmap – desktop (bastian-shell)
 
-Arbeitsliste in Reihenfolge. Details zu jedem Punkt stehen in [docs/PRD.md](PRD.md).
-Jeder Punkt wird erst abgehakt, wenn er läuft und committet ist.
+Stand 2026-10-20. Eine Roadmap für alles; die alten Listen (KWin-Zeit `ROADMAP.md`, `ROADMAP-HYPRLAND.md` mit allen
+Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese Liste leer → dann nur noch Backlog.
 
-## Erledigt
+> **Leitlinie (2026-10-19): Tastatur zuerst.** Shell komplett per Hotkeys, Maus nur in Browser und Apps.
+> Ein Feature ohne Kürzel und Tastaturbedienung gilt als nicht fertig.
 
-- [x] Interview, SPEC, Design (Claude Design, Ember, Vorschau)
-- [x] R0 Spike: Quickshell 0.3.2, Blur, Fensterliste, IPC, kstart, Schriften
-- [x] Wallpaper auf 3 Monitoren + Lockscreen-Bild (`scripts/wallpaper`)
-- [x] Desktop-Lockscreen: Passwortfeld auf DP-2, 6er-Code mit Auto-Entsperren, Ember-Uhr, Auffächern beim Entsperren (`scripts/shellpkg`)
+## Jetzt (gebaut am 2026-10-20)
 
-## Jetzt: Shell bauen
+- [x] KWin-Weg aus dem Repo entfernt (Rückweg: lokaler Git-Tag `kwin-final`) (2026-10-20)
+- [x] Kamera-Status per Ereignis statt Polling: Punkt neben der Uhr sofort, Key Light im Call (2026-10-20)
+- [x] Downloads-Wächter ohne `inotifywait` (2026-10-20)
+- [x] Spotify nativ (negativo17), Flatpak entfernt (2026-10-20)
+- [ ] Mail: Öffnen ✓ · noch testen: Mülleimer in der Kachel / Strg+D im Launcher `m ` / „Delete“ in der Meldung → Mail liegt in „Deleted Messages“; nach Thunderbird-Neustart nur noch eine Meldung pro Mail
+- [ ] Benachrichtigungston: dumpfer Einzelton (`scripts/sounds play`, Lautstärke `sound.volume` in `~/.config/desktop/notifications.json`) – passt?
+- [ ] Zwischenablage: Super+V öffnet an der Maus, Enter fügt ein, Fokus bleibt im Fenster (Discord-Chat, Helium, Kitty)
+- [ ] Bar-Tooltips: Maus auf einen Chip → „Name · Kürzel“, auch wenn daneben ein Popout offen ist
+- [ ] Spotify aus dem Launcher holt das weggeräumte Fenster; Symbol im Chip, wenn Spotify aus ist
+- [ ] Discord nach Selbst-Update: Popout zeigt „Restart Discord“ (spielt Equicord neu ein), direkt nach dem Start automatisch; Verlassen-Knopf zweistufig („Leave?“) – nach dem nächsten Call testen
 
-- [x] R1 Fundament: Theme aus `palette.json`, Bausteine (Glas, Icon, Texte), nur DP-2
-- [x] R2 Top-Bar: Uhr, Spotify-Mini, CPU/GPU-Temp, Tray; weicht Fenstern aus, Hover am oberen Rand
-- [x] R3 Desktops: Namen, Wechsel, "+" = freier Desktop, Rechtsklick = entfernen (Umbenennen kommt mit R12)
-- [x] R4 Kürzel (Meta+Esc, Meta+F, Not-Aus) + `scripts/rice on|off`
-- [x] R5 Dashboard-Kern: Uhr, Wetter + Morgen-früh, Spotify groß, System, Status
-- [x] R6 Fokus: Pomodoro, Fokus-Modus, Jetzt-Aufgabe (auch auf dem Lockscreen), Pausen, Hyperfokus
-- [x] R7 Launcher: Apps, Projekte, Rechner (+ Tasten), Emoji, Zwischenablage – steckt im Dashboard
-- [x] R8 Benachrichtigungen (+ Übergabe von Plasma, Portal-Datei) – `scripts/notify-handover hutte|plasma`
-- [x] R9 OSD + Power-Menü
-- [x] R10 Umstieg: Plasma-Panel weg, Super allein = Dashboard mit Suche
-- [x] R11 Steuerung: Key Light, Hue (Szenen sortieren, Farbwähler, Andere aus), GoXLR-Routing
-- [x] R12 Vorlagen Code/Office/Fun + Projekt-Desktops (Plus = Leer + Vorlagen, Doppelklick = leer)
-- [x] Bar-Extras: Spotify ⏮⏯⏭ + Cover + Popout (Dauer, Springen, Shuffle/Repeat), Desktops per Doppelklick umbenennen
-- [x] Zwischenablage à la Clippy (Meta+V): Bilder, Favoriten, Löschen – lokal, ohne Sync
-- [x] Ausschneiden (Druck / Meta+S): einfrieren, Bereich ziehen, kopieren + speichern
-- [x] Arbeitsplatz-Leiste unten links: Desktops mit Fenstervorschau, umsortieren (ziehen/Menü), + / Vorlagen, offene Apps
-- [x] Launcher: offene Fenster (alle Desktops) + Dateien (Präfix /)
-- [x] Hintergrund-Apps Spotify/Discord (Rausholen/Wegräumen), Projekt-Desktops, Fensterregeln
-- [x] Oben links: To-dos pro Desktop + Allgemein
-- [x] Oben links: nächster Termin (heute/morgen, „in 25 min“) · Claude-Sitzungen
-- [x] Discord-Popout (Klick): Call, Köpfe in der Bar, Mic/Taub/Verlassen, Lautstärke pro Person, Kanal-Auswahl, Anpinnen
-- [x] Spotify-Popout: Warteschlange, Library → Playlist → Songs (auch fremde über Einbett-Seite)
-- [x] R13 Stats: Hörzeit + Callzeit heute/Jahr (stats.fm), Bildschirmzeit, Claude aktiv (GitHub/Hotlinks bewusst raus)
+## Handtest (Bastian) – je Block „ok“ oder z. B. „A3 kaputt“ melden
 
-- [x] Benachrichtigungen weich rein/raus, max. 4, gleiche zusammengefasst; Klick holt App nach vorn
-- [x] Ausschneiden pixelgenau: Lupe, Shift = langsam zielen, Griffe, Strg+C / Strg+S
-- [x] Bildschirmkanten über KWin-Script (blockiert keine Klicks), Hot Corner aus
-- [x] Eigener Fensterwechsler (Super+Tab), Super+Leertaste = Desktops reihum, Alt+Tab frei _(historisch, KWin – unter Hyprland: Alt+←/→, Workspace-Modus per Alt antippen, Alt+Tab = Wechsler)_
-- [x] Nur ein Bar-Popout gleichzeitig
+Per IPC und Screenshot vorgetestet (2026-10-20): Popouts, Bar-Modus, Panels, Launcher-Präfixe, Netz, Sound, Server,
+Dev-Dienste, Downloads, Updates, Absturz-Karte, Hyperfokus, Projektzeit, Privatsphäre-Punkte – alles ok.
+Übrig ist nur, was echte Tasten, Maus oder Hardware braucht.
 
-## Erledigt am 2026-10-18 (Kurzfassung)
+- [ ] **A – Bar und Popouts**
+  1 Maus 1 s auf den Tasks-Chip → Tooltip · 2 Super+Leertaste, S → Sound mit Glut-Rahmen ·
+  3 Pfeile auf einen Regler: ←/→ ändert nichts, erst Enter, dann ←/→ · 4 Esc → zurück zum Chip, Esc → Bar-Modus zu ·
+  5 Super+Alt+L zweimal → Licht auf/zu · 6 Super+Alt+H → Dev-Popout, Reiter Server ·
+  7 Super+Alt+Y, ↓, →, Enter → Tray-Menü, ← zurück · 8 Spotify-Popout: Maus rein, Fenster öffnen → bleibt; weghovern → zu
+- [ ] **B – Benachrichtigungen und Workspaces**
+  1 `notify-send -a Test Hallo Text`, Super+Alt+Z, S, 1 → später erinnern · 2 neue Karte, Super+Alt+X → weg ·
+  3 Maus auf Karte → bleibt stehen · 4 Alt antippen → Workspace-Modus, Alt+←/→ markiert, Esc ·
+  5 im Modus auf Projekt-Workspace Q → Quicklinks · 6 Alt+1…3 → Leiste zeigt kurz, wo man ist ·
+  7 Maus über Kachelkopf → Projektzeit-Tooltip mit Woche · 8 Fenster-Symbol auf andere Kachel ziehen → Fenster wandert
+- [ ] **C – Fenster**
+  1 Super+Return → Kitty · 2 Super+Shift+Return → Dropdown, nochmal → weg, Inhalt bleibt ·
+  3 Super+Pfeile → nur Fokus · 4 Super+Shift+↑/↓ → schwebend → gekachelt → maximiert → Vollbild und zurück ·
+  5 Super+Shift+→ → Fenster auf Nachbarmonitor, Fokus und Maus folgen · 6 Super+Strg+Pfeile halten → Größe ·
+  7 Super+Q auf Spotify → weggeräumt; Alt+F4 → beendet · 8 Super+Alt+K → Layout speichern, auf leerem Desktop wiederherstellen
+- [ ] **D – Panels**
+  1 Super+K, „discord“ → gefiltert · 2 Super+P, Klick ins Leere → zu · 3 Super+O → Logos, „Show“ blendet WLAN ein ·
+  4 Super+T: Text + Enter → Inbox, „t test“ → To-do, ↓ → Inbox-Aktionen · 5 Super, `?wetter` Enter → Helium; `c hallo` → Claude ·
+  6 Ressourcen-Popout: Zeile aufklappen · 7 `morning open`, Esc → zu · 8 Druck → Bereich, dann Enter / S / C / P / T (OCR)
+- [ ] **E – Hardware und System**
+  1 `pkexec true` → eigener Dialog, Esc bricht ab · 2 Super+L, GoXLR-Fader verstellen, entsperren → Fader wie vorher ·
+  3 `scripts/idle dim-test 10`, Maus → Abdunkeln endet · 4 Standby und zurück → PC-Licht wieder in der Primärfarbe (AP 23) ·
+  5 Discord „Share Screen“ → eigene Karte · 6 Super+R Aufnahme → Topbar bleibt klickbar ·
+  7 Call mit Kamera → Key Light an, Punkt neben der Uhr; aus → Licht aus · 8 Doppelklick auf .md in Dolphin → VS Code
+- [ ] **F – Ansehen und Kleinkram**
+  1 `zenity --question --text=Test` → warmbraun · 2 Dolphin, Systemeinstellungen, Datei-Dialog → Hearth ·
+  3 Rechtsklick in Qt- und GTK-App → Menüs im Desktop-Look · 4 Launcher „GoXLR“ → Helium ·
+  5 `scripts/session save`, Fenster zu, `scripts/session restore` · 6 Launcher „New Project“ + `/new-project` → Gerüst ·
+  7 Agents-Popout: Notizfeld, Tab → „Ask Claude…“, Enter; „status“-Knopf · 8 `scripts/helium-theme-compare` → entscheiden
+- [ ] **G – Härtetest (AP 21)**: Shell-Neustart (`scripts/hypr restart`), Monitor ab/an (`hyprctl keyword monitor "DP-2,disable"`, zurück mit `hyprctl reload`), Netz kurz weg → Shell fängt sich ohne Neustart
 
-- Super allein = Dashboard · Umbenennung Hütte → **desktop** · ganze UI auf Englisch · Uhr mit Sekunden
-- Dashboard neu: Uhr, Discord, Spotify, Fokus · System (CPU/RAM/GPU/Internet + Speicher, Updates, Maus, Bildschirmzeit) · Licht & Ton (Raster, Kamera-Helligkeit) · Coding · Wetter · Benachrichtigungen · Termine + Mail (iCloud)
-- Mail: Thunderbird ESR, Mail-Wächter (Push, Codes kopieren, Code-Mail in den Papierkorb) · Konten in `secrets.json`
-- Theme: Varianten (ember aktiv; walnut, dusk, clay, linen), Wallpaper glut-clean, neue Cursor, Konsole schlank + Starship
-- Kürzel aufgeräumt (`docs/knowledge/hotkeys.md`), Super+P/Shift+P anpinnen/oben halten, Key Light + GoXLR-Profil beim Herunterfahren
-- VS Code nativ installiert (Shell nimmt es automatisch), Einstellungen + Erweiterungen kopiert
-- Doku in `docs/` (setup/ für alle Logins) · Theme-Übersicht: `docs/knowledge/theming.md`
+## Von dir
 
-## Offen (Stand 2026-10-18)
+- [ ] Adressen für Buchhaltung/CRM in `profiles/profiles.json`
 
-1. [x] Fenster-Kürzel als KWin-Script (`desktop-tiling`) + alte KDE-Kürzel raus
-2. [ ] Login-Bildschirm: Plasma Login Manager – Skript `scripts/loginscreen` in Vorbereitung (braucht sudo)
-3. [x] Ordnerfarbe: **Holzbraun** – eigenes Icon-Theme `Desktop-Icons` (echte Kopie, auch für Flatpaks/Ubuntu-Box)
-4. [ ] iCloud-Passwörter einbinden (`~/.local/bin/icp`, wartet auf Apple-Fix -80045)
-5. [x] ~~Notizen-Kachel~~ gestrichen (To-dos oben links reichen)
-6. [x] ~~Desktops-Kachel~~ gestrichen · Hotlinks kommen in die Stats-Kachel (R13)
-7. [x] Topbar am oberen Rand: kommt wieder (KWin-Script wurde nicht neu geladen); Fenster lassen sich durch leere Bar-Stellen packen
-8. [x] Super+R: Video mit pixelgenauer Auswahl (wie Ausschneiden, Shift = genau zielen)
-9. [ ] Agenda-Kachel: heute + nächste Tage zusammen, Monatskalender mit KWs; Klick öffnet Thunderbird-Kalender bzw. -Mail – in Arbeit
-10. [x] Thunderbird ganz im Desktop-Look (Listen, Kalender, Adressbuch, Dialoge), Woche ab Montag
-11. [x] VS Code: Theme in Rice-Farben + eigene Akzentfarbe pro Projekt
+## Erledigt bzw. geschlossen am 2026-10-20
 
-### Geplant: Claude-Zentrale oben links (2026-10-18 mit Bastian abgestimmt)
-
-Ziel: Ordnung oben links, sauber an mehreren Projekten gleichzeitig arbeiten, Claude meldet sich selbst.
-
-- [x] **Sammel-Chip** statt Einzel-Chips: „✦ 3 projects · 1 needs you“ (Ember, wenn etwas wartet). Klick = Popout.
-- [x] (Claude-Tasks per `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`) **Popout pro Projekt:** Name · Branch · Änderungen · Claude-Status je Sitzung; Klick = richtiges VS-Code-Fenster nach vorn.
-  - Claudes Aufgabenliste live („3/7 · Bar umbauen“, aus Hooks)
-  - **Projekt-Roadmap**: Fortschritt aus `docs/ROADMAP.md` des Projekts (erledigt/offen, nächster Punkt) – „wie weit ist Claude“
-  - Eigene Aufgaben + Brainstorming pro Projekt (To-dos an das Projekt gekoppelt, schnelles Notieren)
-- [x] **Claude braucht dich → Karte unter der Bar** (Frage, Erlaubnis), Bar kommt dafür auch über maximierten Fenstern.
-  Direkt auf der Karte beantworten (Erlaubnis erlauben/ablehnen, Frage-Optionen wählen), VS-Code-Chat geht parallel weiter.
-  Machbarkeit geprüft: geht über Hooks (PermissionRequest erlaubt/lehnt ab, PreToolUse beantwortet AskUserQuestion) – wird gebaut.
-
-### Projekt-Ersteller (2026-10-18)
-
-- [ ] (gebaut, wartet auf Test) Skill `/new-project`: CLAUDE.md, PRD, Roadmap, Git + Hook, Checks je Stack, Projektfarbe, optional privates GitHub-Repo (`docs/knowledge/projects.md`)
-- [ ] (gebaut, wartet auf Test) Launcher „New Project“: Projekt-Desktop + `~/Workspace/<name>` + VS Code mit Claude-Tab „/new-project <name>“ (`scripts/new-project`)
-
-### Idee: Orchestrator in der Claude-Zentrale (2026-10-18, Bastian)
-
-Claude Code (VS Code und CLI) legt alles gleich ab: `~/.claude/projects/<ordner>/<sitzung>.jsonl`, Subagents in
-`<sitzung>/subagents/agent-*.jsonl`. Darauf aufbauend:
-- [ ] (gebaut, wartet auf Test) **Agents pro Projekt anzeigen**: laufende/fertige Subagents je Sitzung (Beschreibung, seit wann, fertig?) –
-  ohne Hooks direkt aus `~/.claude/projects/…/subagents/*.meta.json` (`scripts/claude-agents`)
-- [ ] (gebaut, wartet auf Test) **Neue Aufgabe aus der Bar**: Notizfeld im Projekt, Tab → „✦ Ask Claude…“, Enter startet
-  `claude -p` im Projektordner als eigene systemd-Unit (`scripts/claude-task`, übersteht Shell-Neustart); Zeile „background · running/done“
-  in der Karte, fertig = Ergebnis per Klick + „Continue in VS Code“ (öffnet die Sitzung über den URI-Handler der Extension) /
-  „Copy resume“; Meldung „Claude task done“; Abbrechen-Knopf. Erlaubnisse über die Antwort-Karte (Hooks greifen auch bei `-p`)
-- [ ] (gebaut, wartet auf Test) **Status abfragen**: „Wie weit bist du?“ an eine Sitzung – Knopf „status“ beim Drüberfahren
-  (auch an laufenden Hintergrund-Aufgaben), währenddessen „asking…“; `scripts/claude-ask` fragt einen Abzweig
-  (`--resume … --fork-session --no-session-persistence --safe-mode --tools ""`, ohne Hooks/Werkzeuge, nicht gespeichert) –
-  die laufende VS-Code-Sitzung bleibt byte-gleich; Antwort als Karte unter der Sitzung (4 Zeilen, Klick = ganz, Copy), 10 min
-- Voraussetzung: Antwort-Karte getestet (sonst bleiben Hintergrund-Agents an Erlaubnissen hängen)
-
-### Bugs (gemerkt)
-
-- [ ] **Claude-Chats-Bubble** (eine Bubble für Claude Desktop/claude.ai-Antworten) – gebaut, aber ausgehängt (2026-10-18):
-  Claude Desktop 2.42304 (offizielles Anthropic-Paket in der Ubuntu-Box) schickt unter Linux **keine** Benachrichtigungen
-  (weder Chat noch Cowork, obwohl „Abgeschlossene Antworten“ an ist); claude.ai in Chrome geht, aber verzögert.
-  Code liegt bereit: `shell/services/ClaudeChats.qml` + `shell/modules/bar/ClaudeChatsChip.qml` → wieder einhängen, sobald die App meldet.
-
-- [ ] Während einer Bildschirmaufnahme ließ sich die Topbar (einmal) nicht mehr bedienen (2026-10-18) – **gefixt, wartet auf Test**: Aufnahme-Pille lag im Bar-Streifen (Bereich knapp unter der Bar oder ganzer Seitenmonitor → Pille oben rechts auf DP-2) und schluckte die Klicks; jetzt immer unter der Bar. Dazu Snip gehärtet (Maske leer wenn zu, Doppelklick bestätigt erst beim Loslassen, Druck/Super+S bricht hängende Auswahl ab, Spectacle-Timeout).
-
-### Braucht Bastian / testen
-
-- [ ] Login-Bildschirm: `scripts/loginscreen apply` (sudo, Backup + `restore`), Vorschau mit `scripts/loginscreen preview`
-- [x] VS Code: Flatpak entfernt, natives läuft (Claude-Hooks kommen an)
-- [x] Thunderbird: iCloud-Mail + Kalender eingerichtet
-- [ ] Discord, Spotify, Thunderbird, Steam als RPM statt Flatpak (mpv statt Haruna): Apps schließen → `scripts/flatpak-to-native migrate all` → testen → `remove-flatpaks` (Shell startet bis dahin RPM zuerst, sonst Flatpak: `scripts/app-run`)
-- [ ] Kamera-Helligkeit im Call testen · GoXLR-Fader nach Neustart prüfen · Workbar-Vorschau beim Fensterwechsel
-- [ ] Zwischenablage: Enter = sofort einfügen (braucht `sudo dnf install ydotool` + Dienst)
-- [ ] Buchhaltungs-/CRM-Adressen für `profiles/profiles.json`
-
-## Danach: alles im Desktop-Look (Schritt 5)
-
-- [x] KDE-Farbschema (Dolphin & Co.) – `rice theme on|off`
-- [x] Konsole (transparent + Blur) + Starship
-- [x] VS Code-Theme, Chrome-Theme (erzeugt; in VS Code bzw. Chrome einmal auswählen)
-- [x] Cursor-Theme aus `design/cursors` (Ordnerfarbe offen)
-
-## Abschluss
-
-- [x] Autostart als systemd-User-Dienst + Not-Aus (Schritt 6) – `systemd/desktop-shell.service`
-- [ ] PC-Repo: Umbenennen auf `~/Workspace/pc`, `packages/`, `dotfiles/`, Skripte, `bootstrap`
-  - [x] Bestandsaufnahme + Bootstrap-Entwurf in `system/` (Paketlisten, `dotfiles.md`, `system/bootstrap` mit dry-run) – siehe `system/README.md`
-  - [ ] Entscheiden: welche Dotfiles ins Repo, altes chezmoi-Repo zusammenführen oder behalten
-  - [ ] `system/dotfiles/` befüllen + verlinken · Umbenennen des Repos
-- [ ] Eine Woche Alltag, dann aufräumen: Was nervt oder wird nicht genutzt, fliegt raus
-
-## Später
-
-iCloud-Kalender, Tagesziel aus einer eigenen App, Uptime Kuma, Backup-Status, Steam-Playtime, Screenshot hinter dem Lockscreen
+- Flatpak → nativ: Discord, Thunderbird, Steam, mpv als RPM; Spotify aus negativo17; Thunderbird-ESR- und StreamController-Flatpak entfernt. Bleiben Flatpak (kein RPM mit Update-Weg): Cameractrls, Podman Desktop, Storyteller-Apps
+- Neuer PC: Paketlisten, Repos, Dotfiles und `system/bootstrap` auf Ist-Stand (dry-run grün); OCR (tesseract), wtype, git-lfs, atuin installiert; pipx, ydotool entfernt
+- Geschlossen, weil überholt: Repo-Umbau (AP 13, ist `bastian-shell`/`main`), PC-Repo `~/Workspace/pc` (lebt in `system/`), Dotfiles/chezmoi (zusammengeführt, verlinkt), Equibop→Discord, Thunderbird-Umzug, hypridle, Ordner→Kitty, „Other channels“, Kvantum, Dokploy-URL, qs-log-Befunde AP 21 (SnipPin/DevTile/Polkit erledigt, ProjectTime abgesichert)
+- Gestrichen: Login-Bildschirm (Autologin), Terminal-Rätsel AP 14 (einmalig), Dashboard-Frage (Claude- und Git-Stats bleiben), „eine Woche Alltag“ (kein Roadmap-Punkt)
+- Claude-Chats-Bubble → Backlog (blockiert durch Claude Desktop)

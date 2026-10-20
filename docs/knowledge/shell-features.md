@@ -21,6 +21,7 @@ Code: `scripts/netinfo` (Test `scripts/tests/netinfo-test.py`), `shell/services/
 ## Dateimanager, Browser & Downloads
 Code: `shell/modules/bar/FilesChip.qml`, `BrowserChip.qml`, `DownloadsPopout.qml`, `shell/services/Downloads.qml` · Konfig: `~/.config/desktop/downloads.json` (optional)
 - Downloads-Chip 2026-10-20 raus (zu laut): die Liste hängt jetzt als Rechtsklick am Dateimanager-Chip (Bar-Modus `D`), „neu“ zeigt kein Chip mehr. Beide Chips im Fokus-Modus ausgeblendet.
+- Ordner-Ereignisse über `scripts/inotify-watch` (inotify per Python-ctypes, Ersatz für das fehlende `inotifywait`); endet er (Ordner fehlt), Neustart 2 s … 60 s.
 - Dateimanager fest Dolphin (wie Super+E): `xdg-mime` für `inode/directory` zeigt auf `kitty-open`. Browser-Chip erkennt Helium an der Fensterklasse; Super+B (alt: Super+W) startet ohne Shell Helium direkt.
 - Aufräumen nur per `gio trash`, nie löschen. `gio trash` geht nicht auf tmpfs → Tests mit einem Ordner unter `~` (`downloads testDir`).
 
@@ -45,6 +46,7 @@ Code: `shell/services/Updates.qml`, `shell/modules/bar/UpdatesChip.qml`, Backend
 ## Privatsphäre-Punkte
 Code: `shell/services/Privacy.qml`, `shell/modules/bar/PrivacyDot.qml`, `scripts/privacy-cam` · Konfig: keine
 - Bleiben bewusst auch im Fokus-Modus sichtbar.
+- Kamera ohne Polling: ein Wächter (`scripts/privacy-cam`, gestartet von `Camera.qml`) bekommt open/close auf `/dev/video*` per inotify (Python-ctypes, kein inotify-tools) und meldet Apps + Facecam-Stream für Punkte und Helligkeit zugleich. Punkt erscheint ~0,4 s nach dem Öffnen; „streamt“ (`urbnum`) wird nur bei offener Kamera sekündlich gemessen. Sicherheitsnetz: alle 60 s nachsehen, stirbt der Wächter → Neustart 2 s … 60 s. Testen: `scripts/privacy-cam once`.
 - Discord hält das Mikro nach Call/Mikrotest offen: gemeldet wird es nur im Sprachkanal (`Discord.inVoice`). Andere Apps mit „idle“ gehaltenem Aufnahme-Stream zeigen den Punkt trotzdem.
 - Unsichtbar bleiben Kamera-Zugriffe ohne PipeWire und ohne offenes `/dev/video` (z. B. fremde Benutzer).
 
@@ -90,6 +92,13 @@ Code: `shell/modules/launcher/Launcher.qml` (`sources`, `parse()`, `rebuild()`),
 - `pw ` lädt Metadaten höchstens alle 5 min (Tresor selbst: Timer `desktop-passwords`, alle 15 min). `@` braucht Helium mit Erweiterung „Desktop“ (`scripts/chrome-ext status`).
 - Verworfen (nicht wieder einbauen): Text-Bausteine `s ` und FMHY-Suche.
 
+## Zwischenablage
+Code: `shell/modules/clip/ClipPopup.qml` (Super+V, IPC `clip toggle`), `shell/services/Clipboard.qml` (`terminalClasses`, `pasteDelay`), `scripts/clip-paste`; auch Launcher-Modus `;` · Favoriten `~/.local/state/desktop/clip-pins.json`
+- Popup an der Maus, wenn sie im aktiven Fenster steht, sonst im unteren Drittel des Fensters (Schreibmarke fremder Apps ist unter Wayland nicht abfragbar); am Rand eingeklemmt, unten kein Platz → über der Maus.
+- Enter = kopieren + einfügen: Ziel-Fenster wird beim Öffnen gemerkt; nach `pasteDelay` (Panel weg) holt `clip-paste` den Fokus per `focuswindow` ausdrücklich zurück, wartet auf `activewindow` und tippt dann Strg+V per `wtype` (Klasse in `terminalClasses` → Strg+Shift+V). Shift+Enter = nur kopieren.
+- Warum ausdrücklich: schließt ein Layer-Panel mit Tastaturfokus, gibt Hyprland den Fokus nach `follow_mouse` weiter (oft an das Fenster unter der Maus) – daher ging er vorher verloren.
+- Kein Zielfenster mehr oder kein `wtype` (einmal pro Shell-Start geprüft) → nur kopieren, still. ydotool bewusst nicht (braucht Dienst/uinput). Bilder gehen genauso.
+
 # Fokus & Alltag
 
 ## Fokus ohne Zeit
@@ -107,12 +116,21 @@ Code: `shell/modules/bar/TodoPopout.qml`, `TodoChip.qml`, `shell/services/Notes.
 - „Ins Backlog“ (Glühbirne) nur bei Repo-Projekt: Projekt des Desktops, sonst das VS-Code-Projekt (`Context`); abgehakt erst nach Erfolg von `scripts/backlog add`.
 - Per Super+T ohne Fokus-Griff reicht die Bar die Tasten weiter: Tippen/Rücktaste/Enter landen trotzdem im Feld (`KeyNav.preKey`).
 
+## Mail öffnen, als gelesen markieren, löschen
+Code: `shell/services/Mail.qml` (`openMessage`, `markRead`, `trash`), `MailTile.qml`, Launcher `m ` · `scripts/mail-action open|seen|trash [--dry-run]` (Test `python3 scripts/tests/mail-action-test.py`), Abruf `scripts/mail-status` (liefert `uid`), Meldungen `scripts/mail-watch`
+- Tastatur: Launcher/Dashboard `m ` → ↵ öffnet in Thunderbird + gelesen, Ctrl+R nur gelesen, Ctrl+D Papierkorb (nicht Entf: löscht im Suchfeld Zeichen). Maus: Klick auf die Zeile, Häkchen/Mülleimer beim Überfahren; Meldung „Open“ / „Mark read“ / „Delete“.
+- Nie direkt `thunderbird mid:…`: Thunderbird sucht die ID nur in seinen `.msf`-Indizes – frisch gestartet „Message for message-id … not found“. `mail-action` schickt `mid:` erst, wenn die ID im `.msf` des Ordners steht (Kaltstart ≈ 30 s, Index schreibt er verzögert), sonst bleibt es nach 60 s beim Posteingang.
+- Verworfen: `imap://…/fetch>UID>…`-URL (Thunderbird 15x zeigt nur ein leeres Nachrichtenfenster), `.eml`-Kopie (hängt nicht am Ordner).
+- Gelesen = IMAP `UID STORE +FLAGS (\Seen)`; Löschen = nur diese UID in den Papierkorb (SPECIAL-USE `\Trash`, sonst Namen wie „Deleted Messages“; MOVE, iCloud kann das nicht → COPY + `\Deleted` + `UID EXPUNGE`, ohne UIDPLUS gar kein EXPUNGE). Beides nur, wenn die UID noch zur Message-ID passt (sonst Exit 3); Mail fliegt sofort aus `mail.json`.
+- Thunderbirds eigene Neue-Mail-Meldung + Ton sind aus (`mail.biff.show_alert`/`play_sound` im user.js-Block von `theme/gen/thunderbird.py`, greift nach TB-Neustart), sonst doppelt zu `mail-watch`. Zurück: Block per `thunderbird.py remove`, dann about:config → Zurücksetzen.
+
 ## Benachrichtigungen
 Code: `shell/services/NotifRules.qml`, `timewin.js` (Test `node scripts/tests/timewin-test.js`), `Notifs.qml`, `shell/modules/notifications/` · Konfig: `config/notifications.json`, eigene Werte `~/.config/desktop/notifications.json` (ersetzt je Hauptschlüssel ganz)
 - `days` = Tage, an denen ein Ruhefenster **beginnt** (wichtig über Mitternacht).
 - Dringende Meldungen werden nie versteckt, auch nicht per App-Regel `hide`. Claude-Antwort-Karten sind keine Benachrichtigungen → Ruhezeiten greifen dort nie.
 - Snooze kommt höchstens zwei auf einmal zurück und wartet Ruhezeit/Fokus/DND ab; „Tomorrow“ zwischen 00 und 05 Uhr = heute 08:00.
-- Die Shell spielt keine Töne; App-eigene Töne lassen sich von hier nicht stummschalten.
+- Ton: ein leiser, dumpfer Einzelton (`Sounds.qml`, Regeln `notifsound.js`, Test `node scripts/tests/notifsound-test.js`, Konfig-Schlüssel `sound`) nur zum sichtbaren Popup – nie in Ruhezeit/Fokus/`panel`/`hide`, nicht bei niedriger Dringlichkeit, Hint `suppress-sound` oder `skip`-Apps (Discord, Spotify klingen selbst – auch dringend), höchstens einer je 1,5 s. App-eigene Töne lassen sich von hier nicht stummschalten.
+- Probehören `scripts/sounds play [notify-urgent]`. Stream heißt `desktop-sounds` (Standard-Sink = GoXLR „System“); nie `--media-role Notification` – die Rolle merkt WirePlumber hier stumm. Sound-Theme „desktop“ für canberra-Apps: `scripts/sounds on|off` (setzt gsettings, kdeglobals `[Sounds]`, GTK-settings.ini; alte Werte in `~/.local/state/desktop/sounds-theme.prev`).
 
 ## Morgen-Übersicht
 Code: `shell/services/Morning.qml`, `shell/modules/morning/`, Logik `timewin.js` · Konfig: `~/.config/desktop/morning.json` · Zustand: `~/.local/state/desktop/morning.json`
