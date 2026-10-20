@@ -6,6 +6,11 @@ Dieselbe Shell läuft auf Hyprland statt auf KWin – mehr Leistung (360 Hz, NVI
 unverändert** (Bluetooth-/WLAN-Dienste, Dolphin, Dateidialog und Qt-Theme hängen daran) und ist der Fallback.
 Umzug und Autologin: [setup/migrate.md](../setup/migrate.md).
 
+**Autologin und KWallet:** Ohne getipptes Passwort kann pam_kwallet das Wallet nicht öffnen → Abfrage beim Start, und
+Helium/Claude Desktop starten derweil ohne ihren „Safe Storage“-Schlüssel (Secret Service) → Cookies unlesbar, überall
+ausgeloggt. Deshalb hat `kdewallet` ein **leeres Passwort** (Platte ist LUKS-verschlüsselt). Ändern: `kwalletmanager5` →
+Passwort ändern. Wer Autologin abschaltet, setzt es wieder aufs Login-Passwort (dann entsperrt PAM).
+
 ## Einrichten und zurück
 
 - Pakete (sudo) stehen in `system/packages/dnf.txt` (Abschnitt Hyprland-Sitzung). Danach ohne sudo `scripts/hypr install`,
