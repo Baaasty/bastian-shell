@@ -24,7 +24,9 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 - **Tasten-Hinweise in Popout-Fußzeilen als Kappen** – Fokus, Tasks, Dateiauswahl und Kürzel-Menü zeigen ihre Tasten noch als Fließtext; auf die gemeinsamen Kappen (`KeyCap`/`KeyTip`) umstellen (2026-10-20, Quelle: einheitliche Hotkey-Einblendungen) → umgesetzt 2026-10-20
 
 ## Verworfen
+
 <!-- mit Grund, damit sie nicht wiederkommt -->
+
 - **Quelle beim Teilen live wechseln** – „Share something else…“ im Teilen-Menü, ohne den Stream zu beenden — verworfen 2026-10-20: unter Wayland fragt Discord das Portal nicht neu (`presentDesktopSourcePicker` ist ein No-Op), der Weg über Stop + Neustart beendete den Stream; das Portal tauscht keine Quelle einer laufenden Freigabe. Einzige Möglichkeit: virtueller Bildschirm/Headless-Output, der einen Monitor spiegelt und den man intern umschaltet
 - **Login als Quickshell-Greeter** – greetd mit einem Quickshell-Greeter in einem kleinen Hyprland, Farben aus `palette.json` (`theme/gen/login.py`); nur geplant, nicht gebaut (Quelle: docs/setup/migrate.md) — verworfen 2026-10-20: Autologin, Login-Bildschirm wird nie gesehen
 - **Bootstrap ohne Plasma** – `system/packages/dnf.txt` und `system/bootstrap` auf greetd + Keep-Liste umstellen, statt Plasma neu zu holen; „eigene Runde“ (Quelle: docs/setup/migrate.md) — verworfen 2026-10-20: Plasma bleibt eh (Dolphin, Dateidialog, Bluetooth/WLAN)

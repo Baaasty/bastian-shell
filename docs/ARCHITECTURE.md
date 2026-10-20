@@ -5,24 +5,24 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 
 ## Ordner
 
-| Ordner | Rolle |
-|---|---|
-| `shell/` | Quickshell-Config. `shell.qml` = `ShellRoot`, lädt jedes Modul einmal |
-| `shell/services/` | Singletons: Daten und Zustand (`Hypr.qml`, `Desktops`, `Notifs`, `Focus`, `Discord` …), keine Oberfläche |
-| `shell/modules/` | Oberflächen, ein Ordner pro Funktion (`bar/`, `dashboard/`, `launcher/`, `workbar/`, `lock/` …) |
-| `shell/components/` | Bausteine (`Glass.qml` = Fläche, `KeyNav.qml` = Tastatur in Popouts, `Chip`, `Slider`, `Txt` …) |
-| `shell/config/` | `Config.qml` (Monitor, feste Einstellungen), `Theme.qml` (liest `theme/palette.json` live) |
-| `shell/assets/`, `shell/data/` | PAM-Datei der Sperre (`pam.d/desktop-lock`), Emoji-Liste |
-| `scripts/` | Hilfsprozesse (Python `-I`, Bash) für alles, was QML nicht kann; Tests in `scripts/tests/`, Gesamtcheck `scripts/check` |
-| `hypr/` | Hyprland-Konfig (`hyprland.conf` + Teile), `binds.conf` → `qs ipc`, `hypridle.conf`, `autostart.conf` |
-| `config/` | Konfig im Repo (`breaks.json`, `consoles.json`, `notifications.json`, `launcher/web.json`, App-Konfigs) |
-| `theme/` | `palette.json` → `theme/gen/*.py` → `theme/out/` (+ Installation nach `~/.local`), siehe `theme/README.md` |
-| `systemd/` | User-Units: Shell (`desktop-shell-hyprland.service`), Mail, Agenda, Session-Save, GoXLR, Key Light |
-| `system/` | PC neu aufsetzen: Paketlisten, Dotfiles, `bootstrap` (dry-run, `--apply`), siehe `system/README.md` |
-| `projects/` | Projekt-Registry (`projects.json` lokal, `projects.example.json` im Repo, `store.py`, nur über `scripts/project`) |
-| `profiles/` | Desktop-Vorlagen (`profiles.json` lokal, `.example` im Repo; `services/Templates.qml`) |
-| `equicord/desktopBridge/` | Discord-Plugin (Equicord): Call-Status und Kamerabilder über einen lokalen Socket an `services/Cams.qml`/`Discord.qml` |
-| `plasma/loginscreen/` | Theme des Login-Bildschirms (Plasma Login Manager), eingespielt per `scripts/loginscreen`. Der alte KWin-Weg liegt nur im Git-Tag `kwin-final` |
+| Ordner                         | Rolle                                                                                                                                          |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell/`                       | Quickshell-Config. `shell.qml` = `ShellRoot`, lädt jedes Modul einmal                                                                          |
+| `shell/services/`              | Singletons: Daten und Zustand (`Hypr.qml`, `Desktops`, `Notifs`, `Focus`, `Discord` …), keine Oberfläche                                       |
+| `shell/modules/`               | Oberflächen, ein Ordner pro Funktion (`bar/`, `dashboard/`, `launcher/`, `workbar/`, `lock/` …)                                                |
+| `shell/components/`            | Bausteine (`Glass.qml` = Fläche, `KeyNav.qml` = Tastatur in Popouts, `Chip`, `Slider`, `Txt` …)                                                |
+| `shell/config/`                | `Config.qml` (Monitor, feste Einstellungen), `Theme.qml` (liest `theme/palette.json` live)                                                     |
+| `shell/assets/`, `shell/data/` | PAM-Datei der Sperre (`pam.d/desktop-lock`), Emoji-Liste                                                                                       |
+| `scripts/`                     | Hilfsprozesse (Python `-I`, Bash) für alles, was QML nicht kann; Tests in `scripts/tests/`, Gesamtcheck `scripts/check`                        |
+| `hypr/`                        | Hyprland-Konfig (`hyprland.conf` + Teile), `binds.conf` → `qs ipc`, `hypridle.conf`, `autostart.conf`                                          |
+| `config/`                      | Konfig im Repo (`breaks.json`, `consoles.json`, `notifications.json`, `launcher/web.json`, App-Konfigs)                                        |
+| `theme/`                       | `palette.json` → `theme/gen/*.py` → `theme/out/` (+ Installation nach `~/.local`), siehe `theme/README.md`                                     |
+| `systemd/`                     | User-Units: Shell (`desktop-shell-hyprland.service`), Mail, Agenda, Session-Save, GoXLR, Key Light                                             |
+| `system/`                      | PC neu aufsetzen: Paketlisten, Dotfiles, `bootstrap` (dry-run, `--apply`), siehe `system/README.md`                                            |
+| `projects/`                    | Projekt-Registry (`projects.json` lokal, `projects.example.json` im Repo, `store.py`, nur über `scripts/project`)                              |
+| `profiles/`                    | Desktop-Vorlagen (`profiles.json` lokal, `.example` im Repo; `services/Templates.qml`)                                                         |
+| `equicord/desktopBridge/`      | Discord-Plugin (Equicord): Call-Status und Kamerabilder über einen lokalen Socket an `services/Cams.qml`/`Discord.qml`                         |
+| `plasma/loginscreen/`          | Theme des Login-Bildschirms (Plasma Login Manager), eingespielt per `scripts/loginscreen`. Der alte KWin-Weg liegt nur im Git-Tag `kwin-final` |
 
 ## Datenfluss
 
@@ -43,11 +43,11 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 
 ## Zustand und Konfiguration
 
-| Wo | Was |
-|---|---|
-| `~/.local/state/desktop/` | Laufzeit-Zustand der Shell (Desktops, To-dos, Fokus, Stats, Benachrichtigungen, Projektzeit, Morgen …) |
-| `~/.config/desktop/*.json` | lokale Einstellungen/Overrides (`lock.json`, `audio.json`, `consoles.json`, `notifications.json` …) |
-| `~/.config/desktop/hyprland.env` | `DESKTOP=<Repo-Pfad>`, angelegt von `scripts/hypr install`, gelesen von Hyprland und systemd |
+| Wo                               | Was                                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `~/.local/state/desktop/`        | Laufzeit-Zustand der Shell (Desktops, To-dos, Fokus, Stats, Benachrichtigungen, Projektzeit, Morgen …) |
+| `~/.config/desktop/*.json`       | lokale Einstellungen/Overrides (`lock.json`, `audio.json`, `consoles.json`, `notifications.json` …)    |
+| `~/.config/desktop/hyprland.env` | `DESKTOP=<Repo-Pfad>`, angelegt von `scripts/hypr install`, gelesen von Hyprland und systemd           |
 
 ## Start
 
