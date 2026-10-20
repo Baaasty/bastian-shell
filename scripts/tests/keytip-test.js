@@ -1,7 +1,7 @@
 // Funktionsprüfung für shell/components/keytip.js:  node scripts/tests/keytip-test.js
 const fs = require("fs"), path = require("path");
 const src = fs.readFileSync(path.join(__dirname, "../../shell/components/keytip.js"), "utf8").replace(/^\.pragma library\s*$/m, "");
-const K = new Function(src + "; return { parts };")();
+const K = new Function(src + "; return { parts, keys };")();
 
 let fails = 0;
 function eq(name, got, want) {
@@ -21,6 +21,9 @@ eq("leer", K.parts(""), []);
 eq("undefined", K.parts(undefined), []);
 eq("Plus im Text bleibt Text", K.parts("C++ · a+b"), [t("C++"), sep, t("a+b")]);
 eq("Modifier ohne Taste ist kein Kürzel", K.parts("Super+"), [t("Super+")]);
+eq("Hinweis-Taste einzeln", K.keys("Esc"), [k("Esc", true)]);
+eq("Hinweis-Kürzel", K.keys("Shift+↵"), [k("Shift"), plus, k("↵", true)]);
+eq("Hinweis leer", K.keys(""), []);
 eq("leere Abschnitte fallen weg", K.parts("A ·  · Super+Z"), [t("A"), sep, k("Super"), plus, k("Z", true)]);
 
 if (fails) {

@@ -1,45 +1,48 @@
 import QtQuick
 import qs.config
 
-// Ein Tastenkästchen („Keycap“): helle Kappe über einer dunkleren Holzkante, Mono-Schrift.
-// Eine Optik für alle Tasten-Einblendungen: Kürzel-Menü (normal), Tooltips und Bar-Modus (small) – damit
-// dieselbe Taste überall gleich aussieht
+// Ein Tastenkästchen („Keycap“): dunkle Mulde (surfaceSunken) mit dunkler Fuge darunter, Mono-Schrift.
+// Die einzige Tasten-Optik der Shell: Hinweiszeilen (KeyHintRow), Super+K, Tooltips (KeyTip) und Bar-Modus (KeyHint) –
+// damit dieselbe Taste überall gleich aussieht. Haupttaste warm (accentText), Modifier leise (textMuted).
+// small: kompakt für Chip-Buchstaben und Tooltips
 Item {
     id: cap
 
     property string label
-    property bool main: false   // eigentliche Taste (heller) statt Modifier
+    property bool main: false   // eigentliche Taste (warm) statt Modifier
     property bool small: false  // kompakt: Tooltip (KeyTip) und Buchstabe am Chip (KeyHint)
 
-    readonly property int capHeight: small ? 18 : 26
+    readonly property int capHeight: small ? Theme.keyCapHeightSm : Theme.keyCapHeight
+    readonly property int pad: small ? Theme.space1 : Theme.space2
 
-    implicitWidth: Math.max(small ? 18 : 26, txt.implicitWidth + (small ? 10 : 16))
-    implicitHeight: capHeight + 2
+    implicitWidth: Math.max(capHeight + Theme.keyCapLip, txt.implicitWidth + 2 * pad)
+    implicitHeight: capHeight + Theme.keyCapLip
 
-    // Kante unten (Holz)
+    // Fuge unten (eine Stufe dunkler als die Mulde): gibt der Kappe Tiefe ohne Glanz
     Rectangle {
-        y: 2
+        y: Theme.keyCapLip
         width: parent.width
         height: cap.capHeight
-        radius: cap.small ? 5 : 7
-        color: Qt.tint(Theme.surface, Qt.alpha(Theme.wood, 0.7))   // deckend, auch über der Bar-Kante
+        radius: face.radius
+        color: Theme.keyLip
     }
     // Kappe
     Rectangle {
+        id: face
         width: parent.width
         height: cap.capHeight
-        radius: cap.small ? 5 : 7
-        color: Qt.tint(Theme.surface, Qt.alpha(Theme.text, cap.main ? 0.12 : 0.07))
+        radius: Theme.radiusXs
+        color: Theme.surfaceSunken
         border.width: 1
-        border.color: Theme.border
+        border.color: Theme.borderStrong
 
         MonoTxt {
             id: txt
             anchors.centerIn: parent
             text: cap.label
-            font.pixelSize: cap.small ? 11 : 12
-            font.weight: cap.main && cap.small ? Font.Bold : Font.Normal
-            color: cap.main ? Theme.text : Theme.textMuted
+            font.pixelSize: cap.small ? Theme.fontXs : Theme.fontSm
+            font.weight: cap.main ? Font.DemiBold : Font.Medium
+            color: cap.main ? Theme.accentText : Theme.textMuted
         }
     }
 }

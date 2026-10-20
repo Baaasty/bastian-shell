@@ -151,13 +151,12 @@ PopupWindow {
 
             Item {
                 width: col.width
-                height: 30
-                Txt {
+                height: Theme.iconButton
+                PopoutTitle {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
+                    icon: "screen_share"
                     text: "Screen sharing"
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
                 }
                 Button {
                     anchors.right: parent.right
@@ -212,7 +211,7 @@ PopupWindow {
                                 elide: Text.ElideRight
                                 text: "sees " + shareRow.what
                                 color: Theme.textMuted
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                             }
                         }
                         Button {
@@ -237,7 +236,7 @@ PopupWindow {
                 wrapMode: Text.WordWrap
                 text: "To share something else: stop and share again in the app."
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
             }
 
             Rectangle {
@@ -249,13 +248,13 @@ PopupWindow {
             Txt {
                 text: "Remembered choices"
                 color: Theme.textMuted
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
             }
             Txt {
                 visible: pop.memApps.length === 0
                 text: "None – the picker asks every time."
                 color: Theme.textFaint
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
             }
             Repeater {
                 model: pop.memApps

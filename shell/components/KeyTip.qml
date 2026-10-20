@@ -15,13 +15,13 @@ Glass {
 
     strong: true
     radius: Theme.radiusMd
-    width: row.implicitWidth + 24
-    height: 30
+    width: row.implicitWidth + 2 * Theme.padCard
+    height: Theme.buttonHeightSm
 
     Row {
         id: row
         anchors.centerIn: parent
-        spacing: 5
+        spacing: Theme.space1
 
         Repeater {
             model: card.parts || KT.parts(card.text)
@@ -32,8 +32,8 @@ Glass {
                 required property var modelData
                 readonly property string kind: modelData.kind
                 anchors.verticalCenter: parent ? parent.verticalCenter : undefined
-                implicitWidth: kind === "key" ? cap.implicitWidth : kind === "sep" ? word.implicitWidth + 6 : word.implicitWidth
-                implicitHeight: kind === "key" ? cap.implicitHeight : 18
+                implicitWidth: kind === "key" ? cap.implicitWidth : kind === "sep" ? word.implicitWidth + Theme.space2 : word.implicitWidth
+                implicitHeight: kind === "key" ? cap.implicitHeight : word.implicitHeight
 
                 Txt {
                     id: word
@@ -41,8 +41,8 @@ Glass {
                     anchors.centerIn: parent
                     text: part.kind === "sep" ? "·" : part.kind === "plus" ? "+" : (part.modelData.text || "")
                     color: part.kind === "text" ? card.textColor : Theme.textFaint
-                    font.pixelSize: part.kind === "plus" ? 11 : 12
-                    font.weight: Font.Normal
+                    font.pixelSize: part.kind === "plus" ? Theme.fontXs : Theme.fontSm
+                    font.weight: part.kind === "text" ? Font.Medium : Font.Normal
                     elide: Text.ElideNone
                 }
                 KeyCap {

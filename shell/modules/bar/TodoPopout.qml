@@ -210,7 +210,7 @@ PopupWindow {
             visible: ab.asking
             text: "Delete?"
             color: Theme.error
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
         MouseArea {
             id: abArea
@@ -289,7 +289,7 @@ PopupWindow {
                 visible: text !== ""
                 text: tr.hint !== "" ? tr.hint : pop.when(tr.modelData)
                 color: tr.hint !== "" ? Theme.accentText : Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -488,15 +488,18 @@ PopupWindow {
             }
             Item {
                 width: head.width
-                height: 16
-                Txt {
-                    x: 4
-                    anchors.verticalCenter: parent.verticalCenter
+                height: todoHints.implicitHeight
+                // Tastenzeile; bricht vor einer kurzen Rückmeldung (flashTxt) rechts um statt sie zu überdecken
+                Item {
+                    x: Theme.space1
                     width: parent.width - flashTxt.implicitWidth - 16
-                    text: "Enter park · t … = task · ↓ work through · Esc close"
-                    color: Theme.textFaint
-                    font.pixelSize: 12
-                    font.weight: Font.Normal
+                    height: parent.height
+                    KeyHintRow {
+                        id: todoHints
+                        width: parent.width
+                        gap: Theme.space3
+                        hints: [["Enter", "park"], ["t …", "task"], ["↓", "work through"], ["Esc", "close"]]
+                    }
                 }
                 Txt {
                     id: flashTxt
@@ -505,7 +508,7 @@ PopupWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     text: pop.flashText
                     color: pop.flashError ? Theme.error : Theme.accentText
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                 }
             }
         }
@@ -543,7 +546,7 @@ PopupWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Notes.openCount
                         color: Theme.textFaint
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                     }
                 }
                 Column {

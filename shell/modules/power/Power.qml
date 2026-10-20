@@ -185,26 +185,14 @@ Scope {
                                     visible: tileItem.on
                                 }
 
-                                // Tastenbuchstabe
-                                Rectangle {
+                                // Tastenbuchstabe: dieselbe Kappe wie überall
+                                KeyCap {
                                     anchors.top: parent.top
                                     anchors.topMargin: 12
                                     anchors.right: parent.right
                                     anchors.rightMargin: 14
-                                    width: keyTxt.implicitWidth + 12
-                                    height: keyTxt.implicitHeight + 4
-                                    radius: Theme.radii.xs || 6
-                                    color: "transparent"
-                                    border.width: 1
-                                    border.color: Theme.borderStrong
-
-                                    MonoTxt {
-                                        id: keyTxt
-                                        anchors.centerIn: parent
-                                        text: tileItem.modelData.key
-                                        color: Theme.textFaint
-                                        font.pixelSize: 12
-                                    }
+                                    main: true
+                                    label: tileItem.modelData.key
                                 }
 
                                 Column {
@@ -220,7 +208,7 @@ Scope {
                                     Txt {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                         text: tileItem.modelData.label
-                                        font.pixelSize: 14
+                                        font.pixelSize: Theme.fontMd
                                     }
                                 }
 
@@ -258,18 +246,15 @@ Scope {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Focus block still running · " + root.focusLeft + " min left"
                                 color: Theme.warning
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontMd
                                 font.weight: Font.Normal
                             }
                         }
                     }
 
-                    Txt {
+                    KeyHintRow {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Esc to close · Arrow keys + Enter"
-                        color: Theme.textFaint
-                        font.pixelSize: 12
-                        font.weight: Font.Normal
+                        hints: [["←→", "choose"], ["Enter", "run"], ["Esc", "close"]]
                     }
                 }
             }

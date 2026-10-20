@@ -681,7 +681,7 @@ Scope {
                     id: sizeTxt
                     anchors.centerIn: parent
                     text: Math.round(root.selW) + " × " + Math.round(root.selH) + "   " + Math.round(win.lx) + ", " + Math.round(win.ly)
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                 }
             }
 
@@ -706,36 +706,38 @@ Scope {
                     Rectangle {
                         id: act
                         required property var modelData
-                        width: actRow.implicitWidth + 20
-                        height: 30
+                        width: actRow.implicitWidth + 2 * Theme.space3
+                        height: Theme.buttonHeightSm
                         radius: Theme.radiusSm
-                        color: actArea.containsMouse ? Theme.raise : Theme.glassStrong
-                        border.width: 1
-                        // Hauptaktion bzw. gewähltes Werkzeug (Text/Anpinnen statt Kopieren) mit Akzentrand
+                        // Hauptaktion bzw. gewähltes Werkzeug (Text/Anpinnen statt Kopieren): Akzentfläche wie ein
+                        // eingeschalteter Knopf (Button „on“), sonst deckend wie die Leiste
                         readonly property bool chosen: act.modelData[3] === 0
                             || (actions.tools && (act.modelData[3] === 3 && root.intent === "text" || act.modelData[3] === 5 && root.intent === "pin"))
-                        border.color: chosen ? Qt.alpha(Theme.accent, 0.55) : Theme.border
+                        color: chosen ? Theme.accentFill : actArea.containsMouse ? Theme.surfaceRaised : Theme.glassStrong
+                        border.width: chosen ? 0 : 1
+                        border.color: actArea.containsMouse ? Theme.borderStrong : Theme.border
                         Row {
                             id: actRow
                             anchors.centerIn: parent
-                            spacing: 6
+                            spacing: Theme.space2
                             Icon {
                                 anchors.verticalCenter: parent.verticalCenter
                                 name: act.modelData[0]
-                                size: 16
-                                color: act.modelData[3] === 0 ? Theme.accentText : Theme.text
+                                size: Theme.iconSize
+                                color: act.chosen ? Theme.accentText : Theme.text
                             }
                             Txt {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: text !== ""
                                 text: act.modelData[1]
-                                font.pixelSize: 12
+                                color: act.chosen ? Theme.accentText : Theme.text
+                                font.pixelSize: Theme.fontSm
                             }
-                            MonoTxt {
+                            KeyCap {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: act.modelData[2]
-                                color: Theme.textFaint
-                                font.pixelSize: 11
+                                small: true
+                                main: true
+                                label: act.modelData[2]
                             }
                         }
                         MouseArea {
@@ -767,35 +769,51 @@ Scope {
                 }
             }
 
-            // Hinweis
-            Rectangle {
+            // Hinweis oben: kurzer Satz + Tastenzeile, dieselbe Hinweis-Karte wie in der Bar (KeyHintRow)
+            Glass {
+                id: hintCard
+                // Arrows/Shift/Ctrl stehen als Kappen, Maus-Gesten als Text davor
+                readonly property string arrows: "←↑↓→"
+                readonly property string lead: root.mode === "key" && !root.pickMode ? ""
+                    : root.recordMode ? (root.mode === "adjust" ? "Drag edges" : "Select area to record · click = whole screen")
+                    : root.pickMode ? "Click to copy the color"
+                    : root.mode === "adjust" ? ""
+                    : (root.intent === "text" ? "Select the text to read" : root.intent === "pin" ? "Select the area to pin" : "Drag to select") + " · click = whole screen"
+                readonly property var hints: root.mode === "key" && !root.pickMode
+                    ? [[arrows, "move the end"], ["Shift", "10 px"], ["Enter", "done"], ["Esc", "back"]]
+                    : root.recordMode
+                    ? (root.mode === "adjust"
+                        ? [["Enter", "record"], [arrows, "corner"], ["Ctrl+" + arrows, "move all"], ["Shift", "10 px"], ["Esc", "cancel"]]
+                        : [[arrows, "aim"], ["Shift", "fine · 10 px"], ["Enter", "start"], ["Esc", "cancel"]])
+                    : root.pickMode
+                        ? [["Enter", "copy"], [arrows, "aim"], ["Shift", "fine · 10 px"], ["Esc", "back"]]
+                        : root.mode === "adjust"
+                            ? [["Enter", root.intent === "text" ? "read text" : root.intent === "pin" ? "pin" : "copy"], ["S", "save"], ["T", "text"], ["C", "color"], ["P", "pin"], [arrows, "corner"], ["Ctrl+" + arrows, "move"], ["Shift", "10 px"], ["Esc", "cancel"]]
+                            : (root.intent === "copy" ? [["T", "text"], ["C", "color"], ["P", "pin"]] : [["C", "color"]])
+                                .concat([[arrows, "aim"], ["Shift", "fine · 10 px"], ["Enter", "start"], ["Esc", "cancel"]])
                 visible: !root.dragging
+                strong: true
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: root.hasSel && win.ly < 100 ? parent.height - 80 : 40
-                width: hint.implicitWidth + 32
-                height: 40
-                radius: 20
-                color: Theme.glassStrong
-                border.width: 1
-                border.color: Theme.border
-                Txt {
-                    id: hint
+                width: hintLine.implicitWidth + 2 * Theme.padCard
+                height: hintLine.implicitHeight + 2 * Theme.space2
+                radius: Theme.radiusMd
+                Row {
+                    id: hintLine
                     anchors.centerIn: parent
-                    text: root.mode === "key" && !root.pickMode
-                        ? "Arrows move the end (Shift 10 px) · Enter done · Esc back"
-                        : root.recordMode
-                        ? (root.mode === "adjust"
-                            ? "Enter record · Arrows move the corner · Ctrl+Arrows move all · Shift 10 px · Drag edges · Esc"
-                            : "Select area to record · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc")
-                        : root.pickMode
-                            ? "Click or Enter: copy the color · Arrows aim (Shift 10 px) · Shift = fine aim · Esc back"
-                            : root.mode === "adjust"
-                                ? "Enter " + (root.intent === "text" ? "read text" : root.intent === "pin" ? "pin" : "copy") + " · S save · T text · C color · P pin · Arrows corner · Ctrl+Arrows move · Shift 10 px · Esc cancel"
-                                : (root.intent === "text" ? "Select the text to read" : root.intent === "pin" ? "Select the area to pin" : "Drag to select")
-                                    + (root.intent === "copy" ? " · T text · C color · P pin" : " · C color")
-                                    + " · Arrows aim (Shift 10 px) · Enter start · Shift = fine aim · Click = whole screen · Esc cancel"
-                    color: Theme.textMuted
-                    font.weight: Font.Normal
+                    spacing: Theme.space4
+                    Txt {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: hintCard.lead !== ""
+                        text: hintCard.lead
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSm
+                    }
+                    KeyHintRow {
+                        anchors.verticalCenter: parent.verticalCenter
+                        gap: Theme.space3
+                        hints: hintCard.hints
+                    }
                 }
             }
 
@@ -919,7 +937,7 @@ Scope {
                         anchors.verticalCenter: parent.verticalCenter
                         text: probe.hex !== "" ? probe.hex : "…"
                         color: Theme.text
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                     }
                 }
                 MonoTxt {
@@ -928,7 +946,7 @@ Scope {
                     anchors.bottomMargin: 5
                     text: win.mx + ", " + win.my
                     color: Theme.textMuted
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                 }
             }
 

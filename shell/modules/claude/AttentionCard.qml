@@ -328,7 +328,7 @@ Glass {
                     anchors.verticalCenter: parent.verticalCenter
                     text: card.e.project || "Claude"
                     color: headArea.containsMouse ? Theme.text : Theme.textMuted
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.DemiBold
                     Behavior on color { ColorAnimation { duration: Theme.fade } }
                 }
@@ -336,7 +336,7 @@ Glass {
                     anchors.verticalCenter: parent.verticalCenter
                     text: (card.isQuestion ? "question" : (card.e.toolLabel || card.e.tool || "")) + (card.e.agent ? " · subagent" : "")
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     width: Math.min(implicitWidth, card.width - 200)
                 }
@@ -360,7 +360,7 @@ Glass {
                     anchors.verticalCenter: parent.verticalCenter
                     text: card.age()
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                     visible: !hover.hovered
                 }
                 // Glut: atmet leise, solange Claude wartet
@@ -404,7 +404,7 @@ Glass {
             width: parent.width
             visible: !card.isQuestion
             text: card.title()
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontMd
             font.weight: Font.DemiBold
         }
         Rectangle {
@@ -450,7 +450,7 @@ Glass {
                     elide: Text.ElideRight
                     color: Theme.text
                     font.family: card.e.mono === false ? Theme.fontUi : Theme.fontMono
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     lineHeight: 1.15
                 }
             }
@@ -469,7 +469,7 @@ Glass {
                 : card.showAll ? "Showing all " + detailMeasure.lineCount + " lines · " + card.detailText.length + " chars · show less"
                 : "Truncated: +" + (detailMeasure.lineCount - 4) + " lines (" + card.detailText.length + " chars) – show all to allow"
             color: card.canAllow ? Theme.textFaint : Theme.warning
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
             TapHandler {
                 enabled: card.clipped && !card.gateCut
@@ -521,7 +521,7 @@ Glass {
             visible: !card.isQuestion && card.e.canAlways === true && !!card.e.alwaysNote
             text: "always: " + (card.e.alwaysNote || "")
             color: Theme.textFaint
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
             font.weight: Font.Normal
         }
 
@@ -545,9 +545,10 @@ Glass {
                     height: 24
                     width: tabRow.implicitWidth + 20
                     radius: height / 2
-                    color: cur ? Theme.accentSoft : tabArea.containsMouse ? Qt.alpha(Theme.text, 0.1) : Theme.raise
-                    border.width: 1
-                    border.color: cur ? Qt.alpha(Theme.accent, 0.55) : Theme.border
+                    // gewählter Reiter wie ein eingeschalteter Knopf (accentFill, ohne Rand)
+                    color: cur ? Theme.accentFill : tabArea.containsMouse ? Qt.alpha(Theme.text, 0.1) : Theme.raise
+                    border.width: cur ? 0 : 1
+                    border.color: Theme.border
                     Behavior on color { ColorAnimation { duration: Theme.fade } }
 
                     Row {
@@ -566,7 +567,7 @@ Glass {
                             text: tabPill.modelData.header || ("Q" + (tabPill.index + 1))
                             width: Math.min(implicitWidth, (body.width - 6 * (card.questions.length - 1)) / card.questions.length - 38)
                             color: tabPill.cur ? Theme.accentText : Theme.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                         }
                     }
                     MouseArea {
@@ -600,7 +601,7 @@ Glass {
                 Label {
                     visible: !!qcol.q.header && !card.tabbed
                     text: qcol.q.header + (qcol.q.multiSelect ? "  ·  pick any" : "")
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                 }
                 Text {
                     width: parent.width
@@ -611,7 +612,7 @@ Glass {
                     elide: Text.ElideRight
                     color: Theme.text
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     font.weight: Font.DemiBold
                     lineHeight: 1.15
                 }
@@ -619,7 +620,7 @@ Glass {
                     visible: card.tabbed && qcol.q.multiSelect
                     text: "pick any"
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                     font.weight: Font.Normal
                 }
 
@@ -634,9 +635,10 @@ Glass {
                         width: qcol.width
                         height: optCol.implicitHeight + 14
                         radius: Theme.radiusMd
-                        color: picked ? Theme.accentSoft : optArea.containsMouse ? Qt.alpha(Theme.text, 0.1) : Theme.raise
-                        border.width: 1
-                        border.color: picked ? Qt.alpha(Theme.accent, 0.55) : Theme.border
+                        // gewählte Antwort = Kachel mit Fokus: deckende Akzentfläche + Glut-Rand
+                        color: picked ? Theme.accentFill : optArea.containsMouse ? Qt.alpha(Theme.text, 0.1) : Theme.raise
+                        border.width: picked ? 2 : 1
+                        border.color: picked ? Theme.accent : Theme.border
                         Behavior on color { ColorAnimation { duration: Theme.fade } }
 
                         Icon {
@@ -671,7 +673,7 @@ Glass {
                                 elide: Text.ElideRight
                                 color: Theme.textFaint
                                 font.family: Theme.fontUi
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                             }
                         }
                         MouseArea {
@@ -817,7 +819,7 @@ Glass {
             text: card.blocker || card.hint
             color: card.blocker ? Theme.warning : Theme.textFaint
             wrapMode: Text.WordWrap
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
         }
         Row {

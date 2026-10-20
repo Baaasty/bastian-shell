@@ -282,77 +282,18 @@ PopupWindow {
 
     // ---------- Bausteine ----------
     // Textknopf (Start / Stop / Cancel)
-    component Btn: Rectangle {
-        id: bt
-        property string text
-        property string icon
-        property string tone: "plain"                  // plain | danger | primary
-        property bool small: false
-        signal clicked()
-        width: btRow.implicitWidth + (small ? 20 : 30)
-        height: small ? 28 : 34
-        radius: height / 2
-        opacity: enabled ? 1 : 0.5
-        color: tone === "danger" ? Theme.flat(Qt.alpha(Theme.error, btArea.containsMouse ? 0.42 : 0.3))
-             : tone === "primary" ? Theme.accentFill
-             : btArea.containsMouse ? Theme.surfaceRaised : Theme.surface
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Row {
-            id: btRow
-            anchors.centerIn: parent
-            spacing: 5
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: bt.icon !== ""
-                name: bt.icon
-                size: 15
-                color: bt.tone === "primary" ? Theme.accentText : Theme.textMuted
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: bt.text !== ""
-                text: bt.text
-                font.pixelSize: bt.small ? 12 : 13
-                color: bt.tone === "primary" ? Theme.accentText : Theme.text
-            }
-        }
-        MouseArea {
-            id: btArea
-            anchors.fill: parent
-            enabled: bt.enabled
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: bt.clicked()
-        }
+    // Knopf = der gemeinsame Button (Design-System light); tone bleibt die Sprache dieses Popouts
+    component Btn: Button {
+        property string tone: "plain"                  // plain | on | danger | primary
+        kind: tone === "danger" ? "danger" : tone === "primary" ? "primary" : tone === "on" ? "on" : "secondary"
     }
 
-    // runder Symbolknopf in einer Zeile (Öffnen, Log, Neustart, Stopp)
-    component IconBtn: Rectangle {
-        id: ib
-        property string icon
+    // Symbolknopf in einer Zeile (Öffnen, Log, Neustart, Stopp)
+    component IconBtn: Button {
         property string tip
         property bool danger: false
-        signal clicked()
-        width: 30
-        height: 30
-        radius: 15
-        opacity: enabled ? 1 : 0.5
-        color: ibArea.containsMouse ? (danger ? Theme.flat(Qt.alpha(Theme.error, 0.3)) : Theme.surfaceRaised) : "transparent"
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Icon {
-            anchors.centerIn: parent
-            name: ib.icon
-            size: 17
-            color: ibArea.containsMouse ? Theme.text : Theme.textMuted
-        }
-        MouseArea {
-            id: ibArea
-            anchors.fill: parent
-            enabled: ib.enabled
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: ib.clicked()
-        }
+        small: true
+        kind: danger && hovered ? "danger" : "ghost"
     }
 
     // Port als Mono-Pille
@@ -367,7 +308,7 @@ PopupWindow {
             anchors.centerIn: parent
             text: parent.port > 0 ? ":" + parent.port : "–"
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
     }
 
@@ -384,7 +325,7 @@ PopupWindow {
             anchors.centerIn: parent
             text: parent.text
             color: parent.on ? Theme.success : Theme.textFaint
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
         }
     }
 
@@ -430,7 +371,7 @@ PopupWindow {
                 width: parent.width
                 text: pop.confirm ? pop.confirm.hint : ""
                 color: Theme.textMuted
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 wrapMode: Text.WordWrap
                 elide: Text.ElideNone
@@ -440,7 +381,7 @@ PopupWindow {
                 visible: text !== ""
                 text: pop.confirm ? pop.confirm.warn : ""
                 color: Theme.warning
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 wrapMode: Text.WordWrap
                 elide: Text.ElideNone
@@ -477,7 +418,7 @@ PopupWindow {
             text: parent.open ? ":" + parent.p.host + (parent.p.host === parent.p.container ? "" : "→" + parent.p.container)
                 : String(parent.p.container)
             color: parent.open ? Theme.textMuted : Theme.textFaint
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
         }
     }
 
@@ -505,7 +446,7 @@ PopupWindow {
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
                 text: up.on ? "root" : (up.login || "user")
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontXs
                 font.weight: Font.Normal
                 color: up.on ? Theme.accentText : Theme.textMuted
             }
@@ -542,7 +483,7 @@ PopupWindow {
                         + " running · " + sc.d.engines.join(", ") + " as " + sc.d.user
                 color: sc.d && !sc.d.ok ? Theme.warning : Theme.textFaint
                 elide: Text.ElideRight
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Row {
@@ -585,13 +526,13 @@ PopupWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             text: cg.modelData.name
                             font.weight: Font.DemiBold
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontSm
                         }
                         Txt {
                             anchors.verticalCenter: parent.verticalCenter
                             text: cg.modelData.running + "/" + cg.modelData.total + " running"
                             color: cg.modelData.running > 0 ? Theme.success : Theme.textFaint
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontXs
                             font.weight: Font.Normal
                         }
                     }
@@ -629,7 +570,7 @@ PopupWindow {
                                 width: parent.width
                                 text: ct.c.name
                                 elide: Text.ElideRight
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontSm
                                 color: ct.c.running ? Theme.text : Theme.textMuted
                             }
                             MonoTxt {
@@ -637,7 +578,7 @@ PopupWindow {
                                 text: (ct.c.image || "").replace(/^docker\.io\/(library\/)?/, "") + " · " + ct.c.status
                                 elide: Text.ElideRight
                                 color: Theme.textFaint
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontXs
                             }
                         }
                         Row {
@@ -658,7 +599,7 @@ PopupWindow {
                                 visible: (ct.c.ports || []).length > 3
                                 text: "+" + ((ct.c.ports || []).length - 3)
                                 color: Theme.textFaint
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontXs
                             }
                         }
                     }
@@ -720,7 +661,7 @@ PopupWindow {
                     text: (sr.s.cmd || "") + (sr.s.how === "port" ? "   · by port" : "")
                     elide: Text.ElideRight
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                 }
             }
             Row {
@@ -814,7 +755,7 @@ PopupWindow {
                     text: (cr.showProject && cr.c.project ? pop.projectName(cr.c.project) + " · " : "") + (cr.c.image || "").replace(/^docker\.io\/(library\/)?/, "")
                     elide: Text.ElideRight
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                 }
             }
             Row {
@@ -901,17 +842,10 @@ PopupWindow {
                 id: titleLeft
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
-                Icon {
+                PopoutTitle {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: "dns"
-                    size: 22
-                    color: Theme.accentText
-                }
-                Txt {
-                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "dns"
                     text: "Dev services"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
                 }
             }
             Row {
@@ -956,7 +890,7 @@ PopupWindow {
                     selectionColor: Theme.accentSoft
                     selectedTextColor: Theme.text
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     clip: true
                     onTextChanged: pop.query = text
                     Keys.onEscapePressed: {
@@ -972,7 +906,7 @@ PopupWindow {
                         visible: ti.text === ""
                         text: "Search…"
                         color: Theme.textFaint
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontMd
                         font.weight: Font.Normal
                     }
                 }
@@ -1077,7 +1011,7 @@ PopupWindow {
                                             visible: !!grp.unit
                                             text: grp.unit ? (grp.unit.sub === "running" && grp.modelData.servers.length === 0 ? "starting…" : "via " + grp.unit.unit) : ""
                                             color: Theme.textFaint
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSm
                                             font.weight: Font.Normal
                                         }
                                     }
@@ -1164,7 +1098,7 @@ PopupWindow {
                                     + (idleRow.modelData.port ? "  · :" + idleRow.modelData.port : "")
                                 elide: Text.ElideRight
                                 color: Theme.textFaint
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontXs
                             }
                             Btn {
                                 id: idleBtn
@@ -1286,7 +1220,7 @@ PopupWindow {
                                         text: pr.modelData.sub || ""
                                         elide: Text.ElideMiddle
                                         color: Theme.textFaint
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontXs
                                     }
                                     Row {
                                         id: prRight
@@ -1310,7 +1244,7 @@ PopupWindow {
                                             text: pr.modelData.project ? pop.projectName(pr.modelData.project)
                                                 : pr.modelData.kind === "app" ? "app" : pr.modelData.kind === "container" ? "container" : "other"
                                             color: Theme.textFaint
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSm
                                             font.weight: Font.Normal
                                         }
                                     }
@@ -1398,7 +1332,7 @@ PopupWindow {
                                         text: cn.ok ? Servers.host(cn.modelData.url) : "no URL yet · ~/.config/desktop/consoles.json"
                                         elide: Text.ElideMiddle
                                         color: cn.ok ? Theme.textFaint : Theme.warning
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontXs
                                     }
                                     Txt {
                                         id: cnLabel
@@ -1408,7 +1342,7 @@ PopupWindow {
                                         width: Math.min(implicitWidth, 150)
                                         text: cn.modelData.label || ""
                                         color: Theme.textFaint
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                         font.weight: Font.Normal
                                     }
                                 }
@@ -1520,7 +1454,7 @@ PopupWindow {
                                                     visible: sh.s.last > 0
                                                     text: Servers.ago(sh.s.last)
                                                     color: Theme.textFaint
-                                                    font.pixelSize: 11
+                                                    font.pixelSize: Theme.fontXs
                                                     font.weight: Font.Normal
                                                 }
                                             }
@@ -1530,7 +1464,7 @@ PopupWindow {
                                                     : Servers.where(sh.s) + (shUser.on ? " · then su" : "")
                                                 elide: Text.ElideMiddle
                                                 color: sh.busy ? Theme.accentText : Theme.textFaint
-                                                font.pixelSize: 11
+                                                font.pixelSize: Theme.fontXs
                                             }
                                         }
                                         Row {
@@ -1543,7 +1477,7 @@ PopupWindow {
                                                 small: true
                                                 icon: "upload"
                                                 text: "Upload"
-                                                tone: sh.recent ? "primary" : "plain"
+                                                tone: sh.recent ? "on" : "plain"
                                                 enabled: !Servers.uploading
                                                 onClicked: pop.run(() => Servers.upload(sh.s.name))
                                             }
@@ -1612,7 +1546,7 @@ PopupWindow {
                 color: srv ? (Servers.note !== "" || Servers.uploading ? Theme.accentText : Theme.textFaint)
                     : DevServices.note === "" ? Theme.textFaint : DevServices.noteOk ? Theme.accentText : Theme.warning
                 elide: Text.ElideRight
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }

@@ -21,7 +21,7 @@ Item {
         Txt {
             width: parent.width
             text: row.modelData.title
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontMd
             font.weight: Font.Medium
             wrapMode: Text.WordWrap
             maximumLineCount: 2
@@ -31,7 +31,7 @@ Item {
             width: parent.width
             text: row.modelData.sub
             color: Theme.textFaint
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
             wrapMode: Text.NoWrap
         }
@@ -41,7 +41,7 @@ Item {
         id: chordCol
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 6
+        spacing: Theme.space1
 
         Repeater {
             model: row.modelData.chords
@@ -62,10 +62,9 @@ Item {
                         KeyCap { label: modItem.modelData }
                         Txt {
                             anchors.verticalCenter: parent.verticalCenter
-                            height: 28
                             text: "+"
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontXs
                         }
                     }
                 }
@@ -79,10 +78,10 @@ Item {
                 }
                 Txt {
                     visible: chord.modelData.tag !== ""
-                    height: 28
+                    anchors.verticalCenter: parent.verticalCenter
                     text: chord.modelData.tag
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }

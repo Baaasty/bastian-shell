@@ -14,9 +14,8 @@ Rectangle {
 
     height: 54
     radius: Theme.radiusMd
-    color: selected ? Theme.accentSoft : area.containsMouse ? Theme.raise : "transparent"
-    border.width: selected ? 1 : 0
-    border.color: Qt.alpha(Theme.accent, 0.35)
+    // gewählte Zeile = deckende Akzentfläche (wie jede Listenauswahl)
+    color: selected ? Theme.accentFill : area.containsMouse ? Theme.raise : "transparent"
     Behavior on color { ColorAnimation { duration: Theme.fade } }
 
     FavIcon {
@@ -41,13 +40,13 @@ Rectangle {
         Txt {
             width: parent.width
             text: row.modelData.title
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontMd
             color: Theme.text
         }
         Txt {
             width: parent.width
             text: [row.modelData.user, row.domain].filter(x => x).join("  ·  ") || "—"
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
             color: Theme.textFaint
         }

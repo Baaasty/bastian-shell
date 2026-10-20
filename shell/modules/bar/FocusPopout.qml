@@ -196,7 +196,7 @@ PopupWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 text: pk.text
                 color: pk.current ? Theme.accentText : Theme.text
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             // x zum Vergessen, nur beim Drüberfahren (Platz bleibt reserviert, damit nichts springt)
@@ -250,7 +250,7 @@ PopupWindow {
             selectionColor: Theme.accentSoft
             selectedTextColor: Theme.text
             font.family: Theme.fontUi
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontMd
             clip: true
             Keys.onReturnPressed: pop.go()
             Keys.onEnterPressed: pop.go()
@@ -260,7 +260,7 @@ PopupWindow {
                 visible: ti.text === ""
                 text: fld.placeholder
                 color: Theme.textFaint
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontMd
                 font.weight: Font.Normal
             }
         }
@@ -298,11 +298,12 @@ PopupWindow {
             // Kopf: Titel · heute
             Item {
                 width: col.width
-                height: 22
-                Label {
+                height: Theme.iconButton
+                PopoutTitle {
                     anchors.left: parent.left
-                    anchors.leftMargin: 4
+                    anchors.leftMargin: Theme.space1
                     anchors.verticalCenter: parent.verticalCenter
+                    icon: "timer"
                     text: "Focus"
                 }
                 Txt {
@@ -311,7 +312,7 @@ PopupWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Today " + Focus.focusMin + " / " + Focus.goalMin + " min · block " + Focus.block + "/" + Focus.blocksPerRound
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }
@@ -346,14 +347,14 @@ PopupWindow {
                         width: parent.width
                         text: "Focus without timer"
                         color: Focus.openOn ? Theme.accentText : Theme.text
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontMd
                         elide: Text.ElideRight
                     }
                     Txt {
                         width: parent.width
                         text: Focus.openOn ? "On for " + Focus.sinceLabel(Focus.elapsed) + " · Enter turns it off" : "On until you turn it off"
                         color: Theme.textFaint
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                         elide: Text.ElideRight
                     }
@@ -393,7 +394,7 @@ PopupWindow {
                     : pop.parsed.ok ? pop.parsed.label + (pop.parsed.kind === "dur" ? " · ends " + Qt.formatTime(new Date(pop.parsed.endsAt), "HH:mm") : " · " + Focus.durLabel(pop.parsed.min))
                     : pop.parsed.error
                 color: pop.error !== "" || !pop.parsed.ok ? Theme.error : Theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
 
@@ -439,7 +440,7 @@ PopupWindow {
                     leftPadding: 4
                     text: "Recent"
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
                 Flow {
@@ -469,17 +470,20 @@ PopupWindow {
             // Start
             Item {
                 width: col.width
-                height: 36
-                Txt {
+                height: Math.max(36, focusHints.implicitHeight)
+                Item {
                     anchors.left: parent.left
-                    anchors.leftMargin: 4
+                    anchors.leftMargin: Theme.space1
                     anchors.right: startBtn.left
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Enter starts · Esc closes"
-                    color: Theme.textFaint
-                    font.pixelSize: 12
-                    font.weight: Font.Normal
+                    anchors.rightMargin: Theme.space2
+                    height: parent.height
+                    KeyHintRow {
+                        id: focusHints
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width
+                        gap: Theme.space3
+                        hints: [["Enter", "start"], ["Esc", "close"]]
+                    }
                 }
                 Button {
                     id: startBtn

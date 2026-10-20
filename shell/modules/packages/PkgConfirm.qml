@@ -49,7 +49,7 @@ Rectangle {
                 Txt {
                     anchors.verticalCenter: parent.verticalCenter
                     text: ov.c ? ov.c.title : ""
-                    font.pixelSize: 17
+                    font.pixelSize: Theme.fontLg
                     font.weight: Font.DemiBold
                     width: col.width - 40
                 }
@@ -59,7 +59,7 @@ Rectangle {
                 visible: !!ov.c && ov.c.loading
                 spacing: 8
                 PkgSpinner { size: 16 }
-                Txt { text: "Asking dnf (nothing is changed yet)…"; color: Theme.textFaint; font.pixelSize: 13 }
+                Txt { text: "Asking dnf (nothing is changed yet)…"; color: Theme.textFaint; font.pixelSize: Theme.fontSm }
             }
 
             Txt {
@@ -67,7 +67,7 @@ Rectangle {
                 width: parent.width
                 text: ov.c ? ov.c.text : ""
                 color: ov.c && ov.c.blocked ? Theme.error : Theme.textMuted
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 wrapMode: Text.Wrap
                 elide: Text.ElideNone
@@ -85,7 +85,7 @@ Rectangle {
                     anchors.margins: 8
                     text: ov.c ? ov.c.warn : ""
                     color: Theme.error
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                     wrapMode: Text.Wrap
                     elide: Text.ElideNone
                 }
@@ -112,7 +112,7 @@ Rectangle {
                         Txt {
                             text: optSec.modelData.hint
                             color: Theme.textFaint
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontXs
                             font.weight: Font.Normal
                         }
                     }
@@ -151,7 +151,7 @@ Rectangle {
                                 anchors.leftMargin: 10
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: orow.modelData.name
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontSm
                             }
                             Txt {
                                 anchors.left: onm.right
@@ -160,7 +160,7 @@ Rectangle {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: orow.modelData.installed ? "already installed" : (orow.modelData.desc || "")
                                 color: Theme.textFaint
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.Normal
                             }
                             MouseArea {
@@ -178,7 +178,7 @@ Rectangle {
                 visible: !!ov.c && ov.c.refreshing
                 spacing: 8
                 PkgSpinner { size: 16 }
-                Txt { text: "Updating the preview…"; color: Theme.textFaint; font.pixelSize: 12 }
+                Txt { text: "Updating the preview…"; color: Theme.textFaint; font.pixelSize: Theme.fontSm }
             }
 
             // Befehle, die gleich (als Root) laufen
@@ -206,7 +206,7 @@ Rectangle {
                                 width: codeCol.width
                                 text: modelData
                                 wrapMode: Text.WrapAnywhere
-                                font.pixelSize: 11
+                                font.pixelSize: Theme.fontXs
                                 color: modelData.startsWith("(") || modelData.startsWith("#") ? Theme.textFaint : Theme.text
                             }
                         }
@@ -240,7 +240,7 @@ Rectangle {
                         anchors.rightMargin: 10
                         anchors.verticalCenter: parent.verticalCenter
                         text: d.modelData.name || ""
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontSm
                     }
                     MonoTxt {
                         id: dv
@@ -250,7 +250,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         text: d.modelData.version || ""
                         color: Theme.textFaint
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                     }
                     MonoTxt {
                         id: ds
@@ -261,7 +261,7 @@ Rectangle {
                         horizontalAlignment: Text.AlignRight
                         text: d.modelData.size || ""
                         color: Theme.textMuted
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                     }
                 }
             }
@@ -271,19 +271,21 @@ Rectangle {
                 width: parent.width
                 text: ov.c ? ov.c.summary : ""
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
             }
 
             Row {
                 anchors.right: parent.right
                 spacing: 8
-                PkgBtn {
+                Button {
+                    small: true
                     text: "Cancel"
                     onClicked: ov.pk.confirm = null
                 }
-                PkgBtn {
+                Button {
+                    small: true
                     enabled: !!ov.c && !ov.c.loading && !ov.c.blocked && !ov.c.refreshing
-                    tone: ov.c && ov.c.danger ? "danger" : "accent"
+                    kind: ov.c && ov.c.danger ? "danger" : "primary"
                     text: ov.c ? ov.c.okLabel : ""
                     onClicked: ov.pk.confirmYes()
                 }

@@ -131,19 +131,11 @@ PopupWindow {
             id: head
             x: 20
             y: 18
-            height: 30
-            spacing: 8
-            Icon {
+            height: Theme.iconButton
+            PopoutTitle {
                 anchors.verticalCenter: parent.verticalCenter
-                name: "lightbulb"
-                size: 22
-                color: Theme.accentText
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
+                icon: "lightbulb"
                 text: "Light"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
             }
         }
 

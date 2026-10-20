@@ -108,7 +108,7 @@ Item {
             anchors.leftMargin: 12
             anchors.verticalCenter: bIcon.verticalCenter
             text: box.label
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
             font.weight: Font.Normal
             color: Theme.textFaint
         }
@@ -132,14 +132,14 @@ Item {
         color: Theme.text
         selectionColor: Theme.accentSoft
         font.family: Theme.fontUi
-        font.pixelSize: 15
+        font.pixelSize: Theme.fontMd
         Keys.onPressed: event => f.keys(event)
         Txt {
             anchors.fill: parent
             visible: parent.text === "" && parent.hint !== ""
             text: parent.hint
             color: Theme.textFaint
-            font.pixelSize: 14
+            font.pixelSize: Theme.fontMd
             font.weight: Font.Normal
             elide: Text.ElideRight
         }
@@ -155,7 +155,7 @@ Item {
         color: Theme.text
         selectionColor: Theme.accentSoft
         font.family: Theme.fontMono
-        font.pixelSize: 13
+        font.pixelSize: Theme.fontSm
         // Tab springt weiter statt ein Tab-Zeichen einzufügen
         Keys.onPressed: event => {
             if (event.key === Qt.Key_Tab && next) {
@@ -173,7 +173,7 @@ Item {
             visible: parent.text === "" && parent.hint !== ""
             text: parent.hint
             color: Theme.textFaint
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
             wrapMode: Text.Wrap
         }
@@ -217,14 +217,14 @@ Item {
                     anchors.leftMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Edit login"
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontLg
                     font.weight: Font.DemiBold
                 }
                 Txt {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: "saves to iCloud"
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                     font.weight: Font.Normal
                     color: Theme.textFaint
                 }
@@ -288,12 +288,12 @@ Item {
                     KeyNavigation.backtab: urlsIn
                     onTextChanged: if (text) f.removeTotp = false
                 }
-                PwBtn {
+                Button {
+                    small: true
                     id: removeBtn
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !!(f.e && f.e.hasTotp)
-                    size: 26
                     icon: f.removeTotp ? "undo" : "delete"
                     onClicked: f.removeTotp = !f.removeTotp
                 }
@@ -329,7 +329,7 @@ Item {
             maximumLineCount: 2
             wrapMode: Text.Wrap
             text: f.deleteArmed ? "Moves it to Recently Deleted on all devices" : f.pw.editError || "Ctrl+S save  ·  Esc cancel  ·  Tab next  ·  Ctrl+D delete"
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
             font.weight: Font.Normal
             color: (f.pw.editError || f.deleteArmed) && !f.pw.editBusy ? Theme.error : Theme.textFaint
         }
@@ -338,21 +338,24 @@ Item {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: 8
-            PwBtn {
+            Button {
+                small: true
                 text: "Cancel"
                 enabled: !f.pw.editBusy
                 onClicked: f.pw.cancelEdit()
             }
-            PwBtn {
+            Button {
+                small: true
                 text: f.deleteArmed ? "Are you sure?" : "Delete"
                 icon: "delete"
                 enabled: !f.pw.editBusy
                 onClicked: f.askDelete()
             }
-            PwBtn {
+            Button {
+                small: true
                 text: "Save"
                 icon: "cloud_upload"
-                tone: "accent"
+                kind: "primary"
                 enabled: !f.pw.editBusy
                 onClicked: f.save()
             }

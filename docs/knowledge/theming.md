@@ -15,6 +15,9 @@
   heben Farben bis Kontrast ≥ 4,5 : 1 an oder brechen ab, wenn er nicht erreicht wird.
 - **Wiedererkennung vor Einheitslook:** Discord behält Blurple, Spotify bleibt Spotify; Status- und Rollenfarben fremder Apps
   bleiben unangetastet. Nur neue Schemata/Profile anlegen, nie fremde überschreiben; jeder Schalter hat ein `off`.
+- **Ein Raster in der Shell:** Schrift-, Abstands-, Radius- und Bedienelement-Größen kommen wie die Farben aus
+  `palette.json` (`shell/config/Theme.qml`), Tasten, Knöpfe und Hinweiszeilen nur über die gemeinsamen Bausteine in
+  `shell/components/` – sonst lebt die Oberfläche wieder auseinander.
 
 ## Welche App wie angebunden ist
 

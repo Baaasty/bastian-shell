@@ -33,14 +33,14 @@ Rectangle {
             visible: !bd.mono
             text: bd.text
             color: bd.fg
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
         }
         MonoTxt {
             anchors.verticalCenter: parent.verticalCenter
             visible: bd.mono
             text: bd.text
             color: bd.fg
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
         }
     }
 }

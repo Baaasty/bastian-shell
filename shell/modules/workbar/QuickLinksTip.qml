@@ -9,7 +9,7 @@ Row {
     id: tip
 
     property var proj: null
-    property int textSize: 14
+    property int textSize: Theme.fontMd
     readonly property var g: proj ? GitInfo.git[proj.id] : undefined
     readonly property var c: proj ? GitInfo.ci[proj.id] : undefined
     readonly property bool hasCi: !!c && !(c.state === "none" && c.status === "")   // Repo ohne CI: nichts zeigen
@@ -17,7 +17,7 @@ Row {
     readonly property color ciColor: !c ? Theme.textFaint : c.state === "ok" ? Theme.success : c.state === "fail" ? Theme.error : Theme.textMuted
 
     visible: !!g && g.branch !== ""
-    spacing: 7
+    spacing: Theme.space2
 
     Icon {
         anchors.verticalCenter: parent.verticalCenter

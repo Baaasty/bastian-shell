@@ -200,19 +200,12 @@ Scope {
                 width: view.width - win.gapItem - 2 * win.padItem
                 height: deskLabel.implicitHeight
 
-                Text {
+                Label {
                     id: deskLabel
                     anchors.left: parent.left
                     anchors.right: countLabel.left
                     anchors.rightMargin: win.padItem
-                    text: (Desktops.names[Desktops.ids.indexOf(Desktops.current)] || "Windows").toUpperCase()
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: Theme.textFaint
-                    font.family: Theme.fontUi
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                    font.letterSpacing: 12 * 0.08
+                    text: Desktops.names[Desktops.ids.indexOf(Desktops.current)] || "Windows"
                 }
                 Text {
                     id: countLabel
@@ -221,7 +214,7 @@ Scope {
                     textFormat: Text.PlainText
                     color: Theme.textFaint
                     font.family: Theme.fontUi
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Medium
                 }
             }
@@ -278,11 +271,11 @@ Scope {
                     Behavior on x { enabled: hl.ready; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                     Behavior on y { enabled: hl.ready; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-                    // Glut-Rand + weicher Akzentgrund
+                    // Glut-Rand + deckender Akzentgrund (Kachel mit Tastatur-Fokus)
                     Rectangle {
                         anchors.fill: parent
                         radius: win.radiusItem
-                        color: Theme.accentSoft
+                        color: Theme.accentFill
                         border.width: 2
                         border.color: Theme.accent
                     }
@@ -384,7 +377,7 @@ Scope {
                             elide: Text.ElideRight
                             maximumLineCount: 1
                             font.family: Theme.fontUi
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontMd
                             font.weight: Font.Medium   // Gewicht bleibt gleich, sonst springt der Text
                             color: tile.current ? Theme.text : (tile.minimized ? Theme.textFaint : Theme.textMuted)
                             Behavior on color { ColorAnimation { duration: 120 } }
@@ -399,7 +392,7 @@ Scope {
                     textFormat: Text.PlainText
                     color: Theme.textMuted
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                 }
             }
         }

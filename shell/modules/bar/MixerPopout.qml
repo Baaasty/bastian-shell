@@ -178,7 +178,7 @@ PopupWindow {
                 width: parent.width
                 text: row.channel
                 color: Theme.textFaint
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontXs
                 font.weight: Font.Normal
             }
         }
@@ -198,7 +198,7 @@ PopupWindow {
             horizontalAlignment: Text.AlignRight
             text: Math.round(row.vol * 100) + "%"
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
         MuteBtn {
             id: muteBtn
@@ -238,19 +238,11 @@ PopupWindow {
             id: head
             x: 20
             y: 18
-            height: 30
-            spacing: 8
-            Icon {
+            height: Theme.iconButton
+            PopoutTitle {
                 anchors.verticalCenter: parent.verticalCenter
-                name: "tune"
-                size: 22
-                color: Theme.accentText
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
+                icon: "tune"
                 text: "Sound"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
             }
         }
 
@@ -297,7 +289,7 @@ PopupWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "System volume is locked at 100 % (GoXLR)"
                         color: Theme.textFaint
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                     }
                 }
@@ -329,7 +321,7 @@ PopupWindow {
                     height: 30
                     text: "No app is playing sound"
                     color: Theme.textFaint
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
                 Repeater {

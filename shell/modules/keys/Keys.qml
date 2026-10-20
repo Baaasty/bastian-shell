@@ -333,7 +333,7 @@ Scope {
                             color: Theme.text
                             selectionColor: Theme.accentSoft
                             font.family: Theme.fontUi
-                            font.pixelSize: 19
+                            font.pixelSize: Theme.fontXl
                             focus: true
                             Keys.onEscapePressed: root.open = false
                             Keys.onDownPressed: flick.scrollBy(1)
@@ -354,7 +354,7 @@ Scope {
                                 visible: search.text === ""
                                 text: "Search all shortcuts…   e.g. upload · discord mute · workspace · vimium"
                                 color: Theme.textFaint
-                                font.pixelSize: 19
+                                font.pixelSize: Theme.fontXl
                                 font.weight: Font.Normal
                             }
                         }
@@ -365,7 +365,7 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             text: root.shownCount + (root.shownCount === 1 ? " shortcut" : " shortcuts")
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                         }
                     }
@@ -430,7 +430,7 @@ Scope {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: groupItem.modelData.title
                                             color: groupItem.modelData.active ? Theme.accentText : Theme.text
-                                            font.pixelSize: 17
+                                            font.pixelSize: Theme.fontLg
                                             font.weight: Font.DemiBold
                                         }
                                         Rectangle {
@@ -445,7 +445,7 @@ Scope {
                                                 anchors.centerIn: parent
                                                 text: "focused app"
                                                 color: Theme.accentText
-                                                font.pixelSize: 11
+                                                font.pixelSize: Theme.fontXs
                                                 font.weight: Font.Medium
                                             }
                                         }
@@ -454,7 +454,7 @@ Scope {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: groupItem.modelData.about
                                             color: Theme.textFaint
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSm
                                             font.weight: Font.Normal
                                             elide: Text.ElideRight
                                             width: Math.min(implicitWidth, content.width - 320)
@@ -495,7 +495,7 @@ Scope {
                             visible: root.groups.length === 0
                             text: !Keybinds.loaded ? "Reading key bindings…" : Keybinds.failed ? "Could not read key bindings" : "Nothing matches “" + root.query + "”"
                             color: Theme.textFaint
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontMd
                             font.weight: Font.Normal
                         }
 
@@ -504,14 +504,34 @@ Scope {
                         }
                     }
 
-                    Txt {
+                    // Fußzeile: dieselbe Hinweiszeile wie überall, mittig
+                    Item {
                         id: hint
                         width: parent.width
-                        horizontalAlignment: Text.AlignHCenter
-                        text: "Type to search everything · ↑↓ PgUp PgDn scroll · Tab next app · Esc closes · apps: config/appkeys/"
-                        color: Theme.textFaint
-                        font.pixelSize: 12
-                        font.weight: Font.Normal
+                        height: hintRow.implicitHeight
+                        Row {
+                            id: hintRow
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: Theme.space4
+                            Txt {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Type to search everything"
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSm
+                                font.weight: Font.Normal
+                            }
+                            KeyHintRow {
+                                anchors.verticalCenter: parent.verticalCenter
+                                hints: [["↑↓", "scroll"], ["PgUp", "page up"], ["PgDn", "page down"], ["Tab", "next app"], ["Esc", "close"]]
+                            }
+                            Txt {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "apps: config/appkeys/"
+                                color: Theme.textFaint
+                                font.pixelSize: Theme.fontSm
+                                font.weight: Font.Normal
+                            }
+                        }
                     }
                 }
             }

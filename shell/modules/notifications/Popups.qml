@@ -505,7 +505,7 @@ Scope {
 
                         // Tastatur-Modus: diese Karte ist markiert (Rahmen + Tastenzeile unten)
                         readonly property bool kbMark: root.kbOn && win.cards && win.selCard() === card
-                        readonly property int kbH: kbMark ? 30 : 0
+                        readonly property int kbH: kbMark ? kbHints.implicitHeight + 2 * Theme.space2 : 0
                         function openIt() {
                             const o = card.n;
                             // Screenshot/Aufnahme: Klick öffnet die Datei selbst
@@ -654,7 +654,7 @@ Scope {
                                         width: parent.width - when.width
                                         text: card.sApp + (card.urgent ? " · stays until clicked" : "")
                                         color: Theme.textFaint
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                         font.weight: Font.Normal
                                     }
                                     MonoTxt {
@@ -662,13 +662,13 @@ Scope {
                                         text: card.count > 1 ? "×" + card.count + " · now" : "now"
                                         opacity: hover.hovered ? 0 : 1
                                         color: card.count > 1 ? Theme.accentText : Theme.textFaint
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontXs
                                     }
                                 }
                                 Txt {
                                     width: parent.width
                                     text: card.sSummary
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontMd
                                     font.weight: Font.DemiBold
                                 }
                                 Text {
@@ -681,7 +681,7 @@ Scope {
                                     elide: Text.ElideRight
                                     color: Theme.textMuted
                                     font.family: Theme.fontUi
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontMd
                                     lineHeight: 1.2
                                 }
                                 Row {
@@ -715,34 +715,18 @@ Scope {
                             border.width: 2
                             border.color: Theme.accent
                         }
-                        Row {
-                            visible: card.kbMark
-                            x: 16 + 48
-                            y: parent.height - 30
-                            height: 22
-                            spacing: 12
-                            Repeater {
-                                model: [["Enter", "open"]].concat(card.sActions.length ? [["1–" + card.sActions.length, "buttons"]] : [])
+                        // Tastenzeile; mit Aktions-Knöpfen (1–n) zu lang → bricht in die nächste Zeile um (Karte wächst über kbH)
+                        KeyHintRow {
+                                id: kbHints
+                                visible: card.kbMark
+                                x: 16 + 48
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: Theme.space2
+                                width: parent.width - x - Theme.padCard
+                                gap: Theme.space3
+                                small: true
+                                hints: [["Enter", "open"]].concat(card.sActions.length ? [["1–" + card.sActions.length, "buttons"]] : [])
                                     .concat([["X", "dismiss"], ["Del", "delete"], ["↑↓", "select"], ["Esc", "close"]])
-                                Row {
-                                    required property var modelData
-                                    spacing: 4
-                                    MonoTxt {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData[0]
-                                        font.pixelSize: 11
-                                        font.weight: Font.Bold
-                                        color: Theme.accentText
-                                    }
-                                    Txt {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData[1]
-                                        color: Theme.textFaint
-                                        font.pixelSize: 11
-                                        font.weight: Font.Normal
-                                    }
-                                }
-                            }
                         }
 
                         // schließen (nur beim Überfahren)
@@ -808,7 +792,7 @@ Scope {
                         anchors.centerIn: parent
                         text: "+ " + more.shownCount + " more  ·  close all"
                         color: moreArea.containsMouse ? Theme.text : Theme.textMuted
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         Behavior on color { ColorAnimation { duration: Theme.fade } }
                     }
                     MouseArea {

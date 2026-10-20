@@ -32,8 +32,9 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] Snip: Pipette nur noch im Screenshot (eigenes Kürzel weg) – Farbe aus dem Screenshot holen und kopieren (2026-10-20)
 - [x] Bildschirmaufnahme: Auswahl wie beim Teilen (Screen / Window / Region), nie gemerkt (2026-10-20)
 - [x] Benachrichtigungen: Mail/Screenshot nur als Popup (nicht im Verlauf), einzeln löschen, Wecker entfernt (2026-10-20)
-- [ ] UI-Feinschliff über alles: Tastenkappen (Mittelding Workspace-Modus/Bar), Schriftgrößen (Workspace-Modus etwas kleiner), Karten/Abstände überall angleichen
+- [x] UI-Feinschliff über alles: Tastenkappen (Mittelding Workspace-Modus/Bar), Schriftgrößen (Workspace-Modus etwas kleiner), Karten/Abstände überall angleichen (2026-10-20)
 - [ ] Dashboard-Benachrichtigungen per Tastatur bedienbar (wählen, öffnen, löschen)
+- [ ] Quickshell stürzt beim Hot-Reload ab (SIGSEGV in QQuickItem::setParentItem aus einem Binding, 4× am 2026-10-20, schon vor dem UI-Umbau) – Ursache finden; danach meldet sich der eigene Polkit-Agent ab
 
 ## Handtest (Bastian) – je Block „ok“ oder z. B. „A3 kaputt“ melden
 

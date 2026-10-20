@@ -145,7 +145,7 @@ Glass {
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
                 text: FilePicker.title
-                font.pixelSize: 18
+                font.pixelSize: Theme.fontXl
                 font.weight: Font.DemiBold
             }
         }
@@ -167,7 +167,7 @@ Glass {
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Hidden files"
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 color: card.fp.showHidden ? Theme.text : Theme.textMuted
             }
         }
@@ -264,7 +264,7 @@ Glass {
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: crumb.modelData.label
                                     color: crumb.last ? Theme.text : Theme.textMuted
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontSm
                                     font.weight: crumb.last ? Font.Medium : Font.Normal
                                 }
                             }
@@ -316,7 +316,7 @@ Glass {
                 color: Theme.text
                 selectionColor: Theme.accentSoft
                 font.family: Theme.fontUi
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontMd
 
                 Keys.onPressed: event => {
                     if (card.commonKey(event)) {
@@ -350,7 +350,7 @@ Glass {
                     visible: input.text === ""
                     text: "Search…"
                     color: Theme.textFaint
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontMd
                     font.weight: Font.Normal
                 }
             }
@@ -425,7 +425,7 @@ Glass {
                     bottomPadding: 6
                     text: "Projects"
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                     font.weight: Font.DemiBold
                     font.capitalization: Font.AllUppercase
                     font.letterSpacing: 0.6
@@ -499,7 +499,7 @@ Glass {
             leftPadding: 12
             text: card.fp.pathQuery ? "↵ go to " + card.fp.query.trim() : card.fp.notice
             color: card.fp.pathQuery ? Theme.textMuted : Theme.warning
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
         }
 
@@ -579,7 +579,7 @@ Glass {
                     visible: !card.fp.loading && !card.fp.showHidden && !card.fp.query.trim()
                     text: "Ctrl+H shows hidden files"
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     opacity: 0.8
                 }
@@ -613,7 +613,7 @@ Glass {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Name"
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Rectangle {
@@ -639,7 +639,7 @@ Glass {
                     color: Theme.text
                     selectionColor: Theme.accentSoft
                     font.family: Theme.fontUi
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontMd
                     onTextChanged: {
                         card.error = "";
                         card.fp.confirm = "";
@@ -665,7 +665,7 @@ Glass {
                         visible: nameInput.text === ""
                         text: "File name"
                         color: Theme.textFaint
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.fontMd
                         font.weight: Font.Normal
                     }
                 }
@@ -693,7 +693,7 @@ Glass {
                         MonoTxt {
                             anchors.verticalCenter: parent.verticalCenter
                             text: fmt.modelData.toUpperCase()
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             color: fmt.active ? Theme.accentText : Theme.textMuted
                         }
                     }
@@ -701,10 +701,10 @@ Glass {
             }
         }
 
-        // Zeile: Hinweis/Rückfrage links, Knöpfe rechts
+        // Zeile: Hinweis/Rückfrage links, Knöpfe rechts (wächst, wenn die Tastenzeile umbricht)
         Item {
             width: parent.width
-            height: 40
+            height: Math.max(Theme.buttonHeight, infoCol.visible ? infoCol.implicitHeight : 0)
 
             // Überschreiben?
             Row {
@@ -728,6 +728,7 @@ Glass {
             }
             // Fehler / Ziel / Tasten
             Column {
+                id: infoCol
                 visible: card.fp.confirm === ""
                 anchors.left: parent.left
                 anchors.right: btns.left
@@ -742,19 +743,20 @@ Glass {
                             : card.fp.markedPaths.length + " marked · " + card.fp.markedPaths.map(p => card.fp.baseName(p)).join(", "))
                         : card.fp.dir.replace(card.fp.home, "~")
                     color: card.error !== "" ? Theme.error : card.fp.multi && card.fp.markedPaths.length ? Theme.accentText : Theme.textMuted
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     elide: Text.ElideMiddle
                 }
-                Txt {
-                    width: parent.width
-                    text: card.saving ? "↵ save  ·  Tab list  ·  Alt+↑ up  ·  Ctrl+H hidden  ·  Esc cancel"
-                        : card.folders ? "↵ open  ·  Ctrl+↵ choose marked  ·  ⌫ up  ·  Ctrl+H hidden  ·  Esc cancel"
-                        : card.fp.multi ? "Tab mark  ·  Ctrl+A all files  ·  ↵ open folder / take  ·  ⌫ up  ·  Ctrl+H hidden  ·  Esc cancel"
-                        : "↵ open  ·  ⌫ up  ·  Ctrl+H hidden  ·  Esc cancel"
-                    color: Theme.textFaint
-                    font.pixelSize: 11
-                    font.weight: Font.Normal
+                // Tastenzeile (kleine Kappen); schmale Spalte neben den Knöpfen → bricht um
+                KeyHintRow {
+                        id: fpHints
+                        width: parent.width
+                        small: true
+                        gap: Theme.space3
+                        hints: card.saving ? [["↵", "save"], ["Tab", "list"], ["Alt+↑", "up"], ["Ctrl+H", "hidden"], ["Esc", "cancel"]]
+                            : card.folders ? [["↵", "open"], ["Ctrl+↵", "choose marked"], ["⌫", "up"], ["Ctrl+H", "hidden"], ["Esc", "cancel"]]
+                            : card.fp.multi ? [["Tab", "mark"], ["Ctrl+A", "all files"], ["↵", "open folder / take"], ["⌫", "up"], ["Ctrl+H", "hidden"], ["Esc", "cancel"]]
+                            : [["↵", "open"], ["⌫", "up"], ["Ctrl+H", "hidden"], ["Esc", "cancel"]]
                 }
             }
 
@@ -764,63 +766,33 @@ Glass {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
-                Rectangle {
-                    width: Math.max(96, cancelTxt.implicitWidth + 32)
-                    height: 40
-                    radius: Theme.radiusMd
-                    color: cancelArea.containsMouse ? Theme.surfaceRaised : "transparent"
-                    border.width: 1
-                    border.color: Theme.borderStrong
-                    Txt {
-                        id: cancelTxt
-                        anchors.centerIn: parent
-                        text: card.fp.confirm !== "" ? "Keep" : "Cancel"
-                    }
-                    MouseArea {
-                        id: cancelArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (card.fp.confirm !== "") {
-                                card.fp.confirm = "";
-                                card.focusInput();
-                            } else {
-                                FilePicker.cancel();
-                            }
+                Button {
+                    text: card.fp.confirm !== "" ? "Keep" : "Cancel"
+                    onClicked: {
+                        if (card.fp.confirm !== "") {
+                            card.fp.confirm = "";
+                            card.focusInput();
+                        } else {
+                            FilePicker.cancel();
                         }
                     }
                 }
-                Rectangle {
+                Button {
                     readonly property bool can: card.saving || card.folders ? card.fp.dir !== ""
                         : card.fp.multi && card.fp.markedPaths.length > 0 ? true
                         : (card.fp.cur !== null && !card.fp.cur.isDir)
-                    width: Math.min(260, Math.max(112, okTxt.implicitWidth + 36))
-                    height: 40
-                    radius: Theme.radiusMd
-                    opacity: can ? 1 : 0.5
-                    color: !can ? Theme.accentSoft : okArea.pressed ? Theme.accentPressed : okArea.containsMouse ? Theme.accentHover : Theme.accent
-                    Txt {
-                        id: okTxt
-                        anchors.centerIn: parent
-                        width: Math.min(implicitWidth, 224)
-                        text: card.fp.confirm !== "" ? "Replace"
-                            : card.saving ? "Save"
-                            : card.folders ? "Choose “" + card.fp.baseName(card.fp.dir || "/") + "”"
-                            : card.fp.multi ? (FilePicker.action || "Choose") + (card.fp.markedPaths.length > 1 ? " " + card.fp.markedPaths.length + " items"
-                                : card.fp.markedPaths.length === 1 ? " “" + card.fp.baseName(card.fp.markedPaths[0]) + "”"
-                                : card.fp.cur && !card.fp.cur.isDir ? " “" + card.fp.cur.name + "”" : "")
-                            : "Open"
-                        color: Theme.onAccent
-                    }
-                    MouseArea {
-                        id: okArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        enabled: parent.can
-                        onClicked: card.primary()
-                    }
+                    // lange Namen („Choose “Ordner”“) gekürzt
+                    width: Math.min(260, implicitWidth)
+                    primary: true
+                    enabled: can
+                    text: card.fp.confirm !== "" ? "Replace"
+                        : card.saving ? "Save"
+                        : card.folders ? "Choose “" + card.fp.baseName(card.fp.dir || "/") + "”"
+                        : card.fp.multi ? (FilePicker.action || "Choose") + (card.fp.markedPaths.length > 1 ? " " + card.fp.markedPaths.length + " items"
+                            : card.fp.markedPaths.length === 1 ? " “" + card.fp.baseName(card.fp.markedPaths[0]) + "”"
+                            : card.fp.cur && !card.fp.cur.isDir ? " “" + card.fp.cur.name + "”" : "")
+                        : "Open"
+                    onClicked: card.primary()
                 }
             }
         }

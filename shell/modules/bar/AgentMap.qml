@@ -106,28 +106,15 @@ Scope {
     // ---------- Bausteine ----------
 
     // kleiner Symbol-Knopf
-    component IconBtn: Rectangle {
-        id: ib
+    component IconBtn: Button {
         property string glyph
-        signal clicked()
-        width: 30
-        height: 30
-        radius: Theme.radiusSm
-        color: ibArea.containsMouse ? Theme.raise : "transparent"
-        Behavior on color { ColorAnimation { duration: Theme.fade } }
-        Icon {
-            anchors.centerIn: parent
-            name: ib.glyph
-            size: 18
-            color: ibArea.containsMouse ? Theme.text : Theme.textFaint
-        }
-        MouseArea {
-            id: ibArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: ib.clicked()
-        }
+        property color tint: Theme.textFaint
+        property bool fill: false
+        small: true
+        kind: "ghost"
+        icon: glyph
+        iconFill: fill
+        iconColor: hovered ? Theme.text : tint
     }
 
     // Puls-Punkt (läuft) bzw. ✓ (fertig)
@@ -191,7 +178,7 @@ Scope {
             MonoTxt {
                 width: parent.width
                 elide: Text.ElideRight
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontXs
                 color: Theme.textFaint
                 text: [an.a.type, ClaudeHub.fmtDuration(root.runtime(an.a)), ClaudeHub.fmtTokens(an.a.tokens || 0) + " tokens"]
                     .filter(x => x).join(" · ")
@@ -370,7 +357,7 @@ Scope {
                             spacing: 12
                             MonoTxt {
                                 anchors.verticalCenter: parent.verticalCenter
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 color: Theme.textFaint
                                 text: root.running.length + " running · " + root.finished.length + " finished"
                             }
@@ -506,7 +493,7 @@ Scope {
                                         }
                                         Txt {
                                             anchors.verticalCenter: parent.verticalCenter
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSm
                                             font.weight: Font.Normal
                                             color: Theme.textFaint
                                             text: !root.hub ? "session" : root.hub.state === "waiting" ? "needs you"
@@ -517,14 +504,14 @@ Scope {
                                         width: parent.width
                                         text: root.title
                                         color: Theme.text
-                                        font.pixelSize: 15
+                                        font.pixelSize: Theme.fontMd
                                         wrapMode: Text.Wrap
                                         maximumLineCount: 3
                                     }
                                     MonoTxt {
                                         width: parent.width
                                         elide: Text.ElideRight
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                         color: Theme.textMuted
                                         text: [ClaudeHub.prettyModel(root.model), root.context ? ClaudeHub.fmtTokens(root.context) + " in context" : ""]
                                             .filter(x => x).join(" · ")
@@ -650,7 +637,7 @@ Scope {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: detail.width - 30
                                     text: root.current ? root.current.description : ""
-                                    font.pixelSize: 18
+                                    font.pixelSize: Theme.fontLg
                                     wrapMode: Text.Wrap
                                     maximumLineCount: 2
                                 }

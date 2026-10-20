@@ -12,9 +12,10 @@ Rectangle {
 
     implicitHeight: 14 + head.height + (body.visible ? body.implicitHeight + 4 : 0) + 14
     radius: Theme.radiusLg
-    color: Qt.alpha(Theme.text, 0.035)
+    // deckende Karte im Panel (eine Stufe dunkler als die Panel-Fläche)
+    color: Theme.surface
     border.width: 1
-    border.color: hot ? Qt.alpha(Theme.accent, 0.45) : Theme.border
+    border.color: hot ? Theme.glow : Theme.border
 
     Item {
         id: head
@@ -28,7 +29,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text: card.modelData.name.toUpperCase()
             color: Theme.accentText
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.DemiBold
             font.letterSpacing: 1.4
         }
@@ -41,7 +42,7 @@ Rectangle {
             text: card.modelData.cont ? "continued" : (card.modelData.note || "")
             elide: Text.ElideRight
             color: Theme.textFaint
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
         }
         Row {
@@ -54,7 +55,7 @@ Rectangle {
                 visible: card.modelData.collapsed
                 text: card.modelData.count + " keys"
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Icon {

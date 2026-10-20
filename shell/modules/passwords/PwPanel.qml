@@ -34,27 +34,16 @@ Glass {
             anchors.top: parent.top
             height: 34
             spacing: 10
-            Icon {
-                Layout.leftMargin: 2
-                name: "key"
-                size: 22
-                color: Theme.accentText
-            }
-            Txt {
-                text: "Passwords"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
-            }
-            MonoTxt {
+            PopoutTitle {
                 Layout.fillWidth: true
-                Layout.topMargin: 2
-                elide: Text.ElideRight
-                text: {
+                icon: "key"
+                text: "Passwords"
+                textSize: Theme.fontXl
+                metaMono: true
+                meta: {
                     const total = panel.pw.groupItems.length;
                     return panel.pw.query.trim() ? panel.pw.rows.length + " / " + total : String(total || "");
                 }
-                font.pixelSize: 12
-                color: Theme.textFaint
             }
         }
 
@@ -101,7 +90,7 @@ Glass {
                 color: Theme.text
                 selectionColor: Theme.accentSoft
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Theme.fontLg
                 focus: true
 
                 function step(d: int): void {
@@ -155,7 +144,7 @@ Glass {
                     visible: input.text === ""
                     text: "Search logins…"
                     color: Theme.textFaint
-                    font.pixelSize: 16
+                    font.pixelSize: Theme.fontLg
                     font.weight: Font.Normal
                 }
             }
@@ -242,19 +231,15 @@ Glass {
             }
         }
 
-        Txt {
+        // Tastenzeile, bricht in der schmalen Spalte um statt abzuschneiden
+        KeyHintRow {
             id: keysHint
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            // zweizeilig statt abgeschnitten
-            wrapMode: Text.WordWrap
-            maximumLineCount: 2
-            lineHeight: 1.15
-            text: ["↵ copy password", "Ctrl+U user", "Ctrl+T 2FA", "Ctrl+E show", "F2 edit"].concat(panel.pw.groups.length ? ["Tab group"] : []).join("  ·  ")
-            font.pixelSize: 11
-            font.weight: Font.Normal
-            color: Theme.textFaint
+            small: true
+            gap: Theme.space3
+            hints: [["↵", "copy password"], ["Ctrl+U", "user"], ["Ctrl+T", "2FA"], ["Ctrl+E", "show"], ["F2", "edit"]].concat(panel.pw.groups.length ? [["Tab", "group"]] : [])
         }
 
         // Logos rechts
@@ -272,7 +257,7 @@ Glass {
             // Logos: Fortschritt beim Laden, sonst „Refresh icons“ (alle neu holen)
             Txt {
                 text: Favicons.running ? "Icons " + Favicons.done + "/" + Favicons.total : "Refresh icons"
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 color: refArea.containsMouse ? Theme.text : Theme.textFaint
                 MouseArea {
@@ -308,7 +293,7 @@ Glass {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
                 text: panel.pw.syncText
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
             }

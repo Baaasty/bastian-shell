@@ -86,7 +86,7 @@ Item {
                     color: Theme.text
                     selectionColor: Theme.accentSoft
                     font.family: Theme.fontUi
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontXl
                     focus: true
                     Keys.onEscapePressed: panelRoot.dismissed()
                     Keys.onReturnPressed: event => panelRoot.run(launcher.selected, !!(event.modifiers & Qt.ShiftModifier))
@@ -139,7 +139,7 @@ Item {
                         visible: input.text === ""
                         text: panelRoot.placeholder
                         color: Theme.textFaint
-                        font.pixelSize: 20
+                        font.pixelSize: Theme.fontXl
                         font.weight: Font.Normal
                     }
                 }
@@ -158,7 +158,7 @@ Item {
                         width: modeRow.implicitWidth + 20
                         height: 28
                         radius: Theme.radiusSm
-                        color: on ? Theme.accentSoft : "transparent"
+                        color: on ? Theme.accentFill : "transparent"
                         border.width: on ? 0 : 1
                         border.color: Theme.border
                         Row {
@@ -169,12 +169,12 @@ Item {
                                 visible: modelData.prefix !== ""
                                 text: modelData.prefix
                                 color: Theme.textFaint
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                             }
                             Txt {
                                 text: modelData.label
                                 color: parent.parent.on ? Theme.accentText : Theme.textMuted
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                             }
                         }
                         MouseArea {
@@ -219,7 +219,7 @@ Item {
                     width: ListView.view.width
                     height: hits.rowH
                     radius: Theme.radiusMd
-                    color: on ? Theme.accentSoft : rowArea.containsMouse ? Theme.raise : "transparent"
+                    color: on ? Theme.accentFill : rowArea.containsMouse ? Theme.raise : "transparent"
 
                     Rectangle {
                         id: tileIcon
@@ -274,7 +274,7 @@ Item {
                             elide: Text.ElideRight
                             color: Theme.text
                             font.family: Theme.fontUi
-                            font.pixelSize: 16
+                            font.pixelSize: Theme.fontLg
                             font.weight: Font.Medium
                             linkColor: Theme.accentText
                         }
@@ -283,20 +283,30 @@ Item {
                             visible: text !== ""
                             text: row.modelData.sub
                             color: Theme.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                         }
                     }
                     Txt {
                         id: kind
+                        anchors.right: rowKey.visible ? rowKey.left : parent.right
+                        anchors.rightMargin: rowKey.visible ? Theme.space2 : 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 220)   // lange Bezeichnungen gekürzt
+                        text: row.modelData.kind
+                        color: row.on ? Theme.accentText : Theme.textFaint
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.Normal
+                    }
+                    // gewählte Zeile: ihre Taste als kleine Kappe (meist ↵)
+                    KeyHintRow {
+                        id: rowKey
+                        visible: row.on
                         anchors.right: parent.right
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, 220)   // lange Bezeichnungen gekürzt
-                        text: row.modelData.kind + (row.on ? "  " + (row.modelData.keys || "↵") : "")
-                        color: row.on ? Theme.accentText : Theme.textFaint
-                        font.pixelSize: 12
-                        font.weight: Font.Normal
+                        small: true
+                        hints: [[row.modelData.keys || "↵", ""]]
                     }
                     MouseArea {
                         id: rowArea
@@ -308,32 +318,15 @@ Item {
                 }
             }
 
-            Row {
+            // Tastenzeile: dieselbe Hinweiszeile wie überall (KeyHintRow)
+            KeyHintRow {
                 visible: !panelRoot.idle
-                spacing: 18
-                leftPadding: 6
-                Repeater {
-                    model: launcher.mode === ";" ? (Clipboard.canPaste ? [["↵", "paste"], ["Shift+↵", "copy"]] : [["↵", "copy"]]).concat([["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]])
+                x: Theme.space1
+                hints: launcher.mode === ";" ? (Clipboard.canPaste ? [["↵", "paste"], ["Shift+↵", "copy"]] : [["↵", "copy"]]).concat([["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]])
                          : launcher.mode === "?" && launcher.term ? [["↵", "open in Helium"], ["↑↓", "select"], ["Tab", "mode"], ["Esc", "close"]]
                          : launcher.mode === "c " ? [["↵", "ask Claude"], ["Tab", "mode"], ["Esc", "close"]]
                          : launcher.mode === "m " ? [["↵", "open + read"], ["Ctrl+R", "mark read"], ["Ctrl+D", "delete"], ["Esc", "close"]]
                          : [["↵", "open"], ["↑↓", "select"], ["Tab", "mode"], ["?", "prefixes"], ["Esc", "close"]]
-                    Row {
-                        required property var modelData
-                        spacing: 5
-                        MonoTxt {
-                            text: modelData[0]
-                            color: Theme.textMuted
-                            font.pixelSize: 12
-                        }
-                        Txt {
-                            text: modelData[1]
-                            color: Theme.textFaint
-                            font.pixelSize: 12
-                            font.weight: Font.Normal
-                        }
-                    }
-                }
             }
         }
     }

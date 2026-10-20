@@ -86,7 +86,7 @@ Column {
                     anchors.baseline: timeNum.baseline
                     text: modelData[1]
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }
@@ -108,13 +108,13 @@ Column {
                 visible: !!st.s && !!st.s.changes && (st.s.changes.added > 0 || st.s.changes.deleted > 0)
                 text: st.s && st.s.changes ? "+" + st.kilo(st.s.changes.added) : ""
                 color: Theme.success
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
             }
             MonoTxt {
                 visible: !!st.s && !!st.s.changes && (st.s.changes.added > 0 || st.s.changes.deleted > 0)
                 text: st.s && st.s.changes ? "−" + st.kilo(st.s.changes.deleted) : ""
                 color: Theme.error
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
             }
         }
         MonoTxt {
@@ -132,7 +132,7 @@ Column {
                 anchors.baseline: allCommits.baseline
                 text: "commits"
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -152,7 +152,7 @@ Column {
             elide: Text.ElideRight
             text: st.locText
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
     }
 }

@@ -225,48 +225,13 @@ PopupWindow {
     }
 
     // Knopf mit fester Breite (Spalten), Text darf wechseln ohne Sprung; Farben zügig (~90 ms)
-    component CtlBtn: Rectangle {
-        id: cb
-        property string text
-        property string icon
-        property bool primary: false
-        signal clicked()
-        height: 36
-        radius: Theme.radiusMd
-        color: primary ? Theme.accentSoft : cbArea.containsMouse ? Qt.alpha(Theme.text, 0.1) : Theme.raise
-        border.width: 1
-        border.color: primary ? Qt.alpha(Theme.accent, 0.55) : Theme.border
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Behavior on border.color { ColorAnimation { duration: pop.quick } }
-        Row {
-            anchors.centerIn: parent
-            width: Math.min(implicitWidth, cb.width - 10)
-            spacing: 4
-            Icon {
-                id: cbIcon
-                anchors.verticalCenter: parent.verticalCenter
-                visible: cb.icon !== ""
-                name: cb.icon
-                size: 18
-                color: cb.primary ? Theme.accentText : Theme.text
-                Behavior on color { ColorAnimation { duration: pop.quick } }
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: cb.text !== ""      // nur Symbol (Leave): sonst sitzt es um den Abstand schief
-                width: Math.min(implicitWidth, cb.width - 10 - cbIcon.width - 4)
-                text: cb.text
-                color: cb.primary ? Theme.accentText : Theme.text
-                Behavior on color { ColorAnimation { duration: pop.quick } }
-            }
-        }
-        MouseArea {
-            id: cbArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: cb.clicked()
-        }
+    // Knöpfe im Call: der gemeinsame Button; lit = eingeschaltet (Mikro stumm, Kamera an …), danger = Auflegen bestätigen
+    component CtlBtn: Button {
+        // vier gleich breite Spalten in der festen Popout-Breite: wenig Polster, damit „Deafen“/„Stream“ ganz passen
+        compact: true
+        property bool lit: false
+        property bool danger: false
+        kind: danger ? "danger" : primary ? "primary" : lit ? "on" : "secondary"
     }
 
     // Abschnitt, der weich auf- und zuklappt (Höhe + Deckkraft); gap = Abstand nach oben (klappt mit)
@@ -345,7 +310,7 @@ PopupWindow {
                 width: Math.max(0, Math.min(implicitWidth, parent.width - crName.width - 6))
                 text: cr.guildName
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -371,7 +336,7 @@ PopupWindow {
                 leftPadding: 8
                 text: "+" + (cr.people.length - 3)
                 color: Theme.textMuted
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontXs
             }
         }
         IconChip {
@@ -412,13 +377,13 @@ PopupWindow {
             x: 16
             y: 14
             width: parent.width - 32
-            height: 30
-            Label {
+            height: Theme.iconButton
+            PopoutTitle {
                 anchors.left: parent.left
-                anchors.right: dur.left
-                anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: Discord.inVoice ? "Voice · " + Discord.channelName : "Discord"
+                icon: Discord.inVoice ? "headset_mic" : "forum"
+                text: Discord.inVoice ? "Voice" : "Discord"
+                maxTextWidth: dur.x - Theme.space3 - Theme.iconButton - Theme.space3
             }
             MonoTxt {
                 id: dur
@@ -429,7 +394,7 @@ PopupWindow {
                 Behavior on opacity { NumberAnimation { duration: Theme.fade; easing.type: Easing.OutCubic } }
                 text: pop.duration()
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
             }
             Row {
                 id: tools
@@ -502,7 +467,7 @@ PopupWindow {
                             anchors.rightMargin: 10
                             y: 10
                             wrapMode: Text.WordWrap
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                             color: Theme.text
                             text: Discord.restarting ? "Restarting Discord with Equicord…"
@@ -547,7 +512,7 @@ PopupWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.min(implicitWidth, body.width - 24)
                             text: Discord.guildName ? Discord.guildName + " · " + Discord.channelName : Discord.channelName
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontMd
                         }
                     }
 
@@ -612,7 +577,7 @@ PopupWindow {
                                             visible: !person.me && icons.volume !== 100 && person.m.localMute !== true
                                             text: icons.volume + " %"
                                             color: Theme.textFaint
-                                            font.pixelSize: 11
+                                            font.pixelSize: Theme.fontXs
                                         }
                                         StateIcon {
                                             visible: person.m.localMute === true
@@ -697,7 +662,7 @@ PopupWindow {
                                                 horizontalAlignment: Text.AlignRight
                                                 text: Math.round(vol.shown) + " %"
                                                 color: Theme.textMuted
-                                                font.pixelSize: 12
+                                                font.pixelSize: Theme.fontSm
                                             }
                                         }
                                         Txt {
@@ -707,7 +672,7 @@ PopupWindow {
                                             anchors.rightMargin: 12
                                             text: "Controls aren’t authorized – re-link below."
                                             color: Theme.textFaint
-                                            font.pixelSize: 12
+                                            font.pixelSize: Theme.fontSm
                                             font.weight: Font.Normal
                                         }
                                     }
@@ -720,7 +685,7 @@ PopupWindow {
                             leftPadding: 6
                             text: "+ " + (Discord.memberIds.length - pop.maxMembers) + " more"
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                         }
                     }
@@ -740,7 +705,7 @@ PopupWindow {
                             width: ctl.colW
                             icon: Discord.self.mute ? "mic_off" : "mic"
                             text: Discord.self.mute ? "Muted" : "Mic"
-                            primary: Discord.self.mute === true
+                            lit: Discord.self.mute === true
                             onClicked: Discord.setMute(!Discord.self.mute)
                         }
                         CtlBtn {
@@ -749,7 +714,7 @@ PopupWindow {
                             width: ctl.colW
                             icon: Discord.self.deaf ? "headset_off" : "headset"
                             text: "Deafen"
-                            primary: Discord.self.deaf === true
+                            lit: Discord.self.deaf === true
                             onClicked: Discord.setDeaf(!Discord.self.deaf)
                         }
                         CtlBtn {
@@ -758,7 +723,7 @@ PopupWindow {
                             width: ctl.colW
                             icon: Discord.self.video ? "videocam" : "videocam_off"
                             text: "Cam"
-                            primary: Discord.self.video === true
+                            lit: Discord.self.video === true
                             onClicked: Discord.setVideo(!Discord.self.video)
                         }
                         CtlBtn {
@@ -767,7 +732,7 @@ PopupWindow {
                             width: ctl.colW
                             icon: Discord.self.stream ? "stop_screen_share" : "screen_share"
                             text: Discord.self.stream ? "Live" : "Stream"
-                            primary: Discord.self.stream === true
+                            lit: Discord.self.stream === true
                             onClicked: {
                                 const start = !Discord.self.stream;
                                 // Teilen startet: Popout sauber zu, bevor die Auswahl kommt (die hat Vorrang)
@@ -793,7 +758,7 @@ PopupWindow {
                             Behavior on width { NumberAnimation { duration: pop.quick; easing.type: Easing.OutCubic } }
                             icon: "call_end"
                             text: pop.confirmLeave ? "Leave?" : ""
-                            primary: pop.confirmLeave
+                            danger: pop.confirmLeave
                             onClicked: {
                                 if (!pop.confirmLeave) {
                                     pop.confirmLeave = true;
@@ -856,7 +821,7 @@ PopupWindow {
                         wrapMode: Text.WordWrap
                         text: errBox.last
                         color: Theme.accentText
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                     }
                 }
@@ -903,7 +868,7 @@ PopupWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             text: "docs/setup/discord.md"
                             color: Theme.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                         }
                     }
                     CtlBtn {
@@ -981,7 +946,7 @@ PopupWindow {
                             leftPadding: 4
                             text: Discord.guildsLoading ? "Loading servers…" : "No servers found"
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                         }
                         Repeater {
@@ -1058,7 +1023,7 @@ PopupWindow {
                                         height: 30
                                         text: guild.info.loading ? "Loading channels…" : "No voice channels"
                                         color: Theme.textFaint
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                         font.weight: Font.Normal
                                     }
                                 }

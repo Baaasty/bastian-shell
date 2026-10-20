@@ -299,8 +299,10 @@ Scope {
                 // Vorschau-Breite: höchstens 320, bei vielen Workspaces bis herunter auf 96 (etwa 62 % der Bildschirmbreite für die Kacheln)
                 readonly property real deskPw: Math.round(Math.max(96, Math.min(320, (scr.modelData.width * 0.62 - 8 * (Desktops.count - 1)) / Math.max(1, Desktops.count) - 2 * tilePad)))
                 readonly property real deskPh: Math.round(deskPw * root.vh / root.vw)
-                // Kachelhöhe: Kopf 24 + Abstand 5 + Vorschau + Rand
-                readonly property real tileH: 24 + 5 + deskPh + 2 * 9
+                // Kopfzeile der Kachel (Nummer, Name, Zeit, Link-Knopf): so hoch wie eine Tastenkappe
+                readonly property int headH: Theme.keyCapHeight + Theme.keyCapLip
+                // Kachelhöhe: Kopf + Abstand + Vorschau + Rand
+                readonly property real tileH: headH + Theme.space1 + deskPh + 2 * 9
 
                 // Farbe je App-Klasse für die Fenster-Kacheln der Vorschau (nur Theme-Töne, stabil nach Klassenname)
                 readonly property var appTones: [Theme.accent, Theme.success, Theme.warning, Theme.woodLight, Theme.accentText, Theme.textMuted, Theme.error]
@@ -570,73 +572,43 @@ Scope {
                 // Projekt der markierten Kachel (Workspace-Modus): Git-Zeile + „Q links“ in der Hinweiszeile
                 readonly property var modeProj: root.modeOn ? GitInfo.projectForId(Desktops.ids[root.modeSel] ?? "") : null
 
-                // Hinweiszeile über der Leiste: Tasten des Modus (eine Zeile) oder kurze Meldung
-                Rectangle {
+                // Hinweiszeile über der Leiste: Tasten des Modus (eine Zeile) oder kurze Meldung –
+                // dieselbe Hinweis-Karte wie die Tooltips der Bar (Glass strong, KeyHintRow)
+                Glass {
                     id: modeHint
                     // offene Quicklinks (per Taste) liegen an derselben Stelle und haben eine eigene Tastenzeile
                     visible: (root.modeOn || root.modeNote !== "") && win.shown && !(quickLinks.visible && quickLinks.kb)
+                    strong: true
                     x: bar.x
                     y: bar.y - height - 10
-                    width: (root.modeNote !== "" ? noteTxt.implicitWidth : Math.max(hintRow.implicitWidth, modeGit.visible ? modeGit.implicitWidth : 0)) + 28
-                    height: modeGit.visible ? 74 : 44
+                    width: (root.modeNote !== "" ? noteTxt.implicitWidth : Math.max(hintRow.implicitWidth, modeGit.visible ? modeGit.implicitWidth : 0)) + 2 * Theme.padCard
+                    height: root.modeNote !== "" ? noteTxt.implicitHeight + 2 * Theme.padCard
+                        : (modeGit.visible ? modeGit.implicitHeight + Theme.space2 : 0) + hintRow.implicitHeight + 2 * Theme.padCard
                     radius: Theme.radiusMd
-                    color: Theme.surfaceRaised
-                    border.width: 1
-                    border.color: Theme.borderStrong
 
                     Txt {
                         id: noteTxt
                         anchors.centerIn: parent
                         visible: root.modeNote !== ""
                         text: root.modeNote
-                        font.pixelSize: 16
+                        font.pixelSize: Theme.fontMd
                         font.weight: Font.DemiBold
                     }
                     // Git/CI der markierten Kachel (nur Projekt-Workspaces)
                     QuickLinksTip {
                         id: modeGit
                         visible: root.modeNote === "" && !!win.modeProj && !!g && g.branch !== ""
-                        x: 14
-                        y: 12
+                        x: Theme.padCard
+                        y: Theme.padCard
                         proj: win.modeProj
                     }
-                    Row {
+                    KeyHintRow {
                         id: hintRow
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: modeGit.visible ? 40 : (parent.height - height) / 2
+                        x: Theme.padCard
+                        y: modeGit.visible ? modeGit.y + modeGit.implicitHeight + Theme.space2 : Theme.padCard
                         visible: root.modeNote === ""
-                        spacing: 16
-                        Repeater {
-                            model: [["1–9", "go"], ["←→", "select"], ["Enter", "go"]].concat(win.modeProj ? [["Q", "links"]] : [])
-                                .concat([["Del", Desktops.count <= 1 ? "reset" : "delete"], ["N", "new"], ["R", "rename"], ["Esc", "close"]])
-                            Row {
-                                required property var modelData
-                                spacing: 6
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: Math.max(24, keyTxt.implicitWidth + 12)
-                                    height: 24
-                                    radius: 7
-                                    color: Theme.surfaceSunken
-                                    border.width: 1
-                                    border.color: Theme.border
-                                    MonoTxt {
-                                        id: keyTxt
-                                        anchors.centerIn: parent
-                                        text: modelData[0]
-                                        font.pixelSize: 14
-                                        font.weight: Font.Bold
-                                        color: Theme.accentText
-                                    }
-                                }
-                                Txt {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData[1]
-                                    color: Theme.textMuted
-                                    font.pixelSize: 15
-                                }
-                            }
-                        }
+                        hints: [["1–9", "go"], ["←→", "select"], ["Enter", "go"]].concat(win.modeProj ? [["Q", "links"]] : [])
+                            .concat([["Del", Desktops.count <= 1 ? "reset" : "delete"], ["N", "new"], ["R", "rename"], ["Esc", "close"]])
                     }
                 }
 
@@ -764,14 +736,14 @@ Scope {
                                     color: Theme.warning
                                     Txt {
                                         anchors.fill: parent
-                                        anchors.margins: 8
+                                        anchors.margins: Theme.space2
                                         horizontalAlignment: Text.AlignHCenter
                                         wrapMode: Text.WordWrap
                                         elide: Text.ElideNone
                                         text: "Close " + root.delCount + (root.delCount === 1 ? " window" : " windows") + "? · Enter"
                                         color: Theme.onAccent
-                                        font.pixelSize: 17
-                                        font.weight: Font.Bold
+                                        font.pixelSize: Theme.fontLg
+                                        font.weight: Font.DemiBold
                                     }
                                     MouseArea {
                                         anchors.fill: parent
@@ -780,16 +752,16 @@ Scope {
                                     }
                                 }
 
-                                // Auswahl im Workspace-Modus: heller Akzentrahmen um die Kachel
+                                // Auswahl im Workspace-Modus: Glut-Rahmen um die Kachel (wie der gewählte Chip im Bar-Modus)
                                 Rectangle {
                                     visible: root.modeOn && root.modeSel === desk.index
                                     anchors.fill: parent
-                                    anchors.margins: -4
+                                    anchors.margins: -Theme.space1
                                     z: 30
-                                    radius: Theme.radiusMd + 4
+                                    radius: Theme.radiusMd + Theme.space1
                                     color: "transparent"
-                                    border.width: 3
-                                    border.color: Theme.accentText
+                                    border.width: 2
+                                    border.color: Theme.accent
                                 }
 
                                 HoverHandler {
@@ -811,36 +783,37 @@ Scope {
                                     id: tileCol
                                     x: win.tilePad
                                     anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 5
+                                    spacing: Theme.space1
 
                                     // Kopf: Nummer (= Alt+n) und Name
                                     Row {
-                                        height: 24
-                                        spacing: 8
+                                        height: win.headH
+                                        spacing: Theme.space2
                                         Rectangle {
+                                            id: badge
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: Math.max(24, badgeTxt.implicitWidth + 12)
-                                            height: 24
-                                            radius: 8
+                                            width: Math.max(win.headH, badgeTxt.implicitWidth + 2 * Theme.space2)
+                                            height: win.headH
+                                            radius: Theme.radiusXs
                                             // im Modus als Tastenhinweis hervorgehoben (die Zahl ist die Taste)
                                             color: desk.isCurrent ? Theme.onAccent : root.modeOn ? Theme.accentFill : Theme.surfaceSunken
                                             MonoTxt {
                                                 id: badgeTxt
                                                 anchors.centerIn: parent
                                                 text: desk.index + 1
-                                                font.pixelSize: 15
-                                                font.weight: Font.Bold
+                                                font.pixelSize: Theme.fontSm
+                                                font.weight: Font.DemiBold
                                                 color: desk.isCurrent ? Theme.accentText : root.modeOn ? Theme.accentText : Theme.textMuted
                                             }
                                         }
                                         Txt {
                                             id: nameO
                                             anchors.verticalCenter: parent.verticalCenter
-                                            width: Math.min(implicitWidth, win.deskPw - 24 - 8 - (desk.proj ? 32 : 0) - (deskDots.visible ? 30 : 0) - (deskTime.visible ? deskTime.implicitWidth + 8 : 0))
+                                            width: Math.min(implicitWidth, win.deskPw - badge.width - Theme.space2 - (desk.proj ? 32 : 0) - (deskDots.visible ? 30 : 0) - (deskTime.visible ? deskTime.implicitWidth + 8 : 0))
                                             text: desk.name
                                             color: desk.isCurrent ? Theme.onAccent : Theme.text
-                                            font.pixelSize: 16
-                                            font.weight: desk.isCurrent ? Font.Bold : Font.Medium
+                                            font.pixelSize: Theme.fontMd
+                                            font.weight: desk.isCurrent ? Font.DemiBold : Font.Medium
                                         }
                                     }
 
@@ -873,7 +846,7 @@ Scope {
                                             visible: desk.winCount === 0
                                             text: "Empty"
                                             color: Theme.textFaint
-                                            font.pixelSize: 14
+                                            font.pixelSize: Theme.fontSm
                                         }
 
                                         // ein Delegat je Fenster (bleibt stehen, solange es das Fenster gibt)
@@ -995,11 +968,11 @@ Scope {
                                     z: 14
                                     x: desk.width - implicitWidth - win.tilePad - 28 - 4 - (deskDots.visible ? deskDots.width + 4 : 0)
                                     y: tileCol.y
-                                    height: 24
+                                    height: win.headH
                                     verticalAlignment: Text.AlignVCenter
                                     text: ProjectTime.short(desk.projSec)
                                     color: desk.isCurrent ? Qt.alpha(Theme.onAccent, 0.75) : Theme.textFaint
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontSm
                                 }
 
                                 // Quicklinks (nur Projekt-Workspaces): kleiner Knopf rechts im Kopf, immer sichtbar
@@ -1009,8 +982,8 @@ Scope {
                                     x: desk.width - width - win.tilePad
                                     y: tileCol.y
                                     width: 28
-                                    height: 24
-                                    radius: 8
+                                    height: win.headH
+                                    radius: Theme.radiusXs
                                     color: linkArea.pressed ? Theme.surfaceSunken : linkArea.containsMouse ? Theme.surfaceRaised : Theme.surface
                                     border.width: 1
                                     border.color: linkArea.containsMouse ? Theme.borderStrong : Theme.border
@@ -1033,32 +1006,32 @@ Scope {
                                     }
                                 }
 
-                                // Tooltip über der Kachel (Fensterfläche reicht dafür nach oben, Eingaben nimmt nur die Leiste)
-                                Rectangle {
+                                // Tooltip über der Kachel (Fensterfläche reicht dafür nach oben, Eingaben nimmt nur die Leiste) –
+                                // dieselbe Hinweis-Karte wie in der Bar
+                                Glass {
                                     visible: desk.tipShown
+                                    strong: true
                                     x: 0
                                     y: -height - 12
                                     z: 20
-                                    width: Math.max(tipTitle.implicitWidth, tipHint.implicitWidth, tipGit.visible ? tipGit.implicitWidth : 0, tipTime.visible ? tipTime.implicitWidth : 0) + 28
-                                    height: tipCol.implicitHeight + 18
-                                    radius: Theme.radiusSm
-                                    color: Theme.surfaceRaised
-                                    border.width: 1
-                                    border.color: Theme.borderStrong
+                                    width: Math.max(tipTitle.implicitWidth, tipHint.implicitWidth, tipGit.visible ? tipGit.implicitWidth : 0, tipTime.visible ? tipTime.implicitWidth : 0) + 2 * Theme.padCard
+                                    height: tipCol.implicitHeight + 2 * Theme.padCard
+                                    radius: Theme.radiusMd
                                     Column {
                                         id: tipCol
                                         anchors.centerIn: parent
-                                        spacing: 2
+                                        spacing: Theme.space1
                                         Txt {
                                             id: tipTitle
                                             text: desk.name + "  ·  " + desk.winCount + (desk.winCount === 1 ? " window" : " windows")
                                                 + (desk.index < 9 ? "  ·  Alt+" + (desk.index + 1) : "")
-                                            font.pixelSize: 16
+                                            font.pixelSize: Theme.fontMd
                                             font.weight: Font.DemiBold
                                         }
                                         QuickLinksTip {
                                             id: tipGit
                                             proj: desk.proj
+                                            textSize: Theme.fontSm
                                         }
                                         Txt {
                                             id: tipTime
@@ -1066,13 +1039,13 @@ Scope {
                                             visible: !!desk.proj && (desk.projSec >= 60 || weekSec >= 60)
                                             text: "Project time: " + ProjectTime.fmt(desk.projSec) + " today  ·  " + ProjectTime.fmt(weekSec) + " this week"
                                             color: Theme.textMuted
-                                            font.pixelSize: 14
+                                            font.pixelSize: Theme.fontSm
                                         }
                                         Txt {
                                             id: tipHint
                                             text: "Click: go · double-click: rename · drag: reorder\nMiddle-click: close its windows and " + (Desktops.count <= 1 ? "reset" : "remove")
                                             color: Theme.textMuted
-                                            font.pixelSize: 14
+                                            font.pixelSize: Theme.fontSm
                                         }
                                     }
                                 }
@@ -1179,7 +1152,7 @@ Scope {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     text: "New"
                                     color: Theme.textMuted
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontSm
                                 }
                             }
                         }

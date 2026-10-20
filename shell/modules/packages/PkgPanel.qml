@@ -61,22 +61,12 @@ Glass {
         anchors.bottom: parent.bottom
         width: 232
 
-        Row {
+        PopoutTitle {
             x: 24
             y: 26
-            spacing: 10
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: "inventory_2"
-                size: 22
-                color: Theme.accentText
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Packages"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
-            }
+            icon: "inventory_2"
+            text: "Packages"
+            textSize: Theme.fontXl
         }
 
         Column {
@@ -103,7 +93,7 @@ Glass {
                     x: 14
                     y: 8
                     text: slot.modelData.group
-                    font.pixelSize: 10
+                    font.pixelSize: Theme.fontXs
                 }
 
                 Rectangle {
@@ -116,9 +106,8 @@ Glass {
                     width: parent.width
                     height: 40
                     radius: Theme.radiusMd
-                    color: on ? Theme.accentSoft : ma.containsMouse ? Theme.raise : "transparent"
-                    border.width: on ? 1 : 0
-                    border.color: Qt.alpha(Theme.accent, 0.4)
+                    // gewählte Seite = deckende Akzentfläche (wie Tab und Listenauswahl)
+                    color: on ? Theme.accentFill : ma.containsMouse ? Theme.raise : "transparent"
                     Behavior on color { ColorAnimation { duration: Theme.fade } }
 
                     Icon {
@@ -139,13 +128,13 @@ Glass {
                         Txt {
                             width: parent.width
                             text: item.modelData.label
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontMd
                             color: item.on ? Theme.accentText : Theme.text
                         }
                         Txt {
                             width: parent.width
                             text: item.modelData.hint
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontXs
                             font.weight: Font.Normal
                             color: Theme.textFaint
                         }
@@ -164,7 +153,7 @@ Glass {
                             id: cntT
                             anchors.centerIn: parent
                             text: item.n
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.DemiBold
                             color: Theme.bg
                         }
@@ -197,18 +186,17 @@ Glass {
             anchors.bottom: parent.bottom
             anchors.margins: 20
             spacing: 12
-            PkgBtn {
+            Button {
+                small: true
                 width: parent.width
                 enabled: !panel.pk.updBusy && !panel.pk.busy
                 icon: "refresh"
                 text: "Check for updates"
                 onClicked: panel.pk.refreshAll()
             }
-            Txt {
-                text: "Tab switches · Esc closes"
-                color: Theme.textFaint
-                font.pixelSize: 11
-                font.weight: Font.Normal
+            KeyHintRow {
+                gap: Theme.space3
+                hints: [["Tab", "switch"], ["Esc", "close"]]
             }
         }
     }
@@ -248,13 +236,13 @@ Glass {
                 spacing: 2
                 Txt {
                     text: panel.pk.view === "repos" ? (panel.pk.page === "system" ? "Repositories" : "Remotes") : panel.pk.pageInfo(panel.pk.page).label
-                    font.pixelSize: 22
+                    font.pixelSize: Theme.fontXl
                     font.weight: Font.DemiBold
                 }
                 Txt {
                     text: panel.subtitle
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }
@@ -327,7 +315,7 @@ Glass {
                 color: Theme.text
                 selectionColor: Theme.accentSoft
                 font.family: Theme.fontUi
-                font.pixelSize: 16
+                font.pixelSize: Theme.fontLg
                 focus: true
 
                 Keys.onEscapePressed: {
@@ -364,7 +352,7 @@ Glass {
                     visible: input.text === ""
                     text: panel.placeholder
                     color: Theme.textFaint
-                    font.pixelSize: 16
+                    font.pixelSize: Theme.fontLg
                     font.weight: Font.Normal
                 }
             }
@@ -491,7 +479,7 @@ Glass {
                     anchors.horizontalCenter: parent.horizontalCenter
                     horizontalAlignment: Text.AlignHCenter
                     color: Theme.textFaint
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     font.weight: Font.Normal
                     text: panel.loadSt.startsWith("error") ? panel.loadSt.slice(6)
                         : panel.loading ? "Loading…"

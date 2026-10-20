@@ -239,7 +239,7 @@ Scope {
                         color: Theme.text
                         selectionColor: Theme.accentSoft
                         font.family: Theme.fontUi
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.fontMd
                         focus: true
                         Keys.onPressed: event => {
                             const k = event.key;
@@ -280,7 +280,7 @@ Scope {
                             visible: input.text === ""
                             text: "Clipboard · type to filter"
                             color: Theme.textFaint
-                            font.pixelSize: 15
+                            font.pixelSize: Theme.fontMd
                             font.weight: Font.Normal
                         }
                     }
@@ -307,7 +307,7 @@ Scope {
                         width: ListView.view.width
                         height: root.rowH
                         radius: Theme.radiusSm
-                        color: on ? Theme.accentSoft : rowArea.containsMouse ? Theme.raise : "transparent"
+                        color: on ? Theme.accentFill : rowArea.containsMouse ? Theme.raise : "transparent"
 
                         Rectangle {
                             id: tile
@@ -315,7 +315,7 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 32
                             height: 32
-                            radius: 8
+                            radius: Theme.radiusXs
                             color: Theme.wood
                             clip: true
                             Image {
@@ -344,18 +344,34 @@ Scope {
                             anchors.verticalCenter: parent.verticalCenter
                             // mehrzeilige Kopien als eine Zeile zeigen
                             text: row.modelData.title.replace(/\s+/g, " ").slice(0, 300)
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontMd
                             font.weight: row.on ? Font.Medium : Font.Normal
                         }
-                        Txt {
+                        // gewählte Zeile: Taste als kleine Kappe + was sie tut; sonst „Pinned“
+                        Item {
                             id: kind
                             anchors.right: parent.right
                             anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            text: row.on ? (Clipboard.canPaste ? "↵ paste" : "↵ copy") : row.modelData.pinned ? "Pinned" : ""
-                            color: row.on ? Theme.accentText : Theme.textFaint
-                            font.pixelSize: 12
-                            font.weight: Font.Normal
+                            width: row.on ? kindKey.implicitWidth : pinTxt.implicitWidth
+                            height: Math.max(kindKey.implicitHeight, pinTxt.implicitHeight)
+                            KeyHintRow {
+                                id: kindKey
+                                visible: row.on
+                                anchors.verticalCenter: parent.verticalCenter
+                                small: true
+                                textColor: Theme.accentText
+                                hints: [["↵", Clipboard.canPaste ? "paste" : "copy"]]
+                            }
+                            Txt {
+                                id: pinTxt
+                                visible: !row.on
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: row.modelData.pinned ? "Pinned" : ""
+                                color: Theme.textFaint
+                                font.pixelSize: Theme.fontSm
+                                font.weight: Font.Normal
+                            }
                         }
                         MouseArea {
                             id: rowArea
@@ -374,32 +390,17 @@ Scope {
                     horizontalAlignment: Text.AlignHCenter
                     text: root.query ? "No match" : "Nothing copied yet"
                     color: Theme.textMuted
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
 
-                // Tasten-Hinweise
-                Row {
-                    spacing: 14
-                    leftPadding: 4
-                    Repeater {
-                        model: (Clipboard.canPaste ? [["↵", "paste"], ["Shift+↵", "copy"]] : [["↵", "copy"]]).concat([["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]])
-                        Row {
-                            required property var modelData
-                            spacing: 4
-                            MonoTxt {
-                                text: modelData[0]
-                                color: Theme.textMuted
-                                font.pixelSize: 11
-                            }
-                            Txt {
-                                text: modelData[1]
-                                color: Theme.textFaint
-                                font.pixelSize: 11
-                                font.weight: Font.Normal
-                            }
-                        }
-                    }
+                // Tasten-Hinweise (dieselbe Zeile wie überall)
+                KeyHintRow {
+                    x: Theme.space1
+                    width: parent.width - 2 * Theme.space1
+                    gap: Theme.space3
+                    small: true   // schmale Karte: kleine Kappen, damit alle Tasten in eine Zeile passen
+                    hints: (Clipboard.canPaste ? [["↵", "paste"], ["Shift+↵", "copy"]] : [["↵", "copy"]]).concat([["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]])
                 }
             }
         }

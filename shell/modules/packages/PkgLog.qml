@@ -75,7 +75,7 @@ Rectangle {
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter
             text: bar.pk.busy ? (bar.pk.authWait ? "Waiting for authentication · " : "") + bar.pk.busyTitle + (bar.pk.log.count > 1 ? "  ·  " + bar.pk.log.get(bar.pk.log.count - 1).line : "") : bar.pk.busyTitle + (bar.failed ? " failed" : " done")
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             color: bar.failed ? Theme.error : Theme.textMuted
         }
         Row {
@@ -84,11 +84,13 @@ Rectangle {
             anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             spacing: 4
-            PkgBtn {
+            Button {
+                small: true
                 icon: bar.pk.logOpen ? "expand_more" : "expand_less"
                 onClicked: bar.pk.logOpen = !bar.pk.logOpen
             }
-            PkgBtn {
+            Button {
+                small: true
                 visible: !bar.pk.busy
                 icon: "close"
                 onClicked: {
@@ -118,7 +120,7 @@ Rectangle {
             width: ListView.view.width
             text: line
             elide: Text.ElideRight
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             color: kind === "err" ? Theme.error : kind === "ok" ? Theme.success : kind === "cmd" || kind === "head" ? Theme.accentText : Theme.textMuted
         }
     }

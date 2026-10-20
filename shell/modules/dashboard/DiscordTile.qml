@@ -270,7 +270,7 @@ Tile {
                 width: ctl.colW
                 icon: Discord.self.mute ? "mic_off" : "mic"
                 text: Discord.self.mute ? "Muted" : "Mic"
-                primary: Discord.self.mute === true
+                kind: Discord.self.mute === true ? "on" : "secondary"
                 onClicked: Discord.setMute(!Discord.self.mute)
             }
             Button {
@@ -279,7 +279,7 @@ Tile {
                 width: ctl.colW
                 icon: Discord.self.deaf ? "headset_off" : "headset"
                 text: "Deafen"
-                primary: Discord.self.deaf === true
+                kind: Discord.self.deaf === true ? "on" : "secondary"
                 onClicked: Discord.setDeaf(!Discord.self.deaf)
             }
             Button {
@@ -295,7 +295,7 @@ Tile {
                 width: ctl.colW
                 icon: "call_end"
                 text: tile.confirmLeave ? "Sure?" : "Leave"
-                primary: tile.confirmLeave
+                kind: tile.confirmLeave ? "danger" : "secondary"
                 onClicked: {
                     if (!tile.confirmLeave) {
                         tile.confirmLeave = true;

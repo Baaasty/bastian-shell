@@ -34,7 +34,8 @@
     "accentFill": "deckender Akzent-Ton für ausgewählte Zeilen/aktive Chips (statt Glut-Schein)",
     "onAccent": "Text/Icon auf vollem Akzent",
     "shadow": "ruhiger Schlagschatten unter Kacheln (kein Leuchten)",
-    "blur": "true = durchsichtige Flächen + KWin/Hyprland-Blur (alte Varianten); false = alles deckend (hearth)"
+    "blur": "true = durchsichtige Flächen + KWin/Hyprland-Blur (alte Varianten); false = alles deckend (hearth)",
+    "keyLip": "Fuge unter Tastenkappen (KeyCap): eine Stufe dunkler als surfaceSunken"
   },
   "themes": {
     "hearth": {
@@ -67,7 +68,8 @@
       "error": "#E0604F",
       "dim": "rgba(24, 17, 13, 0.82)",
       "glow": "rgba(219, 107, 76, 0.55)",
-      "shadow": "rgba(12, 7, 4, 0.34)"
+      "shadow": "rgba(12, 7, 4, 0.34)",
+      "keyLip": "#241C17"
     },
     "ember": {
       "bg": "#120D0B",
@@ -446,6 +448,13 @@
         "mono": true,
         "tracking": -0.05
       }
+    },
+    "steps": {
+      "xs": 11,
+      "sm": 12,
+      "md": 14,
+      "lg": 16,
+      "xl": 20
     }
   },
   "icon": {
@@ -486,5 +495,20 @@
     "note": "Gilt als Rückfall, wenn eine Variante kein eigenes blur hat. Standard: deckend, ohne Blur, ohne Glühen.",
     "blur": false,
     "glow": false
+  },
+  "controls": {
+    "button": 36,
+    "buttonSm": 32,
+    "row": 34,
+    "rowTall": 40,
+    "keyCap": 20,
+    "keyCapSm": 16,
+    "keyCapLip": 2,
+    "iconButton": 32
+  },
+  "padding": {
+    "card": 12,
+    "popout": 16,
+    "panel": 24
   }
 }

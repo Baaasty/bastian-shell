@@ -411,28 +411,8 @@ Scope {
         }
     }
 
-    component OutlineBtn: Rectangle {
-        id: ob
-        property string text
-        signal clicked()
-        width: obTxt.implicitWidth + 40
-        height: 40
-        radius: Theme.radiusMd
-        color: obArea.containsMouse ? Theme.surfaceRaised : "transparent"
-        border.width: 1
-        border.color: Theme.borderStrong
-        Txt {
-            id: obTxt
-            anchors.centerIn: parent
-            text: ob.text
-        }
-        MouseArea {
-            id: obArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: ob.clicked()
-        }
+    // zweiter Knopf neben der Hauptaktion: der gemeinsame Button (secondary)
+    component OutlineBtn: Button {
     }
 
     // ---------- Oberfläche (nur solange eine Anfrage offen ist) ----------
@@ -553,13 +533,13 @@ Scope {
                             spacing: 2
                             Txt {
                                 text: root.recordMode ? "Record your screen" : "Share your screen"
-                                font.pixelSize: 18
+                                font.pixelSize: Theme.fontXl
                                 font.weight: Font.DemiBold
                             }
                             Txt {
                                 text: root.recordMode ? "Choose what to record · just this once, nothing is remembered" : root.demo ? "Preview · nothing will be shared" : root.requesterName !== "" ? root.requesterName + " wants to see your screen – choose what it may see" : "Choose what the app is allowed to see"
                                 color: Theme.textFaint
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.Normal
                             }
                         }
@@ -607,7 +587,7 @@ Scope {
                                 selectionColor: Theme.accentSoft
                                 selectedTextColor: Theme.text
                                 font.family: Theme.fontUi
-                                font.pixelSize: 14
+                                font.pixelSize: Theme.fontMd
                                 clip: true
                                 focus: true
                                 onTextChanged: root.query = text
@@ -652,7 +632,7 @@ Scope {
                                     visible: search.text === ""
                                     text: "Search…"
                                     color: Theme.textFaint
-                                    font.pixelSize: 14
+                                    font.pixelSize: Theme.fontMd
                                     font.weight: Font.Normal
                                 }
                             }
@@ -744,7 +724,7 @@ Scope {
                                                 width: parent.width
                                                 text: st.modelData.detail
                                                 color: Theme.textFaint
-                                                font.pixelSize: 12
+                                                font.pixelSize: Theme.fontSm
                                                 font.weight: Font.Normal
                                             }
                                         }
@@ -820,14 +800,14 @@ Scope {
                                         width: parent.width
                                         text: root.title(wt.modelData)
                                         color: wt.current ? Theme.text : Theme.textMuted
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontSm
                                         maximumLineCount: 1
                                     }
                                     Txt {
                                         width: parent.width
                                         text: root.appName(wt.modelData)
                                         color: Theme.textFaint
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontXs
                                         font.weight: Font.Normal
                                     }
                                 }
@@ -865,14 +845,14 @@ Scope {
                             Txt {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: root.recordMode ? "Record a part of a screen" : "Share a part of a screen"
-                                font.pixelSize: 16
+                                font.pixelSize: Theme.fontLg
                                 font.weight: Font.DemiBold
                             }
                             Txt {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: root.recordMode ? "Press Select region, then drag a rectangle or aim with the arrows." : "Press Select region, then drag a rectangle. Esc goes back."
                                 color: Theme.textFaint
-                                font.pixelSize: 13
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.Normal
                             }
                         }
@@ -892,7 +872,7 @@ Scope {
                             text: root.tab === "windows" ? "The window's area is recorded – anything on top of it shows up too"
                                 : root.tab === "screens" ? "The whole screen is recorded" : "The frozen screen opens, pick the area there"
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                             elide: Text.ElideRight
                         }
@@ -937,12 +917,12 @@ Scope {
                                     spacing: 1
                                     Txt {
                                         text: "Remember this choice"
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontSm
                                     }
                                     Txt {
                                         text: root.canRemember ? "Next time this app shares it without asking · Shift+Enter" : "A region is never remembered"
                                         color: Theme.textFaint
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontXs
                                         font.weight: Font.Normal
                                     }
                                 }
@@ -958,46 +938,19 @@ Scope {
                                 text: "Cancel"
                                 onClicked: root.cancel()
                             }
-                            Rectangle {
-                                width: shareRow.implicitWidth + 40
-                                height: 40
-                                radius: Theme.radiusMd
-                                opacity: root.canShare ? 1 : 0.5
-                                color: shareArea.pressed ? Theme.accentPressed : shareArea.containsMouse && root.canShare ? Theme.accentHover : Theme.accent
-                                Row {
-                                    id: shareRow
-                                    anchors.centerIn: parent
-                                    spacing: 6
-                                    Icon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        name: root.tab === "region" ? "crop_free" : root.recordMode ? "radio_button_checked" : "screen_share"
-                                        size: 18
-                                        color: Theme.onAccent
-                                    }
-                                    Txt {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: root.tab === "region" ? "Select region" : root.recordMode ? "Record" : "Share"
-                                        color: Theme.onAccent
-                                    }
-                                }
-                                MouseArea {
-                                    id: shareArea
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    enabled: root.canShare
-                                    onClicked: root.share()
-                                }
+                            Button {
+                                primary: true
+                                enabled: root.canShare
+                                icon: root.tab === "region" ? "crop_free" : root.recordMode ? "radio_button_checked" : "screen_share"
+                                text: root.tab === "region" ? "Select region" : root.recordMode ? "Record" : "Share"
+                                onClicked: root.share()
                             }
                         }
                     }
 
-                    Txt {
+                    KeyHintRow {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Arrows to choose · Tab to switch · Enter to " + (root.recordMode ? "record" : "share") + " · Esc to cancel"
-                        color: Theme.textFaint
-                        font.pixelSize: 12
-                        font.weight: Font.Normal
+                        hints: [["←→", "choose"], ["Tab", "switch"], ["Enter", root.recordMode ? "record" : "share"], ["Esc", "cancel"]]
                     }
                 }
             }

@@ -171,31 +171,15 @@ PopupWindow {
     // ---------- Bausteine ----------
 
     // kleiner Symbol-Knopf
-    component IconBtn: Rectangle {
-        id: ib
+    component IconBtn: Button {
         property string glyph
         property color tint: Theme.textFaint
         property bool fill: false
-        signal clicked()
-        width: 26
-        height: 26
-        radius: Theme.radiusSm
-        color: ibArea.containsMouse ? Theme.raise : "transparent"
-        Behavior on color { ColorAnimation { duration: Theme.fade } }
-        Icon {
-            anchors.centerIn: parent
-            name: ib.glyph
-            size: 16
-            fill: ib.fill
-            color: ibArea.containsMouse ? Theme.text : ib.tint
-        }
-        MouseArea {
-            id: ibArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: ib.clicked()
-        }
+        small: true
+        kind: "ghost"
+        icon: glyph
+        iconFill: fill
+        iconColor: hovered ? Theme.text : tint
     }
 
     // ein Subagent: Puls-Punkt (läuft) bzw. ✓ (fertig) · Beschreibung · seit wann / wie lange her
@@ -234,7 +218,7 @@ PopupWindow {
             width: Math.min(implicitWidth, ar.width - mark.width - 7 - when.implicitWidth - 6)
             text: ar.a.description
             color: ar.run ? Theme.textMuted : Theme.textFaint
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
         }
         MonoTxt {
@@ -244,7 +228,7 @@ PopupWindow {
             anchors.verticalCenter: parent.verticalCenter
             color: Theme.textFaint
             opacity: ar.run ? 1 : 0.8
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
             text: {
                 const t = ClaudeHub.ago(ar.run ? ar.a.since : ar.a.updated);
                 return "· " + (ar.run || t === "just now" ? t : t + " ago");
@@ -281,7 +265,7 @@ PopupWindow {
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
                 text: ab.asking ? "asking…" : "status"
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontXs
                 font.weight: Font.Normal
                 color: ab.asking ? Theme.accentText : abArea.containsMouse ? Theme.text : Theme.textFaint
             }
@@ -335,7 +319,7 @@ PopupWindow {
                     }
                     MonoTxt {
                         anchors.verticalCenter: parent.verticalCenter
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                         color: Theme.textFaint
                         text: {
                             if (!ac.a)
@@ -382,7 +366,7 @@ PopupWindow {
                 verticalAlignment: Text.AlignTop
                 text: ac.plain !== "" ? ac.plain + (ac.a.cut ? " …" : "") : (ac.a && ac.a.error ? "No answer · " + ac.a.error : "No answer")
                 color: ac.plain !== "" ? Theme.text : Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 lineHeight: 1.15
                 TapHandler {
@@ -478,7 +462,7 @@ PopupWindow {
                     Txt {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "map"
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                         font.weight: Font.Normal
                         color: mapArea.containsMouse ? Theme.text : Theme.textFaint
                     }
@@ -517,7 +501,7 @@ PopupWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 text: sr.tasks ? sr.tasks.done + "/" + sr.tasks.total : ""
                 color: Theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
             }
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
@@ -547,7 +531,7 @@ PopupWindow {
                 leftPadding: 19
                 text: "+" + (sr.shown.length - pop.maxAgents) + " more"
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             // Schalter: fertige Agents ein-/ausblenden
@@ -557,7 +541,7 @@ PopupWindow {
                 leftPadding: 19
                 text: (pop.showDone ? "hide finished" : "✓ " + sr.doneCount + " finished") + (doneHover.hovered ? (pop.showDone ? "" : " · show") : "")
                 color: doneHover.hovered ? Theme.textMuted : Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 HoverHandler {
                     id: doneHover
@@ -603,7 +587,7 @@ PopupWindow {
             Txt {
                 anchors.verticalCenter: parent.verticalCenter
                 text: pb.label
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
                 color: pbArea.containsMouse ? Theme.text : Theme.textMuted
             }
@@ -762,14 +746,14 @@ PopupWindow {
                     verticalAlignment: Text.AlignTop
                     text: tr.t.result ? tr.t.result + (tr.t.cut ? " …" : "") : (tr.t.error ? "No answer · " + tr.t.error : "No answer")
                     color: tr.t.result ? Theme.text : Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     lineHeight: 1.15
                 }
                 MonoTxt {
                     visible: text !== ""
                     width: resCol.width
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                     color: Theme.textFaint
                     text: {
                         const t = tr.t;
@@ -1003,7 +987,7 @@ PopupWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.min(implicitWidth, 200)
                             text: pc.modelData
-                            font.pixelSize: 14
+                            font.pixelSize: Theme.fontMd
                             color: Theme.text
                         }
                         Icon {
@@ -1036,7 +1020,7 @@ PopupWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     horizontalAlignment: Text.AlignRight
                     elide: Text.ElideMiddle
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     color: Theme.textFaint
                     text: {
                         const parts = [];
@@ -1135,7 +1119,7 @@ PopupWindow {
                             anchors.verticalCenter: parent.verticalCenter
                             text: pc.roadmap ? pc.roadmap.done + "/" + pc.roadmap.total : ""
                             color: Theme.textMuted
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                         }
                     }
                     Txt {
@@ -1212,7 +1196,7 @@ PopupWindow {
                         visible: pc.inBacklog
                         horizontalAlignment: Text.AlignRight
                         elide: Text.ElideLeft
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                         color: blArea.containsMouse ? Theme.textMuted : Theme.textFaint
                         text: pc.docsChanged.length ? pc.docsChanged.join(" · ") + " changed" : "docs/BACKLOG.md"
                         MouseArea {
@@ -1300,7 +1284,7 @@ PopupWindow {
                     selectionColor: Theme.accentSoft
                     selectedTextColor: Theme.text
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     clip: true
                     function submit(): void {
                         if (pc.mode === "claude") {
@@ -1387,7 +1371,7 @@ PopupWindow {
                         anchors.right: parent.right
                         anchors.rightMargin: 6
                         anchors.verticalCenter: parent.verticalCenter
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         color: ClaudeHub.needsCount > 0 ? Theme.accentText : Theme.textFaint
                         text: ClaudeHub.needsCount > 0 ? (ClaudeHub.needsCount === 1 ? "1 needs you" : ClaudeHub.needsCount + " need you")
                             : ClaudeHub.workingCount > 0 ? "Claude is working" : "all quiet"

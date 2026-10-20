@@ -41,7 +41,7 @@ Item {
             anchors.top: parent.top
             anchors.topMargin: 11
             text: f.label
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
             font.weight: Font.Normal
             color: Theme.textFaint
         }
@@ -122,7 +122,8 @@ Item {
                     strongTone: true
                     letterSize: 22
                 }
-                PwBtn {
+                Button {
+                    small: true
                     id: editBtn
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -139,7 +140,7 @@ Item {
                     y: 8
                     elide: Text.ElideRight
                     text: d.e ? d.e.title : ""
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontXl
                     font.weight: Font.DemiBold
                 }
                 Row {
@@ -149,7 +150,7 @@ Item {
                     spacing: 8
                     Txt {
                         text: d.e ? (d.pw.domainOf(d.e) || "no website") : ""
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                         color: Theme.textFaint
                     }
@@ -159,7 +160,7 @@ Item {
                         spacing: 4
                         Txt {
                             text: "·"
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             color: Theme.textFaint
                         }
                         Icon {
@@ -170,7 +171,7 @@ Item {
                         }
                         Txt {
                             text: d.e ? (d.e.group || "") : ""
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                             color: Theme.textMuted
                         }
@@ -188,10 +189,11 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     text: d.e ? (d.e.user || "—") : ""
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontMd
                 }
                 buttons: [
-                    PwBtn {
+                    Button {
+                        small: true
                         icon: "content_copy"
                         enabled: !!(d.e && d.e.user)
                         onClicked: d.pw.copy("user")
@@ -212,14 +214,16 @@ Item {
                     color: d.pw.revealOn ? Theme.text : Theme.textMuted
                 }
                 buttons: [
-                    PwBtn {
+                    Button {
+                        small: true
                         icon: d.pw.revealOn ? "visibility_off" : "visibility"
                         enabled: !!(d.e && d.e.hasPassword)
                         onClicked: d.pw.toggleReveal()
                     },
-                    PwBtn {
+                    Button {
+                        small: true
                         icon: "content_copy"
-                        tone: "accent"
+                        kind: "on"
                         enabled: !!(d.e && d.e.hasPassword)
                         onClicked: d.pw.copy("password")
                     }
@@ -237,7 +241,7 @@ Item {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     text: totpField.t ? totpField.t.code.replace(/^(\d{3})(\d{3})$/, "$1 $2") : "··· ···"
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontXl
                     font.weight: Font.DemiBold
                     color: totpField.t && totpField.secs < 6 ? Theme.warning : Theme.text
                 }
@@ -251,12 +255,13 @@ Item {
                         color: totpField.secs < 6 ? Theme.warning : Theme.accent
                         MonoTxt {
                             text: Math.ceil(totpField.secs)
-                            font.pixelSize: 10
+                            font.pixelSize: Theme.fontXs
                             color: Theme.textMuted
                         }
                     },
                     Item { width: 4; height: 1 },
-                    PwBtn {
+                    Button {
+                        small: true
                         icon: "content_copy"
                         enabled: !!totpField.t
                         onClicked: d.pw.copy("totp")
@@ -277,7 +282,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !d.pw.notesOn
                     text: "••••••••••••"
-                    font.pixelSize: 16
+                    font.pixelSize: Theme.fontLg
                     color: Theme.textMuted
                 }
                 TextEdit {
@@ -292,14 +297,16 @@ Item {
                     color: Theme.text
                     selectionColor: Theme.accentSoft
                     font.family: Theme.fontMono
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                 }
                 buttons: [
-                    PwBtn {
+                    Button {
+                        small: true
                         icon: d.pw.notesOn ? "visibility_off" : "visibility"
                         onClicked: d.pw.toggleNotes()
                     },
-                    PwBtn {
+                    Button {
+                        small: true
                         icon: "content_copy"
                         onClicked: d.pw.copy("notes")
                     }
@@ -316,7 +323,7 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 4
                     text: "Websites"
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.DemiBold
                     color: Theme.textMuted
                 }
@@ -325,7 +332,7 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 4
                     text: "used for autofill"
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                     font.weight: Font.Normal
                     color: Theme.textFaint
                 }
@@ -358,7 +365,7 @@ Item {
                         anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
                         text: urlRow.modelData.replace(/^https:\/\//, "")
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                     }
                 }

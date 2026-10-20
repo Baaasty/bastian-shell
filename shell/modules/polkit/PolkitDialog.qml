@@ -70,13 +70,13 @@ Glass {
                 spacing: 2
                 Txt {
                     text: "Authentication required"
-                    font.pixelSize: 18
+                    font.pixelSize: Theme.fontXl
                     font.weight: Font.DemiBold
                 }
                 Txt {
                     text: "Admin permission needed"
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }
@@ -107,7 +107,7 @@ Glass {
                 anchors.rightMargin: 12
                 text: card.actionId
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 elide: Text.ElideMiddle
             }
         }
@@ -120,7 +120,7 @@ Glass {
             Txt {
                 text: "Authenticate as"
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Flow {
@@ -144,7 +144,7 @@ Glass {
                             anchors.centerIn: parent
                             text: chip.modelData
                             color: chip.on ? Theme.accentText : Theme.text
-                            font.pixelSize: 13
+                            font.pixelSize: Theme.fontSm
                         }
                         MouseArea {
                             id: chipArea
@@ -169,7 +169,7 @@ Glass {
             Txt {
                 text: card.prompt
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Rectangle {
@@ -197,7 +197,7 @@ Glass {
                     color: Theme.text
                     selectionColor: Theme.accentSoft
                     font.family: Theme.fontUi
-                    font.pixelSize: 17
+                    font.pixelSize: Theme.fontLg
                     font.letterSpacing: card.echo ? 0 : 2
                     onAccepted: {
                         if (card.inputEnabled) {
@@ -228,7 +228,7 @@ Glass {
                     wrapMode: Text.WordWrap
                     elide: Text.ElideNone
                     color: card.failed || card.infoIsError ? Theme.error : Theme.textMuted
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }
@@ -239,52 +239,21 @@ Glass {
             anchors.right: parent.right
             spacing: 10
 
-            Rectangle {
-                width: 96
-                height: 40
-                radius: Theme.radiusMd
-                color: cancelArea.containsMouse ? Theme.surfaceRaised : "transparent"
-                border.width: 1
-                border.color: Theme.borderStrong
-                Txt {
-                    anchors.centerIn: parent
-                    text: "Cancel"
-                }
-                MouseArea {
-                    id: cancelArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: card.cancelled()
-                }
+            Button {
+                text: "Cancel"
+                onClicked: card.cancelled()
             }
-            Rectangle {
-                width: 112
-                height: 40
-                radius: Theme.radiusMd
-                color: !card.inputEnabled ? Theme.accentSoft : okArea.pressed ? Theme.accentPressed : okArea.containsMouse ? Theme.accentHover : Theme.accent
-                Txt {
-                    anchors.centerIn: parent
-                    text: card.checking ? "Checking…" : "Authenticate"
-                    color: Theme.onAccent
-                }
-                MouseArea {
-                    id: okArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    enabled: card.inputEnabled
-                    onClicked: input.accepted()
-                }
+            Button {
+                primary: true
+                enabled: card.inputEnabled
+                text: card.checking ? "Checking…" : "Authenticate"
+                onClicked: input.accepted()
             }
         }
 
-        Txt {
+        KeyHintRow {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "Enter to confirm · Esc to cancel"
-            color: Theme.textFaint
-            font.pixelSize: 12
-            font.weight: Font.Normal
+            hints: [["Enter", "confirm"], ["Esc", "cancel"]]
         }
     }
 }

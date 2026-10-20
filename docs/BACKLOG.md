@@ -11,7 +11,6 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 - **Backup-Status** – letzter Lauf im Dashboard; braucht erst ein Backup (z. B. btrbk/snapper auf btrfs) (Quelle: docs/ROADMAP.md „Später“, alte SPEC §2.2)
 - **Mit mir geteilte Passwort-Gruppen** – Gruppen fremder Besitzer (Shared-DB + Teilnehmer-Schlüssel) in icp lesen; eigene Gruppen gehen schon (`~/Apps/icp/icp/sharing`) (2026-10-19, Quelle: Chat)
 - **Claude-Chats-Bubble** – eine Bubble für Claude-Desktop/claude.ai-Antworten; Code liegt bereit (`shell/services/ClaudeChats.qml`, `shell/modules/bar/ClaudeChatsChip.qml`), **blockiert**: Claude Desktop schickt unter Linux keine Benachrichtigungen (2026-10-18, aus der Roadmap 2026-10-20)
-- **Tasten-Hinweise in Popout-Fußzeilen als Kappen** – Fokus, Tasks, Dateiauswahl und Kürzel-Menü zeigen ihre Tasten noch als Fließtext; auf die gemeinsamen Kappen (`KeyCap`/`KeyTip`) umstellen (2026-10-20, Quelle: einheitliche Hotkey-Einblendungen)
 
 ## In Ausarbeitung
 
@@ -21,6 +20,7 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 - **Mail-Schnellaktionen in der Shell** – „Als gelesen“/„Archivieren“ per eigenem IMAP-Aufruf neben „Öffnen“; „später evtl.“ (Quelle: docs/DECISIONS.md) → umgesetzt 2026-10-20
 - **Leise, warme Systemklänge** – eigener sanfter Benachrichtigungston („weicher Holz-Klick“) statt Standard; optional (Quelle: docs/knowledge/theming.md, design/brief.md) → umgesetzt 2026-10-20
 - **Kamera-Status ereignisgesteuert** – `Camera.qml` fragt `scripts/camera status` alle 5 s ab; könnte über `scripts/privacy-cam` (inotify auf `/dev/video`) laufen (Quelle: docs/ROADMAP-HYPRLAND.md) → umgesetzt 2026-10-20
+- **Tasten-Hinweise in Popout-Fußzeilen als Kappen** – Fokus, Tasks, Dateiauswahl und Kürzel-Menü zeigen ihre Tasten noch als Fließtext; auf die gemeinsamen Kappen (`KeyCap`/`KeyTip`) umstellen (2026-10-20, Quelle: einheitliche Hotkey-Einblendungen) → umgesetzt 2026-10-20
 
 ## Verworfen
 <!-- mit Grund, damit sie nicht wiederkommt -->

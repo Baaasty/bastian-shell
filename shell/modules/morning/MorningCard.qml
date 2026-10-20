@@ -220,13 +220,27 @@ Scope {
                                 color: Qt.alpha(Theme.accent, 0.55)
                             }
                         }
-                        Txt {
+                        // „Click, Esc or Enter to close“ – die Tasten als Kappen
+                        Item {
                             width: parent.width
-                            text: "Click, Esc or Enter to close"
-                            color: Theme.textFaint
-                            font.pixelSize: 12
-                            font.weight: Font.Normal
-                            horizontalAlignment: Text.AlignRight
+                            height: closeHints.implicitHeight
+                            Row {
+                                id: closeHints
+                                anchors.right: parent.right
+                                spacing: Theme.space2
+                                Txt {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Click,"
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.fontSm
+                                    font.weight: Font.Normal
+                                }
+                                KeyHintRow {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    gap: Theme.space2
+                                    hints: [["Esc", "or"], ["Enter", "to close"]]
+                                }
+                            }
                         }
                     }
                 }

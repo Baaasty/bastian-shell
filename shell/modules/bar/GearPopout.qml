@@ -109,7 +109,7 @@ PopupWindow {
         Layout.preferredWidth: 96
         Layout.maximumWidth: 96
         color: Theme.textMuted
-        font.pixelSize: 13
+        font.pixelSize: Theme.fontSm
         font.weight: Font.Normal
     }
     component Front: Item {
@@ -120,7 +120,7 @@ PopupWindow {
     component Hint: Txt {
         Layout.fillWidth: true
         color: Theme.textFaint
-        font.pixelSize: 13
+        font.pixelSize: Theme.fontSm
         font.weight: Font.Normal
     }
     component Sep: Rectangle {
@@ -210,19 +210,11 @@ PopupWindow {
             id: head
             x: 20
             y: 18
-            height: 30
-            spacing: 8
-            Icon {
+            height: Theme.iconButton
+            PopoutTitle {
                 anchors.verticalCenter: parent.verticalCenter
-                name: "mouse"
-                size: 22
-                color: Theme.accentText
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
+                icon: "mouse"
                 text: "Gear"
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
             }
         }
 
@@ -285,7 +277,7 @@ PopupWindow {
                         Txt {
                             anchors.verticalCenter: parent.verticalCenter
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                             readonly property string when: Devices.rgbLast.at > 0 ? " · " + Qt.formatTime(new Date(Devices.rgbLast.at * 1000), "HH:mm") : ""
                             text: Devices.rgbRunning ? "setting … (~25 s)"
@@ -357,7 +349,7 @@ PopupWindow {
                 Txt {
                     Layout.fillWidth: true
                     color: Devices.saveError !== "" ? Theme.warning : Devices.mouseOk ? Theme.text : Theme.textFaint
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     text: {
                         // Grund fürs gescheiterte Speichern steht hier, rechts ist nur Platz für die Knöpfe
@@ -404,7 +396,7 @@ PopupWindow {
                             visible: !Devices.mouseDirty && !Devices.saving && Devices.saveNote !== ""
                             text: Devices.saveNote
                             color: Theme.textFaint
-                            font.pixelSize: 12
+                            font.pixelSize: Theme.fontSm
                             font.weight: Font.Normal
                         }
                         Pick {
@@ -513,7 +505,7 @@ PopupWindow {
                     Layout.preferredWidth: rows.backW
                     horizontalAlignment: Text.AlignRight
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     text: Devices.mouseDirty ? "not saved yet" : Devices.shownColor !== "" ? Devices.shownColor : "no static color"
                 }

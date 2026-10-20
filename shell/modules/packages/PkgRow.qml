@@ -60,18 +60,19 @@ Item {
                 visible: !!row.r.sub
                 text: row.r.sub || ""
                 color: Theme.textFaint
-                font.pixelSize: 11
+                font.pixelSize: Theme.fontXs
                 font.weight: Font.Normal
             }
         }
-        PkgBtn {
+        Button {
+            small: true
             anchors.right: parent.right
             anchors.rightMargin: 14
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 4
             visible: !!row.r.updateAll
             enabled: !row.pk.busy
-            tone: "accent"
+            kind: "primary"
             icon: "download"
             text: "Update all"
             onClicked: row.pk.runExec("Update all " + row.r.title, row.r.updateAll, !row.r.noRoot && (row.r.updateAll[0] === "system" || row.r.updateAll[2] === "all"))
@@ -87,7 +88,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         text: row.r.text || ""
         color: Theme.textFaint
-        font.pixelSize: 12
+        font.pixelSize: Theme.fontSm
         font.weight: Font.Normal
         wrapMode: Text.Wrap
         elide: Text.ElideNone
@@ -103,9 +104,8 @@ Item {
         width: parent.width
         height: row.base - 4
         radius: Theme.radiusMd
-        color: row.expanded || row.selected ? Qt.alpha(Theme.text, 0.07) : hover.containsMouse ? Theme.raise : "transparent"
-        border.width: row.selected ? 1 : 0
-        border.color: Qt.alpha(Theme.accent, 0.45)
+        // gewählt = deckende Akzentfläche (Listenauswahl), aufgeklappt = eine Stufe dunkler, Hover leise
+        color: row.selected ? Theme.accentFill : row.expanded ? Theme.surface : hover.containsMouse ? Theme.raise : "transparent"
         Behavior on color { ColorAnimation { duration: Theme.fade } }
 
         MouseArea {
@@ -275,101 +275,113 @@ Item {
                 visible: row.kind === "coprsearch" && row.r.done && !row.r.busy
                 text: "results below"
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "coprsearch" && !row.r.busy && !row.r.done
-                tone: "accent"
+                kind: "on"
                 icon: "search"
                 text: "Search"
                 onClicked: row.pk.searchCopr()
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "pkg" && !!row.r.upgrade
                 enabled: !row.pk.busy
-                tone: "accent"
+                kind: "on"
                 icon: "download"
                 text: "Update"
                 onClicked: row.pk.request("update", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "pkg" && !row.r.installed && (row.r.src === "system" || !!row.r.installable)
                 enabled: !row.pk.busy
-                tone: "accent"
+                kind: "on"
                 icon: "add"
                 text: "Install"
                 onClicked: row.pk.request("install", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "pkg" && !!row.r.installed && !row.onUpdates && row.r.src !== "devtools"
                 enabled: !row.pk.busy
-                tone: "danger"
+                kind: "danger"
                 icon: "delete"
                 onClicked: row.pk.request("remove", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "repo"
                 enabled: !row.pk.busy
                 text: row.r.enabled ? "Disable" : "Enable"
                 onClicked: row.pk.request(row.r.enabled ? "disable" : "enable", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "repo"
                 enabled: !row.pk.busy
-                tone: "danger"
+                kind: "danger"
                 icon: "delete"
                 onClicked: row.pk.request("remove", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "coprresult" && !row.r.installed
                 enabled: !row.pk.busy
-                tone: "accent"
+                kind: "on"
                 icon: "add"
                 text: "Enable"
                 onClicked: row.pk.request("enable", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "dnfrepo" && !row.r.copr
                 enabled: !row.pk.busy
                 text: row.r.enabled ? "Disable" : "Enable"
                 onClicked: row.pk.request("repo-toggle", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: (row.kind === "vendor" && !row.r.present) || row.kind === "addrepo"
                 enabled: !row.pk.busy
-                tone: "accent"
+                kind: "on"
                 icon: "add"
                 text: "Add repo"
                 onClicked: row.pk.request("add", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "remote"
                 enabled: !row.pk.busy
                 text: row.r.enabled ? "Disable" : "Enable"
                 onClicked: row.pk.request("remote-toggle", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "appimage"
                 enabled: !row.pk.busy && !!row.r.executable
-                tone: "accent"
+                kind: "on"
                 icon: "play_arrow"
                 text: "Run"
                 onClicked: row.pk.request("run", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 anchors.verticalCenter: parent.verticalCenter
                 visible: row.kind === "appimage"
                 enabled: !row.pk.busy
-                tone: "danger"
+                kind: "danger"
                 icon: "delete"
                 onClicked: row.pk.request("remove", row.r)
             }
@@ -392,7 +404,7 @@ Item {
                     id: nameT
                     width: Math.min(implicitWidth, parent.width - (verT.visible ? verT.width + parent.spacing : 0))
                     text: row.kind === "coprsearch" ? "Search COPR for “" + row.r.q + "”" : row.kind === "addrepo" ? "Add repo from this file" : (row.r.name || row.r.id || "")
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     font.weight: Font.DemiBold
                 }
                 MonoTxt {
@@ -403,14 +415,14 @@ Item {
                     anchors.verticalCenter: nameT.verticalCenter
                     text: row.r.version || ""
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                 }
             }
             Txt {
                 width: parent.width
                 text: row.kind === "coprsearch" ? "Community repos on copr.fedorainfracloud.org (needs network, a few seconds)" : row.kind === "addrepo" ? row.r.url : (row.r.desc || "")
                 color: Theme.textMuted
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -432,14 +444,14 @@ Item {
             visible: !!(row.info && row.info.loading)
             spacing: 8
             PkgSpinner { size: 16 }
-            Txt { text: "Loading details…"; color: Theme.textFaint; font.pixelSize: 12 }
+            Txt { text: "Loading details…"; color: Theme.textFaint; font.pixelSize: Theme.fontSm }
         }
         Txt {
             visible: !!(row.info && row.info.error)
             width: parent.width
             text: row.info && row.info.error ? row.info.error : ""
             color: Theme.warning
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             wrapMode: Text.Wrap
             elide: Text.ElideNone
         }
@@ -448,7 +460,7 @@ Item {
             width: parent.width
             text: row.info && row.info.description ? row.info.description : ""
             color: Theme.textMuted
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
             wrapMode: Text.Wrap
             elide: Text.ElideNone
@@ -483,7 +495,7 @@ Item {
             width: parent.width
             text: row.r.desc || ""
             color: Theme.textMuted
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
             wrapMode: Text.Wrap
             elide: Text.ElideNone
@@ -495,7 +507,7 @@ Item {
             visible: row.kind === "repo" && !!(row.info && row.info.items)
             text: row.info && row.info.items ? row.info.items.length + " packages in this repo" : ""
             color: Theme.textFaint
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
         ListView {
             id: repoPkgs
@@ -516,7 +528,7 @@ Item {
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
                     text: pr.modelData.name + "  ·  " + pr.modelData.desc
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     color: pr.modelData.installed ? Theme.text : Theme.textMuted
                 }
@@ -527,9 +539,10 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: pr.modelData.version
                     color: Theme.textFaint
-                    font.pixelSize: 11
+                    font.pixelSize: Theme.fontXs
                 }
-                PkgBtn {
+                Button {
+                    small: true
                     id: pb
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -537,7 +550,7 @@ Item {
                     height: 24
                     enabled: !row.pk.busy && !pr.modelData.installed && row.r.enabled
                     text: pr.modelData.installed ? "installed" : "Install"
-                    tone: pr.modelData.installed ? "neutral" : "accent"
+                    kind: pr.modelData.installed ? "secondary" : "on"
                     onClicked: row.pk.request("install-pkg", { src: "copr", id: pr.modelData.id, name: pr.modelData.name })
                 }
             }
@@ -550,7 +563,7 @@ Item {
             text: row.r.path || ""
             elide: Text.ElideMiddle
             color: Theme.textMuted
-            font.pixelSize: 11
+            font.pixelSize: Theme.fontXs
         }
         Flow {
             visible: row.kind === "appimage"
@@ -561,20 +574,23 @@ Item {
         Row {
             visible: row.kind === "appimage"
             spacing: 8
-            PkgBtn {
+            Button {
+                small: true
                 enabled: !row.pk.busy
                 icon: row.r.desktop ? "link_off" : "add_link"
                 text: row.r.desktop ? "Remove menu entry" : "Add menu entry"
                 onClicked: row.pk.request(row.r.desktop ? "desktop-remove" : "desktop-add", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 visible: !!row.r.updater
                 enabled: !row.pk.busy
                 icon: "download"
                 text: "Update (AppImageUpdate)"
                 onClicked: row.pk.request("update", row.r)
             }
-            PkgBtn {
+            Button {
+                small: true
                 visible: !row.r.executable
                 enabled: !row.pk.busy
                 icon: "lock_open"

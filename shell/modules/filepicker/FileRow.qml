@@ -68,6 +68,8 @@ Item {
         anchors.fill: parent
         alignLeft: true
         active: row.selected
+        // gewählte Zeile = deckende Akzentfläche (wie jede Listenauswahl)
+        color: row.selected ? Theme.accentFill : hovered ? Theme.raise : "transparent"
         onClicked: mouse => {
             if (mouse.button === Qt.LeftButton)
                 row.picked();
@@ -133,7 +135,7 @@ Item {
             horizontalAlignment: Text.AlignRight
             text: row.modelData.isDir ? "" : row.size(row.modelData.size)
             color: Theme.textFaint
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
         MonoTxt {
             anchors.verticalCenter: parent.verticalCenter
@@ -141,7 +143,7 @@ Item {
             horizontalAlignment: Text.AlignRight
             text: row.when(row.modelData.modified)
             color: Theme.textFaint
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
     }
 }

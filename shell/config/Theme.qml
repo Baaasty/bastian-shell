@@ -75,11 +75,39 @@ Singleton {
     readonly property int barMargin: layout.barMargin || 10
     readonly property int barRadius: layout.barRadius || 14
     readonly property int windowGap: layout.windowGap || 10
+    readonly property int radiusXs: radii.xs || 6
     readonly property int radiusSm: radii.sm || 10
     readonly property int radiusMd: radii.md || 14
     readonly property int radiusLg: radii.lg || 18
     readonly property int radiusXl: radii.xl || 24
     readonly property int hitMin: layout.hitTargetMin || 32
+
+    // Design-System light: ein Raster für alle Flächen (palette.json space/padding/controls),
+    // damit Popouts, Panels und Karten gleich atmen statt jede Datei eigene Zahlen hat
+    readonly property var spaces: data.space || ({})
+    readonly property int space1: spaces["1"] || 4
+    readonly property int space2: spaces["2"] || 8
+    readonly property int space3: spaces["3"] || 12
+    readonly property int space4: spaces["4"] || 16
+    readonly property int space5: spaces["5"] || 20
+    readonly property int space6: spaces["6"] || 24
+    readonly property var pads: data.padding || ({})
+    readonly property int padCard: pads.card || 12        // Hinweis-Karten, Tooltips
+    readonly property int padPopout: pads.popout || 16    // Bar-Popouts, kleine Karten
+    readonly property int padPanel: pads.panel || 24      // große Panels, Dashboard-Kacheln
+    readonly property var controls: data.controls || ({})
+    readonly property int buttonHeight: controls.button || 36
+    readonly property int buttonHeightSm: controls.buttonSm || 32
+    readonly property int iconButton: controls.iconButton || 32
+    readonly property int rowHeight: controls.row || 34
+    readonly property int rowHeightTall: controls.rowTall || 40
+    // Tastenkappe (KeyCap): Fläche + Fuge darunter; md für Hinweiszeilen/Super+K, sm an Chips und in Tooltips
+    readonly property int keyCapHeight: controls.keyCap || 20
+    readonly property int keyCapHeightSm: controls.keyCapSm || 16
+    readonly property int keyCapLip: controls.keyCapLip || 2
+    // Symbolgröße in Knöpfen und Kopf-Kacheln (palette icon.button)
+    readonly property int iconSize: (data.icon && data.icon.button) || 18
+    readonly property color keyLip: col(t.keyLip, Qt.darker(surfaceSunken, 1.3))
 
     // Schriften
     readonly property string fontUi: "Inter"
@@ -87,6 +115,15 @@ Singleton {
     readonly property string fontIcon: "Material Symbols Rounded"
     // Standard-Textgröße (Txt.qml): type.scale.ui.size
     readonly property int fontSize: (data.type && data.type.scale && data.type.scale.ui && data.type.scale.ui.size) || 14
+    // Type-Scale (type.steps): fünf Stufen statt freier Pixelwerte. Xs = Mono-Meta/kleine Kappen,
+    // Sm = Hinweise/Fußzeilen/Zeitstempel, Md = Standard, Lg = Popout-/Kartentitel, Xl = Panel-Titel.
+    // Uhr, große Zahlen und Icons bleiben eigene Anzeigegrößen
+    readonly property var steps: (data.type && data.type.steps) || ({})
+    readonly property int fontXs: steps.xs || 11
+    readonly property int fontSm: steps.sm || 12
+    readonly property int fontMd: steps.md || 14
+    readonly property int fontLg: steps.lg || 16
+    readonly property int fontXl: steps.xl || 20
 
     // Bewegung (ms), immer Easing.OutCubic, ruhig (kein Schwingen, kein Dauerleuchten)
     readonly property int fade: motion.fade || 180

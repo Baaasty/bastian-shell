@@ -32,3 +32,11 @@ function parts(text) {
     });
     return out;
 }
+
+// Eine Taste oder ein Kürzel für eine Hinweiszeile (KeyHintRow.qml): „Ctrl+P“ → Ctrl + P, „Esc“ → eine Haupttaste
+function keys(seg) {
+    const s = String(seg || "").trim();
+    if (s === "")
+        return [];
+    return CHORD.test(s) ? chord(s) : [{ kind: "key", text: s, main: true }];
+}

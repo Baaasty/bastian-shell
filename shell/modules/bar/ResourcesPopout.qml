@@ -348,45 +348,10 @@ PopupWindow {
 
     // ---------- Bausteine ----------
     // Textknopf (End / Force / Cancel / Copy)
-    component Btn: Rectangle {
-        id: bt
-        property string text
-        property string icon
-        property string tone: "plain"                  // plain | danger | primary
-        property bool small: false
-        signal clicked()
-        width: btRow.implicitWidth + (small ? 20 : 30)
-        height: small ? 26 : 34
-        radius: small ? Theme.radiusSm : Theme.radiusMd
-        color: tone === "danger" ? Theme.flat(Qt.alpha(Theme.error, btArea.containsMouse ? 0.42 : 0.3))
-             : tone === "primary" ? Theme.accentFill
-             : btArea.containsMouse ? Theme.surface : Theme.surfaceSunken
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Row {
-            id: btRow
-            anchors.centerIn: parent
-            spacing: 5
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: bt.icon !== ""
-                name: bt.icon
-                size: 14
-                color: bt.tone === "primary" ? Theme.accentText : Theme.textMuted
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: bt.text
-                font.pixelSize: bt.small ? 12 : 13
-                color: bt.tone === "primary" ? Theme.accentText : Theme.text
-            }
-        }
-        MouseArea {
-            id: btArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: bt.clicked()
-        }
+    // Knopf = der gemeinsame Button (Design-System light); tone bleibt die Sprache dieses Popouts
+    component Btn: Button {
+        property string tone: "plain"                  // plain | on | danger | primary
+        kind: tone === "danger" ? "danger" : tone === "primary" ? "primary" : tone === "on" ? "on" : "secondary"
     }
 
     // Spaltenkopf: aktive Sortierspalte als Pille mit Pfeil; align = left | center | right
@@ -414,7 +379,7 @@ PopupWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     text: hc.text
                     color: hc.sorted ? Theme.accentText : Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.DemiBold
                 }
                 Icon {
@@ -447,7 +412,7 @@ PopupWindow {
         MonoTxt {
             anchors.centerIn: parent
             text: parent.text
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             color: parent.level === 2 ? Theme.text : parent.level === 1 ? Theme.warning : Theme.textMuted
         }
     }
@@ -460,13 +425,13 @@ PopupWindow {
         Txt {
             text: parent.label
             color: Theme.textFaint
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
         }
         MonoTxt {
             text: parent.value
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
     }
 
@@ -496,17 +461,10 @@ PopupWindow {
                 id: titleLeft
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
-                Icon {
+                PopoutTitle {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: "monitor_heart"
-                    size: 22
-                    color: Theme.accentText
-                }
-                Txt {
-                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "monitor_heart"
                     text: "Processes"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
                 }
             }
             Row {
@@ -551,7 +509,7 @@ PopupWindow {
                     selectionColor: Theme.accentSoft
                     selectedTextColor: Theme.text
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     clip: true
                     onTextChanged: pop.rebuild(true)
                     Keys.onEscapePressed: {
@@ -567,7 +525,7 @@ PopupWindow {
                         visible: ti.text === ""
                         text: "Search…"
                         color: Theme.textFaint
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontMd
                         font.weight: Font.Normal
                     }
                 }
@@ -632,21 +590,21 @@ PopupWindow {
                 Txt {
                     width: parent.width
                     text: Procs.host || "…"
-                    font.pixelSize: 20
+                    font.pixelSize: Theme.fontXl
                     font.weight: Font.DemiBold
                 }
                 Txt {
                     width: parent.width
                     text: Procs.osName.replace(/\s*\(.*\)\s*$/, "")
                     color: Theme.textMuted
-                    font.pixelSize: 13
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
                 MonoTxt {
                     width: parent.width
                     text: "up " + pop.fmtUp(Procs.uptime) + " · " + Procs.procCount + " procs"
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     elide: Text.ElideRight
                 }
             }
@@ -675,7 +633,7 @@ PopupWindow {
                         MonoTxt {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: Math.round(Procs.cpu) + "%"
-                            font.pixelSize: 16
+                            font.pixelSize: Theme.fontLg
                             font.weight: Font.DemiBold
                         }
                     }
@@ -685,7 +643,7 @@ PopupWindow {
                         elide: Text.ElideRight
                         text: "CPU" + (Cpu.temp >= 0 ? " · " + Cpu.temp + "°" : "")
                         color: Cpu.temp >= Config.cpuHot ? Theme.warning : Theme.textFaint
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                     }
                 }
                 Column {
@@ -702,7 +660,7 @@ PopupWindow {
                         MonoTxt {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: rings.usedGb
-                            font.pixelSize: 16
+                            font.pixelSize: Theme.fontLg
                             font.weight: Font.DemiBold
                         }
                     }
@@ -712,7 +670,7 @@ PopupWindow {
                         elide: Text.ElideRight
                         text: "Memory · " + rings.usedGb + " of " + Math.round(Procs.memTotal / 1073741824) + " GB"
                         color: Theme.textFaint
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                     }
                     // Zusatz (Cache = frei verfügbar, Swap nur wenn genutzt) klein darunter, nur beim Memory-Ring
                     MonoTxt {
@@ -722,7 +680,7 @@ PopupWindow {
                         text: "+" + (Procs.memCache / 1073741824).toFixed(0) + " cache"
                             + (Procs.swapUsed > 104857600 ? " · " + (Procs.swapUsed / 1073741824).toFixed(1) + " swap" : "")
                         color: Qt.alpha(Theme.textFaint, 0.8)
-                        font.pixelSize: 10
+                        font.pixelSize: Theme.fontXs
                     }
                 }
             }
@@ -877,7 +835,7 @@ PopupWindow {
                         visible: d.n > 1
                         text: "×" + d.n
                         color: Theme.textFaint
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                     }
                 }
                 ValuePill {
@@ -903,7 +861,7 @@ PopupWindow {
                     horizontalAlignment: Text.AlignRight
                     text: d.pid
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                 }
                 // ---------- aufgeklappt ----------
                 Loader {
@@ -927,7 +885,7 @@ PopupWindow {
                             Txt {
                                 text: "Full Command"
                                 color: Theme.textFaint
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.DemiBold
                             }
                             Btn {
@@ -962,7 +920,7 @@ PopupWindow {
                                     text: d.cmd
                                     color: Theme.textMuted
                                     font.family: Theme.fontMono
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSm
                                     font.weight: Font.Normal
                                     wrapMode: Text.WrapAnywhere
                                     maximumLineCount: 4
@@ -1015,7 +973,7 @@ PopupWindow {
                                         height: parent.height
                                         text: kr.kid.name
                                         color: Theme.textMuted
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontSm
                                         font.weight: Font.Normal
                                     }
                                     Txt {
@@ -1025,7 +983,7 @@ PopupWindow {
                                         text: kr.kid.cmd
                                         color: Theme.textFaint
                                         font.family: Theme.fontMono
-                                        font.pixelSize: 11
+                                        font.pixelSize: Theme.fontXs
                                         font.weight: Font.Normal
                                     }
                                     // End / Force pro Prozess, nur beim Drüberfahren und nur für eigene
@@ -1053,7 +1011,7 @@ PopupWindow {
                                         horizontalAlignment: Text.AlignRight
                                         text: pop.fmtCpu(kr.kid.cpu)
                                         color: Theme.textMuted
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                     }
                                     MonoTxt {
                                         x: parent.width - pop.chevW - pop.pidW - pop.memW
@@ -1062,7 +1020,7 @@ PopupWindow {
                                         horizontalAlignment: Text.AlignRight
                                         text: pop.fmtMem(kr.kid.rss)
                                         color: Theme.textMuted
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                     }
                                     MonoTxt {
                                         x: parent.width - pop.chevW - pop.pidW
@@ -1071,7 +1029,7 @@ PopupWindow {
                                         horizontalAlignment: Text.AlignRight
                                         text: kr.kid.pid
                                         color: Theme.textFaint
-                                        font.pixelSize: 12
+                                        font.pixelSize: Theme.fontSm
                                     }
                                 }
                             }
@@ -1081,7 +1039,7 @@ PopupWindow {
                                 topPadding: 4
                                 text: "+ " + (d.n - d.shownKids) + " more"
                                 color: Theme.textFaint
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.Normal
                             }
                         }
@@ -1112,7 +1070,7 @@ PopupWindow {
                                     height: 34
                                     text: "Owned by " + d.user + " – view only"
                                     color: Theme.textFaint
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontSm
                                     font.weight: Font.Normal
                                 }
                             }
@@ -1140,7 +1098,7 @@ PopupWindow {
                                         width: parent.width
                                         text: pop.confirm ? pop.confirm.hint : ""
                                         color: Theme.textMuted
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontSm
                                         font.weight: Font.Normal
                                         wrapMode: Text.WordWrap
                                         elide: Text.ElideNone
@@ -1150,7 +1108,7 @@ PopupWindow {
                                         visible: text !== ""
                                         text: pop.confirm ? pop.confirm.warn : ""
                                         color: Theme.warning
-                                        font.pixelSize: 13
+                                        font.pixelSize: Theme.fontSm
                                         font.weight: Font.Normal
                                         wrapMode: Text.WordWrap
                                         elide: Text.ElideNone
@@ -1211,7 +1169,7 @@ PopupWindow {
                 width: parent.width
                 text: pop.note !== "" ? pop.note : rows.count + " shown · updates every 2 s · memory counts shared pages once, split between processes"
                 color: pop.note !== "" ? Theme.accentText : Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }

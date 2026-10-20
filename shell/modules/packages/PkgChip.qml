@@ -33,7 +33,7 @@ Rectangle {
         Txt {
             anchors.verticalCenter: parent.verticalCenter
             text: c.text
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             color: c.on ? Theme.accentText : Theme.textMuted
         }
     }

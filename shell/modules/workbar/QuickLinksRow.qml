@@ -23,9 +23,8 @@ Rectangle {
 
     implicitHeight: 36
     radius: Theme.radiusSm
-    color: area.containsMouse || kbMark ? Theme.raise : "transparent"
-    border.width: kbMark ? 2 : 0
-    border.color: Theme.accent
+    // Tastatur-Auswahl = deckende Akzentfläche (wie jede Listenzeile), Hover leise
+    color: kbMark ? Theme.accentFill : area.containsMouse ? Theme.raise : "transparent"
     Behavior on color { ColorAnimation { duration: Theme.fade } }
 
     onConfirmingChanged: if (confirming) confirmTimer.restart()
@@ -50,14 +49,13 @@ Rectangle {
         spacing: 10
 
         // Ziffer (nur im Tastatur-Betrieb): 1–9 öffnet die Zeile direkt
-        MonoTxt {
+        KeyCap {
+            id: hintCap
             visible: rowItem.hint !== ""
             anchors.verticalCenter: parent.verticalCenter
-            width: 12
-            text: rowItem.hint
-            color: Theme.accentText
-            font.pixelSize: 13
-            font.weight: Font.Bold
+            small: true
+            main: true
+            label: rowItem.hint
         }
         Item {
             visible: rowItem.showDot
@@ -78,11 +76,11 @@ Rectangle {
             size: 18
             color: Theme.textMuted
         }
-        // Platz für Titel + Nebentext: links 10 + Ziffer 22 + Punkt 20 + Symbol 28 + rechts (Entfernen 36 oder 14).
+        // Platz für Titel + Nebentext: links 10 + Ziffer (Kappe) + Punkt 20 + Symbol 28 + rechts (Entfernen 36 oder 14).
         // Der Titel bekommt zuerst Platz, der Nebentext (Host/Pfad) wird gekürzt
         Txt {
             id: titleTxt
-            readonly property real room: rowItem.width - 10 - (rowItem.hint !== "" ? 22 : 0) - (rowItem.showDot ? 20 : 0) - 28 - (rowItem.removable ? 36 : 14)
+            readonly property real room: rowItem.width - 10 - (rowItem.hint !== "" ? hintCap.width + 10 : 0) - (rowItem.showDot ? 20 : 0) - 28 - (rowItem.removable ? 36 : 14)
             anchors.verticalCenter: parent.verticalCenter
             width: Math.min(implicitWidth, room)
             text: rowItem.title
@@ -94,7 +92,7 @@ Rectangle {
             width: Math.max(0, Math.min(implicitWidth, titleTxt.room - titleTxt.width - 10))
             text: rowItem.sub
             color: Theme.textFaint
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSm
         }
     }
 
@@ -108,7 +106,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         width: asking ? rmTxt.implicitWidth + 16 : 26
         height: 26
-        radius: 8
+        radius: Theme.radiusXs
         color: asking ? Theme.error : rm.containsMouse ? Theme.surfaceSunken : Theme.surfaceRaised
         Icon {
             visible: !rmBtn.asking
@@ -123,7 +121,7 @@ Rectangle {
             anchors.centerIn: parent
             text: rowItem.kbConfirm ? "Remove? Del" : "Remove?"
             color: Theme.onAccent
-            font.pixelSize: 13
+            font.pixelSize: Theme.fontSm
             font.weight: Font.DemiBold
         }
         MouseArea {

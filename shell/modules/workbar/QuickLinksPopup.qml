@@ -368,7 +368,7 @@ PopupWindow {
                     x: 10
                     width: parent.width - 20
                     text: pop.proj ? pop.proj.name || pop.proj.id : ""
-                    font.pixelSize: 17
+                    font.pixelSize: Theme.fontLg
                     font.weight: Font.DemiBold
                 }
             }
@@ -529,9 +529,8 @@ PopupWindow {
                 alignLeft: true
                 height: 36
                 readonly property bool kbMark: pop.marks && pop.sel === pop.items.length - 1
-                active: kbMark
-                border.width: kbMark ? 2 : 0
-                border.color: Theme.accent
+                // Tastatur-Auswahl wie jede Listenzeile: deckende Akzentfläche
+                color: kbMark ? Theme.accentFill : hovered ? Theme.raise : "transparent"
                 onClicked: pop.askLink()
                 Icon {
                     anchors.verticalCenter: parent.verticalCenter
@@ -542,43 +541,25 @@ PopupWindow {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Add link"
                 }
-                MonoTxt {
+                KeyCap {
                     visible: pop.marks
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "A"
-                    color: Theme.accentText
-                    font.pixelSize: 13
-                    font.weight: Font.Bold
+                    small: true
+                    main: true
+                    label: "A"
                 }
             }
 
             // Tastenzeile (nur im Tastatur-Betrieb)
-            Row {
+            Item {
                 visible: pop.marks
-                x: 10
-                height: visible ? 28 : 0
-                spacing: 12
-                Repeater {
-                    model: [["↑↓", "select"], ["Enter", "open"], ["1–9", "direct"], ["Del", "remove"], ["Esc", pop.kb ? "back" : "close"]]
-                    Row {
-                        required property var modelData
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 4
-                        MonoTxt {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData[0]
-                            color: Theme.accentText
-                            font.pixelSize: 11
-                            font.weight: Font.Bold
-                        }
-                        Txt {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: modelData[1]
-                            color: Theme.textFaint
-                            font.pixelSize: 11
-                            font.weight: Font.Normal
-                        }
-                    }
+                width: col.width
+                height: visible ? hints.implicitHeight + Theme.space2 : 0
+                KeyHintRow {
+                    id: hints
+                    x: Theme.space2
+                    anchors.bottom: parent.bottom
+                    hints: [["↑↓", "select"], ["Enter", "open"], ["1–9", "direct"], ["Del", "remove"], ["Esc", pop.kb ? "back" : "close"]]
                 }
             }
         }

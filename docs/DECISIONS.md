@@ -36,6 +36,7 @@ aufrollen. Große Entscheidungen mit abgewogenen Optionen: eigene Datei `decisio
 - 2026-10-17 · Farben nur aus `theme/palette.json`, alles andere wird erzeugt (`theme/gen/`) · eine Farbquelle; Features dateibasiert und ohne KI pflegbar (alte SPEC §4, ROADMAP-HYPRLAND „Spielregeln“) · angenommen
 - 2026-10-18 · Ganze Shell deckend und freundlich (Variante hearth, kein Glas/Blur), ember bleibt als Rückweg (`scripts/rice variant ember`) · OFFEN · angenommen
 - 2026-10-18 · Wirklich alle Fenster im Desktop-Design (Apps, Dialoge, Login), aber jede App behält ihren Kontrast; Discord (Blurple) und Spotify bleiben erkennbar · Überblick behalten, Wiedererkennung (alte SPEC §8 Schritt 5, `docs/knowledge/theming.md`) · angenommen
+- 2026-10-20 · Design-System light: Tokens + KeyCap/Button/KeyHintRow als einzige Bausteine · Oberfläche war auseinandergelebt (4 Kappen, 6 Auswahl-Stile) · angenommen
 
 ## Bedienung
 

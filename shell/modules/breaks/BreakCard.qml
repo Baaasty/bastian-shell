@@ -78,7 +78,7 @@ Scope {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Break"
                                 color: Theme.textMuted
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.DemiBold
                             }
                         }
@@ -88,21 +88,21 @@ Scope {
                             visible: Breaks.activeMin > 0
                             text: Breaks.fmt(Breaks.activeMin) + " straight"
                             color: Theme.textFaint
-                            font.pixelSize: 11
+                            font.pixelSize: Theme.fontXs
                         }
                     }
 
                     Txt {
                         width: parent.width
                         text: "Time for a break"
-                        font.pixelSize: 14
+                        font.pixelSize: Theme.fontMd
                         font.weight: Font.DemiBold
                     }
                     Txt {
                         width: parent.width
                         text: Breaks.message
                         color: Theme.textMuted
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                         wrapMode: Text.WordWrap
                         elide: Text.ElideNone

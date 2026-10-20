@@ -131,46 +131,11 @@ PopupWindow {
     }
 
     // ---------- Bausteine ----------
-    component Btn: Rectangle {
-        id: bt
-        property string text
-        property string icon
+    // Knopf = der gemeinsame Button (Design-System light), kompakt; tone bleibt die Sprache dieses Popouts
+    component Btn: Button {
         property string tone: "plain"                  // plain | primary
-        readonly property alias area: btArea
-        signal clicked()
-        width: btRow.implicitWidth + 28
-        height: 32
-        radius: height / 2
-        opacity: enabled ? 1 : 0.45
-        color: tone === "primary" ? Theme.accentFill : btArea.containsMouse ? Theme.surface : Theme.surfaceSunken
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Row {
-            id: btRow
-            anchors.centerIn: parent
-            spacing: 6
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: bt.icon !== ""
-                name: bt.icon
-                size: 16
-                color: bt.tone === "primary" ? Theme.accentText : Theme.textMuted
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: bt.text !== ""
-                text: bt.text
-                font.pixelSize: 13
-                color: bt.tone === "primary" ? Theme.accentText : Theme.text
-            }
-        }
-        MouseArea {
-            id: btArea
-            anchors.fill: parent
-            enabled: bt.enabled
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: bt.clicked()
-        }
+        small: true
+        kind: tone === "primary" ? "primary" : "secondary"
     }
 
     // eine Download-Zeile: Typ-Symbol, Name, Größe · Alter; Hover zeigt „im Ordner zeigen“
@@ -248,7 +213,7 @@ PopupWindow {
                 text: row.it.loading ? "Downloading… " + Downloads.fmtSize(row.it.size)
                     : (row.it.dir ? "Folder" : Downloads.fmtSize(row.it.size)) + " · " + Downloads.fmtAge(row.it.mtime)
                 color: row.it.loading ? Theme.accentText : Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -305,17 +270,10 @@ PopupWindow {
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 8
-                Icon {
+                PopoutTitle {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: "download"
-                    size: 22
-                    color: Theme.accentText
-                }
-                Txt {
-                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "download"
                     text: "Downloads"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
                 }
             }
             Rectangle {
@@ -347,7 +305,7 @@ PopupWindow {
                     selectionColor: Theme.accentSoft
                     selectedTextColor: Theme.text
                     font.family: Theme.fontUi
-                    font.pixelSize: 14
+                    font.pixelSize: Theme.fontMd
                     clip: true
                     onTextChanged: pop.query = text
                     Keys.onEscapePressed: {
@@ -448,7 +406,7 @@ PopupWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Older than"
                         color: Theme.textMuted
-                        font.pixelSize: 13
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                         rightPadding: 4
                     }
@@ -468,7 +426,7 @@ PopupWindow {
                                 id: dayTxt
                                 anchors.centerIn: parent
                                 text: parent.modelData + " days"
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 color: parent.on ? Theme.accentText : Theme.textMuted
                             }
                             MouseArea {
@@ -488,7 +446,7 @@ PopupWindow {
                           + Downloads.fmtSize(pop.old.reduce((s, i) => s + (i.dir ? 0 : i.size), 0))
                           + " · can be restored from the trash"
                     color: Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                     wrapMode: Text.WordWrap
                     elide: Text.ElideNone
@@ -542,7 +500,7 @@ PopupWindow {
                     : pop.query !== "" ? pop.shown.length + " found" : Downloads.items.length + " in folder"
                 color: msg !== "" ? Theme.accentText : Theme.textFaint
                 horizontalAlignment: Text.AlignHCenter
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Btn {

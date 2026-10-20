@@ -82,14 +82,14 @@ Glass {
                 Txt {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Layouts"
-                    font.pixelSize: 16
+                    font.pixelSize: Theme.fontLg
                     font.weight: Font.DemiBold
                 }
                 MonoTxt {
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.verticalCenterOffset: 1
                     text: card.lm.query.trim() ? card.lm.rows.length + " / " + card.lm.items.length : (card.lm.items.length || "")
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     color: Theme.textFaint
                 }
             }
@@ -99,7 +99,7 @@ Glass {
                 anchors.verticalCenter: parent.verticalCenter
                 text: card.lm.desk ? "Desktop " + card.lm.desk : ""
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -152,7 +152,7 @@ Glass {
                 color: Theme.text
                 selectionColor: Theme.accentSoft
                 font.family: Theme.fontUi
-                font.pixelSize: 15
+                font.pixelSize: Theme.fontMd
 
                 Keys.onEscapePressed: {
                     if (card.lm.deleting)
@@ -201,7 +201,7 @@ Glass {
                     visible: input.text === ""
                     text: "Search…"
                     color: Theme.textFaint
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontMd
                     font.weight: Font.Normal
                 }
             }
@@ -242,6 +242,8 @@ Glass {
                     anchors.fill: parent
                     alignLeft: true
                     active: row.selected
+                    // gewählte Zeile = deckende Akzentfläche (wie jede Listenauswahl)
+                    color: row.selected ? Theme.accentFill : hovered ? Theme.raise : "transparent"
                     onClicked: mouse => {
                         if (mouse.button !== Qt.LeftButton)
                             return;
@@ -282,7 +284,7 @@ Glass {
                         visible: !(chip.hovered || delArea.containsMouse)
                         text: row.modelData.broken ? "unreadable" : row.modelData.windows + (row.modelData.windows === 1 ? " window" : " windows")
                         color: Theme.textFaint
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                     }
                     Icon {
@@ -340,53 +342,22 @@ Glass {
                         anchors.rightMargin: 4
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 4
-                        Rectangle {
-                            width: keepTxt.implicitWidth + 22
-                            height: 26
-                            radius: Theme.radiusSm
-                            color: keepArea.containsMouse ? Theme.raise : "transparent"
-                            border.width: 1
-                            border.color: Theme.border
-                            Txt {
-                                id: keepTxt
-                                anchors.centerIn: parent
-                                text: "Keep"
-                                font.pixelSize: 12
-                            }
-                            MouseArea {
-                                id: keepArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    card.lm.deleting = "";
-                                    card.focusInput();
-                                }
+                        Button {
+                            small: true
+                            kind: "ghost"
+                            text: "Keep"
+                            onClicked: {
+                                card.lm.deleting = "";
+                                card.focusInput();
                             }
                         }
-                        Rectangle {
-                            width: delTxt.implicitWidth + 22
-                            height: 26
-                            radius: Theme.radiusSm
-                            color: okDel.containsMouse ? Qt.alpha(Theme.error, 0.22) : Qt.alpha(Theme.error, 0.14)
-                            border.width: 1
-                            border.color: Qt.alpha(Theme.error, 0.5)
-                            Txt {
-                                id: delTxt
-                                anchors.centerIn: parent
-                                text: "Delete"
-                                color: Theme.error
-                                font.pixelSize: 12
-                            }
-                            MouseArea {
-                                id: okDel
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    card.lm.confirmDelete();
-                                    card.focusInput();
-                                }
+                        Button {
+                            small: true
+                            kind: "danger"
+                            text: "Delete"
+                            onClicked: {
+                                card.lm.confirmDelete();
+                                card.focusInput();
                             }
                         }
                     }
@@ -420,7 +391,7 @@ Glass {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "Arrange this desktop, then save it below."
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
         }
@@ -508,7 +479,7 @@ Glass {
                     color: Theme.text
                     selectionColor: Theme.accentSoft
                     font.family: Theme.fontUi
-                    font.pixelSize: 15
+                    font.pixelSize: Theme.fontMd
                     onTextChanged: {
                         card.lm.overwrite = "";
                         card.lm.saveError = "";
@@ -527,7 +498,7 @@ Glass {
                         visible: nameInput.text === ""
                         text: "Layout name"
                         color: Theme.textFaint
-                        font.pixelSize: 15
+                        font.pixelSize: Theme.fontMd
                         font.weight: Font.Normal
                     }
                 }
@@ -552,7 +523,7 @@ Glass {
                         : card.lm.saving ? "Saving…"
                         : "A project name (e.g. desktop) links the layout to that project"
                     color: card.lm.saveError ? Theme.error : card.lm.overwrite ? Theme.warning : Theme.textFaint
-                    font.pixelSize: 12
+                    font.pixelSize: Theme.fontSm
                     font.weight: Font.Normal
                 }
             }
@@ -567,13 +538,21 @@ Glass {
         Txt {
             x: 6
             width: col.width - 12
-            text: card.lm.status !== "" ? card.lm.status
-                : card.lm.naming ? "↵ save  ·  Esc back"
-                : card.lm.deleting ? "↵ delete  ·  Esc keep"
-                : "↵ apply  ·  Del delete  ·  Ctrl+S save  ·  Esc close"
-            color: card.lm.status !== "" ? (card.lm.statusError ? Theme.error : Theme.textMuted) : Theme.textFaint
-            font.pixelSize: 11
+            visible: card.lm.status !== ""
+            text: card.lm.status
+            color: card.lm.statusError ? Theme.error : Theme.textMuted
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
+        }
+        KeyHintRow {
+            x: 6
+            width: col.width - 12
+            visible: card.lm.status === ""
+            small: true
+            gap: Theme.space3
+            hints: card.lm.naming ? [["↵", "save"], ["Esc", "back"]]
+                : card.lm.deleting ? [["↵", "delete"], ["Esc", "keep"]]
+                : [["↵", "apply"], ["Del", "delete"], ["Ctrl+S", "save"], ["Esc", "close"]]
         }
     }
 }

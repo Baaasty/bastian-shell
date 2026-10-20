@@ -124,20 +124,20 @@ Glass {
                 width: parent.width
                 text: card.meta()
                 color: Theme.textFaint
-                font.pixelSize: 12
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
             Txt {
                 width: parent.width
                 text: (card.g.name || "An app") + " crashed"
-                font.pixelSize: 14
+                font.pixelSize: Theme.fontMd
                 font.weight: Font.DemiBold
             }
             Txt {
                 width: parent.width
                 text: card.status()
                 color: Theme.textMuted
-                font.pixelSize: 13
+                font.pixelSize: Theme.fontSm
                 font.weight: Font.Normal
             }
 
@@ -167,7 +167,7 @@ Glass {
                         width: parent.width
                         text: String(card.g.exe || card.g.comm || "").replace(/^\/home\/[^\/]+/, "~") + "\nPID " + (card.g.pid || "?")
                         color: Theme.textMuted
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                         wrapMode: Text.WrapAnywhere
                         maximumLineCount: 3
                         elide: Text.ElideRight
@@ -177,7 +177,7 @@ Glass {
                         visible: text !== ""
                         text: card.trace()
                         color: Theme.textFaint
-                        font.pixelSize: 11
+                        font.pixelSize: Theme.fontXs
                         wrapMode: Text.WrapAnywhere
                         maximumLineCount: 9
                         elide: Text.ElideRight
@@ -185,7 +185,7 @@ Glass {
                     Txt {
                         text: "Open full report in terminal"
                         color: termArea.containsMouse ? Theme.text : Theme.accentText
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         Behavior on color { ColorAnimation { duration: Theme.fade } }
                         MouseArea {
                             id: termArea

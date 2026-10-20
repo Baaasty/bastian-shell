@@ -153,7 +153,7 @@ PopupWindow {
             width: 84
             text: parent.label
             color: Theme.textFaint
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             font.weight: Font.Normal
         }
         MonoTxt {
@@ -164,7 +164,7 @@ PopupWindow {
             elide: Text.ElideRight
             text: parent.value
             color: Theme.textMuted
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
         }
     }
 
@@ -193,7 +193,7 @@ PopupWindow {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: pr.lv === 2 ? "no reply" : Math.round(pr.p.ms) + " ms" + (pr.p.loss > 0 ? " · " + pr.p.loss + "% loss" : "")
-            font.pixelSize: 12
+            font.pixelSize: Theme.fontSm
             color: pr.lv === 0 ? Theme.textMuted : pop.levelColor(pr.lv)
         }
     }
@@ -231,28 +231,16 @@ PopupWindow {
             y: 18
             width: parent.width - 40
             height: 32
-            Row {
+            PopoutTitle {
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 10
-                Icon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: !NetInfo.up ? "cloud_off" : NetInfo.kind === "wifi" ? "wifi" : "lan"
-                    size: 22
-                    color: NetInfo.up && NetInfo.online ? Theme.accentText : Theme.warning
-                }
-                Txt {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: !NetInfo.up ? "Offline" : NetInfo.online ? "Online" : "No internet"
-                    font.pixelSize: 18
-                    font.weight: Font.DemiBold
-                }
-                MonoTxt {
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: NetInfo.up && head.inet !== null && head.inet.ms !== null
-                    text: head.inet ? Math.round(head.inet.ms) + " ms" : ""
-                    color: head.lv === 1 ? Theme.warning : Theme.textFaint
-                    font.pixelSize: 12
-                }
+                readonly property bool good: NetInfo.up && NetInfo.online
+                icon: !NetInfo.up ? "cloud_off" : NetInfo.kind === "wifi" ? "wifi" : "lan"
+                iconColor: good ? Theme.accentText : Theme.warning
+                tile: good ? Theme.accentFill : Theme.surfaceSunken
+                text: !NetInfo.up ? "Offline" : NetInfo.online ? "Online" : "No internet"
+                meta: NetInfo.up && head.inet !== null && head.inet.ms !== null ? Math.round(head.inet.ms) + " ms" : ""
+                metaMono: true
+                metaColor: head.lv === 1 ? Theme.warning : Theme.textFaint
             }
             // Details auf/zu (fokussierbar wie alle Knöpfe)
             Rectangle {
@@ -271,7 +259,7 @@ PopupWindow {
                         anchors.verticalCenter: parent.verticalCenter
                         text: "Details"
                         color: Theme.textFaint
-                        font.pixelSize: 12
+                        font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                     }
                     Icon {
@@ -386,12 +374,12 @@ PopupWindow {
                                 MonoTxt {
                                     text: "Ø ↓ " + Net.fmtMbit(Net.rxAvg)
                                     color: Theme.woodLight
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontSm
                                 }
                                 MonoTxt {
                                     text: "↑ " + Net.fmtMbit(Net.txAvg)
                                     color: Theme.textFaint
-                                    font.pixelSize: 13
+                                    font.pixelSize: Theme.fontSm
                                 }
                             }
                         }
@@ -413,7 +401,7 @@ PopupWindow {
                                 visible: Net.rxSeries.length <= 1
                                 text: "Collecting – one point per minute"
                                 color: Theme.textFaint
-                                font.pixelSize: 12
+                                font.pixelSize: Theme.fontSm
                                 font.weight: Font.Normal
                             }
                         }
@@ -424,19 +412,19 @@ PopupWindow {
                             MonoTxt {
                                 text: "−" + (Net.rxSeries.length - 1) + " min"
                                 color: Theme.textFaint
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontXs
                             }
                             MonoTxt {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: "peak ↓ " + Net.fmtMbit(Net.rxPeak)
                                 color: Theme.textFaint
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontXs
                             }
                             MonoTxt {
                                 anchors.right: parent.right
                                 text: "now"
                                 color: Theme.textFaint
-                                font.pixelSize: 10
+                                font.pixelSize: Theme.fontXs
                             }
                         }
 
@@ -465,7 +453,7 @@ PopupWindow {
                                     width: parent.width
                                     text: Net.speedError !== "" ? Net.speedError : Net.testing ? "Downloading 25 MB from Cloudflare" : Net.speedMbit >= 0 ? "Download · " + pop.ago(Net.speedAt) : "25 MB download, only on demand"
                                     color: Net.speedError !== "" ? Theme.warning : Theme.textFaint
-                                    font.pixelSize: 12
+                                    font.pixelSize: Theme.fontSm
                                     font.weight: Font.Normal
                                 }
                             }
