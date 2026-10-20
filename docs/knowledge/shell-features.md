@@ -99,11 +99,11 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
   darf, und Discord schließt seine Session direkt nach dem Start). Discord mit Plugin stoppt übers Plugin.
 - Live-Quellwechsel geht unter Wayland nicht (Discord fragt das Portal nicht neu; Neustart-Weg beendete den Stream) – verworfen
   2026-10-20. Andere Quelle = stoppen und in der App neu teilen.
-- Die Karte bricht nur bewusst ab (Esc, Cancel, Klick daneben/auf anderen Monitor); endet ihr Fang ohne Klick, fängt sie neu.
 - xdph wartet blockierend auf `share-pick` – hängt es, hängt jedes weitere Teilen (20.10.: Region für Discord → Discord fragte in
   Schleife, Portal-Neustart nötig). Darum: hartes Zeitlimit je Anfrage (60 s + 20 s), eine Anfrage nach der anderen (Sperre),
   Reiter Region nicht für Discord & Co., Region nie gemerkt. `share-stop` liest nur `pw-cli ls` (pw-dump hängt mit xdph).
 - GTK-Alternative (hyprland-preview-share-picker, Commit `7e11349` geprüft, `PIN` im Skript) braucht sudo-Pakete; Tastatur erst nach Klick.
+- Die Karte bricht nur bewusst ab (Esc, Cancel, Klick daneben/auf anderen Monitor); endet ihr Fang ohne Klick, fängt sie neu.
 
 # Launcher
 
@@ -151,7 +151,8 @@ Code: `shell/services/Mail.qml` (`openMessage`, `markRead`, `trash`), `MailTile.
 Code: `shell/services/NotifRules.qml`, `timewin.js` (Test `node scripts/tests/timewin-test.js`), `Notifs.qml`, `shell/modules/notifications/` · Konfig: `config/notifications.json`, eigene Werte `~/.config/desktop/notifications.json` (ersetzt je Hauptschlüssel ganz)
 - `days` = Tage, an denen ein Ruhefenster **beginnt** (wichtig über Mitternacht).
 - Dringende Meldungen werden nie versteckt, auch nicht per App-Regel `hide`. Claude-Antwort-Karten sind keine Benachrichtigungen → Ruhezeiten greifen dort nie.
-- Snooze kommt höchstens zwei auf einmal zurück und wartet Ruhezeit/Fokus/DND ab; „Tomorrow“ zwischen 00 und 05 Uhr = heute 08:00.
+- Flüchtig (App-Regel `transient` oder Hint `transient`): nur Popup, nie im Verlauf; ohne erlaubtes Popup (Ruhezeit, Fokus) fällt sie ganz weg und zählt nicht als verpasst. Gedacht für Rückmeldungen und Mail (steht in der Mail-Kachel).
+- `mail-watch` meldet als App „Mail“ mit Thunderbirds desktop-entry und Symbol – im Verlauf sah das wie Thunderbird aus. Regeln matchen App-Name + desktop-entry: Thunderbird-Regeln deshalb mit `^` verankern (Test prüft die mitgelieferten Regeln).
 - Ton: ein leiser, dumpfer Einzelton (`Sounds.qml`, Regeln `notifsound.js`, Test `node scripts/tests/notifsound-test.js`, Konfig-Schlüssel `sound`) nur zum sichtbaren Popup – nie in Ruhezeit/Fokus/`panel`/`hide`, nicht bei niedriger Dringlichkeit, Hint `suppress-sound` oder `skip`-Apps (Discord, Spotify klingen selbst – auch dringend), höchstens einer je 1,5 s. App-eigene Töne lassen sich von hier nicht stummschalten.
 - Probehören `scripts/sounds play [notify-urgent]`. Stream heißt `desktop-sounds` (Standard-Sink = GoXLR „System“); nie `--media-role Notification` – die Rolle merkt WirePlumber hier stumm. Sound-Theme „desktop“ für canberra-Apps: `scripts/sounds on|off` (setzt gsettings, kdeglobals `[Sounds]`, GTK-settings.ini; alte Werte in `~/.local/state/desktop/sounds-theme.prev`).
 
@@ -179,8 +180,9 @@ Code: `shell/modules/screenshot/` (`Snip.qml`, `SnipPin.qml`, `SnipToast.qml`), 
 - Bilder nur im RAM (`$XDG_RUNTIME_DIR/desktop-snip/`), OCR-Bild sofort gelöscht, Pins beim Schließen; alles offline.
 - OCR braucht `tesseract tesseract-langpack-deu tesseract-langpack-eng` (sudo). Farbe kommt aus dem eingefrorenen Bild, `hyprpicker` ist unnötig.
 
-- Pfeile: Shift = 10 px. Steht die Auswahl, schieben sie die zuletzt gezogene Ecke (`cornerX/Y`), Strg+Pfeile die ganze Auswahl – Alt+Pfeile sind Hyprland-Kürzel. Mit gedrückter Maustaste schieben Pfeile den Zeiger.
-- Ohne Maus: Pfeile zielen, Enter/Leertaste = Start, Enter = Ende, dann Aktionen (gilt auch für Super+R und die Pipette). Der echte Zeiger springt per `movecursor` mit, damit Maus und Pfeile sich abwechseln können; die Echo-Bewegung wird über `warps` verworfen.
+- Maus und Pfeile teilen sich einen Zielpunkt: der echte Zeiger springt per `movecursor` mit, das Bewegungs-Echo wird über `warps` verworfen. Alt+Pfeile sind in Hyprland belegt, darum Strg für „ganze Auswahl“.
+- Pipette nur im Snip, kein eigenes Kürzel (ein Weg statt zwei). Der Hex in der Lupe liest ein Canvas aus demselben eingefrorenen Bild wie `snip-color` beim Kopieren.
+- Aufnahme-Quellwahl = SharePicker im Modus „record“ (ohne Portal, nichts gemerkt). wf-recorder kann nur Bildschirmbereiche: ein Fenster wird als seine Fläche aufgenommen (was darüber liegt, ist mit drin; Verschieben wird nicht verfolgt), darum listet die Wahl nur sichtbare Fenster.
 ## Absturz-Karten
 Code: `shell/services/Crashes.qml`, `shell/modules/crash/` · DrKonqi: `scripts/hypr drkonqi off|on|status`
 - Nur Apps bekommen eine Karte; CLI-Abstürze werden nur gezählt (`crash list`). Kein Restart für Shell, Hyprland, Portale (die startet systemd).

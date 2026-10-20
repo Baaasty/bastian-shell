@@ -1,7 +1,7 @@
 // Funktionsprüfung für shell/services/timewin.js:  node scripts/tests/timewin-test.js
 const fs = require("fs"), path = require("path");
 const src = fs.readFileSync(path.join(__dirname, "../../shell/services/timewin.js"), "utf8").replace(/^\.pragma library\s*$/m, "");
-const T = new Function(src + "; return { hm, daySet, inWindow, inAnyWindow, windowEnd, snoozeUntil, ruleMatches, dayKey, greeting };")();
+const T = new Function(src + "; return { hm, daySet, inWindow, inAnyWindow, windowEnd, ruleMatches, dayKey, greeting };")();
 
 let fails = 0;
 function eq(name, got, want) {
@@ -38,14 +38,6 @@ eq("Ende Nacht", T.windowEnd([night], d(16, 23)).toString() === d(17, 7).toStrin
 eq("Ende Nacht (nach Mitternacht)", T.windowEnd([night], d(17, 3)).toString() === d(17, 7).toString(), true);
 eq("Ende außerhalb", T.windowEnd([night], d(16, 12)), null);
 
-// Snooze
-const now = d(16, 14, 5);
-eq("snooze 10 min", T.snoozeUntil(now, { min: 10 }, "08:00"), now.getTime() + 600000);
-eq("snooze morgen früh (14:05)", new Date(T.snoozeUntil(now, {}, "08:00")).toString() === d(17, 8).toString(), true);
-eq("snooze morgen früh (03:00 = heute)", new Date(T.snoozeUntil(d(17, 3), {}, "08:00")).toString() === d(17, 8).toString(), true);
-eq("snooze morgen früh (07:00 = morgen)", new Date(T.snoozeUntil(d(17, 7), {}, "08:00")).toString() === d(18, 8).toString(), true);
-eq("snooze Standard 08:00 bei Müll", new Date(T.snoozeUntil(now, {}, "kaputt")).getHours(), 8);
-
 // Regeln
 const n = { app: "Discord", desktop: "discord", summary: "Anna is calling you" };
 eq("Regel summary", T.ruleMatches({ summary: "is calling|incoming call" }, n), true);
@@ -54,6 +46,16 @@ eq("Regel app+summary", T.ruleMatches({ app: "discord", summary: "calling" }, n)
 eq("Regel leer", T.ruleMatches({}, n), false);
 eq("Regel Regex kaputt", T.ruleMatches({ app: "(" }, n), false);
 eq("Regel aus", T.ruleMatches({ app: "discord", enabled: false }, n), false);
+
+// App-Regeln aus config/notifications.json: erste passende gilt (wie NotifRules.decide)
+const cfgApps = JSON.parse(fs.readFileSync(path.join(__dirname, "../../config/notifications.json"), "utf8")).apps;
+const modeOf = m => (cfgApps.find(r => T.ruleMatches(r, m)) || {}).mode || "";
+// mail-watch meldet als „Mail“ mit Thunderbirds desktop-entry – darf nicht unter die hide-Regel für Thunderbird fallen
+eq("Konfig: mail-watch flüchtig", modeOf({ app: "Mail", desktop: "net.thunderbird.Thunderbird", summary: "Anna" }), "transient");
+eq("Konfig: Thunderbird selbst versteckt", modeOf({ app: "Thunderbird", desktop: "net.thunderbird.Thunderbird", summary: "New mail" }), "hide");
+eq("Konfig: Snip flüchtig", modeOf({ app: "Snip", desktop: "", summary: "Snip saved" }), "transient");
+eq("Konfig: Aufnahme flüchtig", modeOf({ app: "Screen Recording", desktop: "", summary: "Recording saved" }), "transient");
+eq("Konfig: fremde App normal", modeOf({ app: "Discord", desktop: "discord", summary: "Hi" }), "");
 
 eq("dayKey", T.dayKey(d(5, 9)), "2026-10-05");
 eq("greeting", [T.greeting(d(1, 3)), T.greeting(d(1, 8)), T.greeting(d(1, 14)), T.greeting(d(1, 20))], ["Hello, night owl", "Good morning", "Good afternoon", "Good evening"]);

@@ -14,7 +14,7 @@ import qs.components
 // Jede Karte merkt sich ihren Inhalt (Snapshot), damit beim Ausblenden nichts auf eine schon
 // zerstörte Notification zugreift. Höchstens 4 Karten, Rest als "+ n weitere".
 // Gleiche Meldungen (App + Titel) werden, solange die Karte noch steht, zu "×n" zusammengefasst.
-// Uhr-Symbol (beim Überfahren) = Später erinnern (SnoozeChips). Ruhezeit-Hinweis: QuietSummary.
+// Ruhezeit-Hinweis: QuietSummary.
 Scope {
     id: root
 
@@ -33,7 +33,8 @@ Scope {
     readonly property bool anyHover: hoverN > 0 || hoverForce || kbOn
 
     // ---------- Tastatur (AP 22): Super+Alt+Z oder Bar-Modus Z ----------
-    // ↑↓ Karte wählen, Enter öffnen, 1–3 Knöpfe der Meldung, S Später erinnern (dann 1–4), Entf/X wegklicken, Esc zu.
+    // ↑↓ Karte wählen, Enter öffnen, 1–3 Knöpfe der Meldung, X wegklicken (bleibt im Verlauf), Entf löschen
+    // (auch aus dem Verlauf, wie das ✕ im Dashboard), Esc zu.
     // Solange der Modus läuft, stehen alle Auto-Timeouts (wie beim Hovern).
     property bool kbOn: false
     property int kbSel: -1       // markierte Karte (Index in rep, -1 = neueste)
@@ -283,10 +284,7 @@ Scope {
                 const c = list[i];
                 const k = e.key;
                 if (k === Qt.Key_Escape) {
-                    if (c.snoozeOpen)
-                        c.snoozeOpen = false;
-                    else
-                        root.kbOn = false;
+                    root.kbOn = false;
                 } else if (k === Qt.Key_Up || k === Qt.Key_K || (k === Qt.Key_Tab && (e.modifiers & Qt.ShiftModifier)) || k === Qt.Key_Backtab) {
                     root.kbSel = Math.max(0, i - 1);
                 } else if (k === Qt.Key_Down || k === Qt.Key_J || k === Qt.Key_Tab) {
@@ -297,21 +295,16 @@ Scope {
                     c.openIt();
                     root.kbOn = false;
                 } else if (k === Qt.Key_Delete || k === Qt.Key_X || k === Qt.Key_Backspace) {
-                    Notifs.close(c.n);
+                    if (k === Qt.Key_X)
+                        Notifs.close(c.n);
+                    else
+                        Notifs.deletePopup(c.n);
                     root.kbSel = Math.min(i, list.length - 2);
                     if (list.length <= 1)
                         root.kbOn = false;
-                } else if (k === Qt.Key_S) {
-                    c.snoozeOpen = !c.snoozeOpen;
                 } else if (k >= Qt.Key_1 && k <= Qt.Key_9) {
                     const d = k - Qt.Key_1;
-                    if (c.snoozeOpen) {
-                        const o = NotifRules.snoozeOptions[d];
-                        if (o) {
-                            c.snoozeOpen = false;
-                            Notifs.snoozePopup(c.n, o.morning ? { morning: true } : { min: o.min });
-                        }
-                    } else if (c.sActions[d]) {
+                    if (c.sActions[d]) {
                         const n = c.n;
                         c.act(c.sActions[d].id);
                         Notifs.close(n);
@@ -472,7 +465,6 @@ Scope {
                         property string sKind: ""
                         property string sFile: ""
                         property bool sUrgent: false
-                        property bool sRemind: false     // Erinnerung aus „Später erinnern“
                         property var sActions: []
 
                         function snap() {
@@ -487,7 +479,6 @@ Scope {
                             sDesktop = o.desktopEntry || "";
                             sFile = Notifs.fileOf(o);
                             sUrgent = Notifs.isUrgent(o);
-                            sRemind = !!(o.hints && o.hints["x-desktop-snoozed"]);
                             sKind = Notifs.kindOf(o);
                             sActions = o.actions.filter(a => a.identifier !== "default").map(a => ({ id: a.identifier, text: a.text }));
                         }
@@ -501,7 +492,6 @@ Scope {
                         }
 
                         readonly property bool urgent: sUrgent
-                        property bool snoozeOpen: false
 
                         // Layout-Zustand (setzt win.relayout)
                         property bool inView: false
@@ -531,7 +521,7 @@ Scope {
                         }
 
                         width: stack.width
-                        height: content.implicitHeight + 28 + (snoozeOpen ? 40 : 0) + kbH
+                        height: content.implicitHeight + 28 + kbH
                         x: root.shift
                         y: slotY
                         opacity: 0
@@ -662,7 +652,7 @@ Scope {
                                     width: parent.width
                                     Txt {
                                         width: parent.width - when.width
-                                        text: card.sApp + (card.sRemind ? " · reminder" : "") + (card.urgent ? " · stays until clicked" : "")
+                                        text: card.sApp + (card.urgent ? " · stays until clicked" : "")
                                         color: Theme.textFaint
                                         font.pixelSize: 12
                                         font.weight: Font.Normal
@@ -716,18 +706,6 @@ Scope {
                             }
                         }
 
-                        // Später erinnern: Auswahl unter dem Text
-                        SnoozeChips {
-                            visible: card.snoozeOpen && !card.closing
-                            x: 16 + 48
-                            y: parent.height - 38 - card.kbH
-                            onPicked: spec => {
-                                const o = card.n;
-                                card.snoozeOpen = false;
-                                Notifs.snoozePopup(o, spec);
-                            }
-                        }
-
                         // Tastatur-Modus: Rahmen + Tastenzeile
                         Rectangle {
                             anchors.fill: parent
@@ -744,9 +722,8 @@ Scope {
                             height: 22
                             spacing: 12
                             Repeater {
-                                model: card.snoozeOpen ? [["1–" + NotifRules.snoozeOptions.length, "remind later"], ["Esc", "back"]]
-                                    : [["Enter", "open"]].concat(card.sActions.length ? [["1–" + card.sActions.length, "buttons"]] : [])
-                                        .concat([["S", "later"], ["Del", "dismiss"], ["↑↓", "select"], ["Esc", "close"]])
+                                model: [["Enter", "open"]].concat(card.sActions.length ? [["1–" + card.sActions.length, "buttons"]] : [])
+                                    .concat([["X", "dismiss"], ["Del", "delete"], ["↑↓", "select"], ["Esc", "close"]])
                                 Row {
                                     required property var modelData
                                     spacing: 4
@@ -768,37 +745,22 @@ Scope {
                             }
                         }
 
-                        // Später erinnern + schließen (nur beim Überfahren)
-                        Row {
+                        // schließen (nur beim Überfahren)
+                        Icon {
                             anchors.top: parent.top
                             anchors.right: parent.right
                             anchors.margins: 10
-                            spacing: 10
                             visible: hover.hovered && !card.closing
-
-                            Icon {
-                                name: "snooze"
-                                size: 16
-                                color: card.snoozeOpen ? Theme.accentText : snoozeArea.containsMouse ? Theme.text : Theme.textFaint
-                                MouseArea {
-                                    id: snoozeArea
-                                    anchors.fill: parent
-                                    anchors.margins: -6
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: card.snoozeOpen = !card.snoozeOpen
-                                }
-                            }
-                            Icon {
-                                name: "close"
-                                size: 16
-                                color: Theme.textFaint
-                                MouseArea {
-                                    anchors.fill: parent
-                                    anchors.margins: -6
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: Notifs.close(card.n)
-                                }
+                            name: "close"
+                            size: 16
+                            color: closeArea.containsMouse ? Theme.text : Theme.textFaint
+                            MouseArea {
+                                id: closeArea
+                                anchors.fill: parent
+                                anchors.margins: -6
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: Notifs.close(card.n)
                             }
                         }
                     }

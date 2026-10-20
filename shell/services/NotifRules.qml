@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import "timewin.js" as TW
 
-// Regeln für Benachrichtigungen: Ruhezeiten, Ausnahmen, App-Regeln, Snooze-Auswahl.
+// Regeln für Benachrichtigungen: Ruhezeiten, Ausnahmen, App-Regeln.
 // Standard: config/notifications.json im Repo; eigene Werte in ~/.config/desktop/notifications.json
 // (dort ersetzt jeder Schlüssel den aus dem Repo). Beide Dateien werden live gelesen. Format: docs/knowledge/shell-features.md.
 // Die Zeit-/Regex-Logik steht in timewin.js (Test: scripts/tests/timewin-test.js).
@@ -39,34 +39,16 @@ Singleton {
         return quietEnabled && TW.inAnyWindow(windows, date);
     }
 
-    // ---------- Snooze-Auswahl: [{ label, min } | { label, morning: true }] ----------
-    readonly property var snooze: cfg.snooze && typeof cfg.snooze === "object" ? cfg.snooze : ({})
-    readonly property string morningTime: typeof snooze.morning === "string" ? snooze.morning : "08:00"
-    readonly property var snoozeOptions: {
-        const mins = Array.isArray(snooze.minutes) ? snooze.minutes.filter(m => typeof m === "number" && m > 0 && m < 1440) : [10, 60];
-        const out = mins.slice(0, 3).map(m => ({ label: label(m), min: m }));
-        out.push({ label: "Tomorrow", morning: true });
-        return out;
-    }
-    function label(min: int): string {
-        if (min < 60)
-            return min + " min";
-        const h = Math.floor(min / 60), m = min % 60;
-        return m === 0 ? (h === 1 ? "1 hour" : h + " hours") : h + " h " + m + " min";
-    }
-    // Ziel in ms für eine Auswahl
-    function snoozeTarget(spec, from): real {
-        return TW.snoozeUntil(from ? new Date(from) : new Date(), spec, morningTime);
-    }
-
     // ---------- Entscheidung für eine neue Meldung ----------
-    // n = { app, desktop, summary, urgent }  ->  { popup, hide, held, why }
-    //   hide  = gar nicht anzeigen und nicht im Panel (App-Regel)
-    //   popup = darf als Popup erscheinen
-    //   held  = wegen der Ruhezeit zurückgehalten (zählt für „N while you were away“)
+    // n = { app, desktop, summary, urgent }  ->  { popup, hide, held, transient, why }
+    //   hide      = gar nicht anzeigen und nicht im Panel (App-Regel)
+    //   popup     = darf als Popup erscheinen
+    //   held      = wegen der Ruhezeit zurückgehalten (zählt für „N while you were away“)
+    //   transient = nur Popup, nicht in den Verlauf (App-Regel; Ruhezeit gilt trotzdem)
     // „Nicht stören“ / Fokus-Modus prüft Notifs selbst (bleibt wie es war).
     function decide(n: var): var {
         const apps = Array.isArray(cfg.apps) ? cfg.apps : [];
+        let tr = false;
         if (!n.urgent) {
             for (const r of apps) {
                 if (!TW.ruleMatches(r, n))
@@ -74,21 +56,27 @@ Singleton {
                 if (r.when === "quiet" && !quietNow)
                     continue;
                 if (r.mode === "hide")
-                    return { popup: false, hide: true, held: false, why: "app rule: hide" };
+                    return { popup: false, hide: true, held: false, transient: false, why: "app rule: hide" };
                 if (r.mode === "panel")
-                    return { popup: false, hide: false, held: false, why: "app rule: panel only" };
+                    return { popup: false, hide: false, held: false, transient: false, why: "app rule: panel only" };
+                if (r.mode === "transient") {
+                    tr = true;
+                    break;
+                }
             }
         }
+        const why = tr ? "app rule: transient" : "";
         if (quietNow) {
             const th = cfg.through && typeof cfg.through === "object" ? cfg.through : ({});
             if (n.urgent && th.critical !== false)
-                return { popup: true, hide: false, held: false, why: "critical" };
+                return { popup: true, hide: false, held: false, transient: tr, why: "critical" };
             const rules = Array.isArray(th.rules) ? th.rules : [];
             if (rules.some(r => TW.ruleMatches(r, n)))
-                return { popup: true, hide: false, held: false, why: "exception" };
-            return { popup: false, hide: false, held: true, why: "quiet hours" };
+                return { popup: true, hide: false, held: false, transient: tr, why: why || "exception" };
+            // flüchtige Meldung fällt ganz weg, liegt also auch nicht im Panel -> zählt nicht als verpasst
+            return { popup: false, hide: false, held: !tr, transient: tr, why: why ? why + ", quiet hours" : "quiet hours" };
         }
-        return { popup: true, hide: false, held: false, why: "" };
+        return { popup: true, hide: false, held: false, transient: tr, why: why };
     }
 
     // ---------- Dateien ----------

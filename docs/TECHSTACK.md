@@ -36,7 +36,7 @@ Hier steht **warum** – nicht die Versionsliste. Versionen und genaue Pakete ze
 
 Ein Befehl für alles – steht in CLAUDE.md „Qualität“. Hier nur, warum genau diese Checks.
 
-- **Tests (`node` / `python3 -I`)** prüfen die reine Logik ohne laufende Shell (z. B. Zeitfenster/Snooze in `timewin.js`, Sortierung im Ressourcen-Popout, `netinfo`).
+- **Tests (`node` / `python3 -I`)** prüfen die reine Logik ohne laufende Shell (z. B. Zeitfenster und App-Regeln in `timewin.js`, Sortierung im Ressourcen-Popout, `netinfo`).
 - **qmllint** findet QML-Fehler, ohne die Shell zu starten; wird übersprungen, solange `qt6-qtdeclarative-devel` fehlt (braucht `sudo`).
 - **Secrets-Sperre im Hook**, weil Secrets nur in `secrets.json` stehen dürfen und nie ins Repo.
 - Aussehen und Bedienung prüft kein Check: dafür `qs -p ~/Workspace/bastian-shell/shell` + Screenshot von Bastian.

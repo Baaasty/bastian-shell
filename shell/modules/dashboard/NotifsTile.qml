@@ -5,21 +5,9 @@ import qs.services
 import qs.components
 import "../notifications"
 
-// Verlauf der letzten Benachrichtigungen
+// Verlauf der letzten Benachrichtigungen; ✕ beim Überfahren löscht einen Eintrag, „Clear all“ alle
 Tile {
     title: "Notifications"
-
-    // zurückgestellte Meldungen (Später erinnern): nur Anzahl + nächste Uhrzeit
-    Txt {
-        anchors.right: clearAll.visible ? clearAll.left : parent.right
-        anchors.rightMargin: clearAll.visible ? 14 : 0
-        y: -28
-        visible: Notifs.snoozed.length > 0
-        text: Notifs.snoozed.length + " snoozed · next " + Qt.formatTime(new Date(Notifs.nextSnooze), "HH:mm")
-        color: Theme.textFaint
-        font.pixelSize: 12
-        font.weight: Font.Normal
-    }
 
     Txt {
         id: clearAll
@@ -58,7 +46,6 @@ Tile {
             Rectangle {
                 id: row
                 required property var modelData
-                property bool snoozing: false
                 width: parent.width
                 height: 46
                 radius: Theme.radiusMd
@@ -116,50 +103,22 @@ Tile {
                 HoverHandler {
                     id: rowHover
                 }
-                // Später erinnern: Uhr beim Überfahren, Klick öffnet die Auswahl über der Zeile
+                // löschen: ✕ beim Überfahren an der Stelle der Uhrzeit
                 Icon {
                     anchors.right: parent.right
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: rowHover.hovered && !row.snoozing
-                    name: "snooze"
-                    size: 18
-                    color: snoozeArea.containsMouse ? Theme.accentText : Theme.textFaint
+                    visible: rowHover.hovered
+                    name: "close"
+                    size: 16
+                    color: delArea.containsMouse ? Theme.accentText : Theme.textFaint
                     MouseArea {
-                        id: snoozeArea
+                        id: delArea
                         anchors.fill: parent
                         anchors.margins: -8
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: row.snoozing = true
-                    }
-                }
-                Rectangle {
-                    anchors.fill: parent
-                    visible: row.snoozing
-                    radius: parent.radius
-                    color: Theme.surfaceSunken
-                    border.width: 1
-                    border.color: Theme.border
-                    // Klicks nicht an die Zeile darunter (Datei öffnen) durchlassen
-                    MouseArea {
-                        anchors.fill: parent
-                    }
-                    Icon {
-                        id: snoozeIco
-                        x: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        name: "snooze"
-                        size: 18
-                        color: Theme.accentText
-                    }
-                    SnoozeChips {
-                        anchors.left: snoozeIco.right
-                        anchors.leftMargin: 10
-                        anchors.verticalCenter: parent.verticalCenter
-                        cancelable: true
-                        onPicked: spec => Notifs.snoozeHistory(row.modelData, spec)
-                        onCancelled: row.snoozing = false
+                        onClicked: Notifs.removeHistory(row.modelData.key)
                     }
                 }
             }

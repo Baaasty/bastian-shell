@@ -45,7 +45,7 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
 
 | Wo | Was |
 |---|---|
-| `~/.local/state/desktop/` | Laufzeit-Zustand der Shell (Desktops, To-dos, Fokus, Stats, Snooze, Projektzeit, Morgen …) |
+| `~/.local/state/desktop/` | Laufzeit-Zustand der Shell (Desktops, To-dos, Fokus, Stats, Benachrichtigungen, Projektzeit, Morgen …) |
 | `~/.config/desktop/*.json` | lokale Einstellungen/Overrides (`lock.json`, `audio.json`, `consoles.json`, `notifications.json` …) |
 | `~/.config/desktop/hyprland.env` | `DESKTOP=<Repo-Pfad>`, angelegt von `scripts/hypr install`, gelesen von Hyprland und systemd |
 

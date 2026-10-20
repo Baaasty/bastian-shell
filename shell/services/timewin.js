@@ -1,6 +1,6 @@
 .pragma library
 
-// Zeitfenster und Snooze-Zeiten (Ruhezeiten, Morgen-Übersicht). Eigene Datei, damit die Logik ohne Shell testbar ist:
+// Zeitfenster (Ruhezeiten, Morgen-Übersicht). Eigene Datei, damit die Logik ohne Shell testbar ist:
 // scripts/tests/timewin-test.js (node). Alles nimmt ein Date entgegen, nichts liest die Uhr selbst.
 
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
@@ -80,19 +80,6 @@ function windowEnd(windows, date) {
             best = end;
     }
     return best;
-}
-
-// Snooze-Ziel in ms: Minuten ab jetzt, oder "morning" = nächster Morgen zur Uhrzeit "HH:MM".
-// Vor 05:00 ist „morgen früh“ noch heute, sonst am nächsten Tag.
-function snoozeUntil(now, spec, morning) {
-    if (spec && spec.min > 0)
-        return now.getTime() + spec.min * 60000;
-    const m = hm(morning) >= 0 ? hm(morning) : 8 * 60;
-    const d = new Date(now);
-    d.setHours(Math.floor(m / 60), m % 60, 0, 0);
-    if (now.getHours() >= 5 || d <= now)
-        d.setDate(d.getDate() + 1);
-    return d.getTime();
 }
 
 // Regel {app, summary, category?} (Regex-Texte, ohne Groß/Klein) passt auf Meldung {app, desktop, summary}?

@@ -7,9 +7,9 @@ import Quickshell.Services.Notifications
 // Benachrichtigungen: Quickshell übernimmt org.freedesktop.Notifications, sobald Plasmas Applet weg ist.
 // Verlauf-Eintrag = { key, file, app, summary, body, icon, desktop, kind, urgent, time }.
 // Popups: normal 6 s, dringend bis Klick. Fokus-Modus: nur Dringendes poppt auf. Verlauf: letzte 50.
-// Klang zum Popup: Sounds.qml.
-// Später erinnern (Snooze): Meldung verschwindet und kommt zur Zeit als neue Meldung wieder (notify-send, Zustand in
-// ~/.local/state/desktop/notifs-snoozed.json). Ruhezeiten + App-Regeln: NotifRules.qml, Doku docs/knowledge/shell-features.md.
+// Klang zum Popup: Sounds.qml. Ruhezeiten + App-Regeln: NotifRules.qml, Doku docs/knowledge/shell-features.md.
+// Flüchtig (Hint „transient“ oder App-Regel „transient“): nur Popup, nie im Verlauf – Meldungen, deren Inhalt anderswo
+// steht (Mail-Kachel) oder die nur Rückmeldung sind (Screenshot gespeichert, kopiert …).
 Singleton {
     id: root
 
@@ -24,10 +24,6 @@ Singleton {
 
     // Art für die Icon-Kachel (Tabelle: config/notif-icons.json, Regeln in NotifIcons)
     function kindOf(n): string {
-        // wiedergebrachte Snooze-Meldung: Art von damals
-        const hk = n.hints ? String(n.hints["x-desktop-kind"] || "") : "";
-        if (hk)
-            return hk;
         const cat = n.hints ? String(n.hints["category"] || "") : "";
         const urg = n.urgency === NotificationUrgency.Critical ? "critical" : n.urgency === NotificationUrgency.Low ? "low" : "normal";
         return NotifIcons.kindOf(n.appName, n.summary, cat, urg, n.desktopEntry);
@@ -48,7 +44,7 @@ Singleton {
         // Snip schickt notify-send -i <pfad>: libnotify ≥ 0.8 legt Dateipfade als Hint image-path ab, appIcon bleibt
         // leer (n.image ist dann "image://icon//pfad") – vorher kam deshalb nie eine Datei an (geprüft per Test-Meldung).
         // image-path nur bei Snip (sonst wären z. B. Discord-Avatare plötzlich „Dateien“)
-        const ip = n.hints && (n.appName === "Snip" || n.hints["x-desktop-snoozed"]) ? n.hints["image-path"] : "";
+        const ip = n.hints && n.appName === "Snip" ? n.hints["image-path"] : "";
         const cands = [n.appIcon || "", String(ip || "")];
         for (const c of cands) {
             const p = c.startsWith("file:///") ? _decode(c.slice(7)) : c;
@@ -103,33 +99,42 @@ Singleton {
                 return;
             }
             const key = Date.now() + "-" + n.id;
-            // wiedergebrachte Snooze-Meldung: Regeln und Ruhezeit lagen schon hinter ihr
-            const again = !!(n.hints && n.hints["x-desktop-snoozed"]);
             const urgent = root.isUrgent(n);
-            const verdict = again ? { popup: true, hide: false, held: false } : NotifRules.decide({ app: n.appName, desktop: n.desktopEntry || "", summary: n.summary, urgent: urgent });
+            const verdict = NotifRules.decide({ app: n.appName, desktop: n.desktopEntry || "", summary: n.summary, urgent: urgent });
             if (verdict.hide) {
                 // App-Regel „hide“: weder Popup noch Panel
                 root.received(n);
                 n.dismiss();
                 return;
             }
-            root.history = [{
-                key: key,
-                file: root.fileOf(n),
-                app: n.appName,
-                summary: n.summary,
-                body: n.body,
-                icon: n.appIcon,
-                desktop: n.desktopEntry || "",
-                kind: root.kindOf(n),
-                urgent: root.isUrgent(n),
-                time: Qt.formatTime(new Date(), "HH:mm")
-            }].concat(root.history).slice(0, 50);
-            root.saveHistory();
             // Fokus-Modus: nur Dringendes poppt auf; Ruhezeit und App-Regeln kommen obendrauf
             const shown = (!Focus.active || urgent) && verdict.popup;
+            const fleeting = n.transient || verdict.transient;
+            if (fleeting && !shown) {
+                // flüchtig und gerade kein Popup erlaubt: nirgends anzeigen (wartende Absender wie mail-watch kommen frei)
+                root.received(n);
+                n.dismiss();
+                return;
+            }
+            if (!fleeting) {
+                root.history = [{
+                    key: key,
+                    file: root.fileOf(n),
+                    app: n.appName,
+                    summary: n.summary,
+                    body: n.body,
+                    icon: n.appIcon,
+                    desktop: n.desktopEntry || "",
+                    kind: root.kindOf(n),
+                    urgent: urgent,
+                    time: Qt.formatTime(new Date(), "HH:mm")
+                }].concat(root.history).slice(0, 50);
+                root.saveHistory();
+            }
             if (shown)
                 root.popups = root.popups.concat([n]);
+            if (fleeting)
+                root._fleeting = root._fleeting.concat([n]);
             // leiser Ton nur zum sichtbaren Popup (Regeln: notifsound.js)
             const ss = n.hints ? n.hints["suppress-sound"] : false;
             Sounds.notification({
@@ -145,6 +150,7 @@ Singleton {
             root.received(n);
             n.closed.connect(reason => {
                 root.popups = root.popups.filter(p => p !== n);
+                root._fleeting = root._fleeting.filter(p => p !== n);
                 // zieht die App ihre Meldung selbst zurück (z. B. „Spectacle is Finishing … Please wait“),
                 // gehört sie auch nicht in den Verlauf
                 if (reason === NotificationCloseReason.CloseRequested) {
@@ -155,6 +161,9 @@ Singleton {
         }
     }
 
+    // flüchtige Meldungen, deren Popup noch steht: geht das Popup, schließt die Meldung ganz
+    property var _fleeting: []
+
     // nur schließen, was der Server noch verfolgt (Apps schließen Meldungen auch selbst)
     function close(n) {
         if (n && n.tracked)
@@ -162,11 +171,36 @@ Singleton {
         popups = popups.filter(p => p !== n);
     }
     function dismissPopup(n) {
+        if (_fleeting.includes(n)) {
+            close(n);
+            return;
+        }
         popups = popups.filter(p => p !== n);
     }
     function clearHistory() {
         history = [];
         saveHistory();
+    }
+    // einen Verlaufs-Eintrag löschen; steht die Meldung noch als Popup da, verschwindet das mit
+    function removeHistory(key: string): void {
+        if (!key)
+            return;
+        for (const p of popups.slice())
+            if (p && String(key).endsWith("-" + p.id))
+                close(p);
+        history = history.filter(h => h.key !== key);
+        saveHistory();
+    }
+    // Popup wegklicken UND aus dem Verlauf löschen (Entf im Tastatur-Modus)
+    function deletePopup(n): void {
+        if (!n)
+            return;
+        const i = history.findIndex(h => String(h.key || "").endsWith("-" + n.id));
+        close(n);
+        if (i >= 0) {
+            history = history.filter((h, j) => j !== i);
+            saveHistory();
+        }
     }
 
     // ---------- Ruhezeit: wie viel kam, während du weg warst ----------
@@ -198,117 +232,6 @@ Singleton {
         quietFile.setText(JSON.stringify({ missed: missed }));
     }
 
-    // ---------- Später erinnern (Snooze) ----------
-    // [{ id, due (ms), app, summary, body, icon, desktop, kind, urgent, file }]
-    property var snoozed: []
-    readonly property real nextSnooze: snoozed.length ? Math.min(...snoozed.map(s => s.due)) : 0
-
-    function _historyIndex(n): int {
-        return history.findIndex(h => String(h.key || "").endsWith("-" + n.id));
-    }
-    function _entry(src, due) {
-        return {
-            id: Date.now() + "-" + Math.floor(Math.random() * 100000),
-            due: due,
-            app: String(src.app || ""),
-            summary: String(src.summary || ""),
-            body: String(src.body || ""),
-            icon: String(src.icon || ""),
-            desktop: String(src.desktop || ""),
-            kind: String(src.kind || ""),
-            urgent: !!src.urgent,
-            file: String(src.file || "")
-        };
-    }
-    function _addSnooze(e) {
-        snoozed = snoozed.concat([e]);
-        saveSnoozed();
-    }
-    // Popup zurückstellen: spec = { min } oder { morning: true }
-    function snoozePopup(n, spec): void {
-        if (!n)
-            return;
-        const e = _entry({ app: n.appName, summary: n.summary, body: n.body, icon: n.appIcon, desktop: n.desktopEntry, kind: kindOf(n), urgent: isUrgent(n), file: fileOf(n) },
-            NotifRules.snoozeTarget(spec));
-        const i = _historyIndex(n);
-        close(n);
-        if (i >= 0) {
-            history = history.filter((h, j) => j !== i);
-            saveHistory();
-        }
-        _addSnooze(e);
-    }
-    // Eintrag im Panel zurückstellen
-    function snoozeHistory(h, spec): void {
-        if (!h)
-            return;
-        // steht die Meldung noch als Popup da, verschwindet auch das
-        for (const p of popups.slice())
-            if (p && String(h.key || "").endsWith("-" + p.id))
-                close(p);
-        history = history.filter(x => x.key !== h.key);
-        saveHistory();
-        _addSnooze(_entry(h, NotifRules.snoozeTarget(spec)));
-    }
-    function unsnooze(id: string): void {
-        snoozed = snoozed.filter(s => s.id !== id);
-        saveSnoozed();
-    }
-    // Meldung wieder anzeigen: als neue Meldung (alles läuft durch dieselbe Anzeige wie sonst)
-    function _fire(e) {
-        const cmd = ["notify-send", "-u", e.urgent ? "critical" : "normal", "-h", "string:x-desktop-snoozed:1"];
-        if (e.app)
-            cmd.push("-a", e.app);
-        if (e.file)
-            cmd.push("-i", e.file, "-h", "string:image-path:" + e.file);
-        else if (e.icon)
-            cmd.push("-i", e.icon);
-        if (e.kind)
-            cmd.push("-h", "string:x-desktop-kind:" + e.kind);
-        if (e.desktop)
-            cmd.push("-h", "string:desktop-entry:" + e.desktop);
-        cmd.push("--", e.summary || e.app || "Reminder");
-        if (e.body)
-            cmd.push(e.body);
-        Quickshell.execDetached(cmd);
-    }
-    // fällig? Dann nicht in der Ruhezeit und nicht im Fokus/Nicht-stören (Dringendes darf), höchstens 2 pro Takt (kein Sturm)
-    function checkSnoozed(): void {
-        if (!snoozed.length)
-            return;
-        const t = Date.now();
-        const calm = !NotifRules.quietNow && !Focus.active;
-        const due = snoozed.filter(s => s.due <= t && (calm || s.urgent)).sort((a, b) => a.due - b.due).slice(0, 2);
-        if (!due.length)
-            return;
-        snoozed = snoozed.filter(s => !due.includes(s));
-        saveSnoozed();
-        for (const e of due)
-            _fire(e);
-    }
-    Timer {
-        interval: 5000
-        repeat: true
-        running: root.snoozed.length > 0
-        onTriggered: root.checkSnoozed()
-    }
-    FileView {
-        id: snoozedFile
-        path: Quickshell.env("HOME") + "/.local/state/desktop/notifs-snoozed.json"
-        blockLoading: true
-        printErrors: false
-        onLoaded: {
-            try {
-                const d = JSON.parse(text());
-                if (Array.isArray(d))
-                    root.snoozed = d.filter(s => s && typeof s === "object" && s.due > 0 && typeof s.summary === "string");
-            } catch (e) {}
-        }
-    }
-    function saveSnoozed() {
-        snoozedFile.setText(JSON.stringify(snoozed));
-    }
-
     FileView {
         id: historyFile
         path: Quickshell.env("HOME") + "/.local/state/desktop/notifications.json"
@@ -327,22 +250,18 @@ Singleton {
         target: "notifs"
 
         function status(): string {
-            return JSON.stringify({ popups: root.popups.length, history: root.history.length, snoozed: root.snoozed.length, missed: root.missed, quiet: NotifRules.quietNow });
+            return JSON.stringify({ popups: root.popups.length, history: root.history.length, missed: root.missed, quiet: NotifRules.quietNow });
         }
         function clear(): void {
             root.clearHistory();
         }
-        // Später erinnern per IPC: Panel-Eintrag Nr. index (0 = neuester) um min Minuten (Test/Skripte)
-        function snooze(index: int, min: int): string {
+        // einen Eintrag löschen: Nr. index (0 = neuester), wie das ✕ in der Liste
+        function remove(index: int): string {
             const h = root.history[index];
             if (!h)
                 return "no such entry";
-            root.snoozeHistory(h, min > 0 ? { min: min } : { morning: true });
+            root.removeHistory(h.key);
             return "ok";
-        }
-        // zurückgestellte Meldungen (nur App + Zeit, keine Inhalte)
-        function snoozed(): string {
-            return JSON.stringify(root.snoozed.map(s => ({ app: s.app, due: Qt.formatDateTime(new Date(s.due), "yyyy-MM-dd HH:mm:ss") })));
         }
         // Test-Meldungen aus dem Panel entfernen (alle Einträge einer App), Antwort: Anzahl
         function forget(app: string): string {
@@ -350,12 +269,6 @@ Singleton {
             root.history = root.history.filter(h => h.app !== app);
             root.saveHistory();
             return String(n - root.history.length);
-        }
-        // alle zurückgestellten sofort fällig machen (Test)
-        function wake(): void {
-            root.snoozed = root.snoozed.map(s => Object.assign({}, s, { due: Date.now() - 1 }));
-            root.saveSnoozed();
-            root.checkSnoozed();
         }
         // Ruhezeit-Entscheidung prüfen: decide "App" "Titel" false  ->  { popup, hide, held, why } (mit der Uhrzeit von jetzt)
         function decide(app: string, summary: string, urgent: bool): string {
