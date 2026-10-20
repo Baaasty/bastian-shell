@@ -54,6 +54,12 @@ Stolperfallen:
 - Keine Geräte: udev-Regeln neu laden oder neu starten; `ls -l /dev/i2c-0` muss ein `+` (ACL) zeigen.
 - NZXT-Lüfter/Streifen dunkel: Zonengröße fehlt → einmal im OpenRGB-Fenster „Resize zone“ setzen (wird gemerkt).
 - RAM fehlt: im OpenRGB-Fenster unter Supported Devices aktivieren; Kernel-Parameter erst danach (Wiki „SMBus Access“).
-- Maus: Farbe ist flüchtig (OpenRGB schreibt nicht ins Onboard-Profil); dauerhaft nur per Solaar-Profil (nicht eingerichtet).
+- Maus G502 X PLUS: Farbe steht **fest im Onboard-Profil 1** (Solaar, 2026-10-20), deshalb `rgb.json` → `{"skip": ["G502"]}`
+  – OpenRGB würde sonst wieder „live“ übersteuern, und nach Aufwachen/Neuverbinden käme die Profilfarbe zurück.
+  Vorher waren die Onboard-Profile aus, darum zeigte die Maus nach dem Aufwachen ihr altes Rot.
+  Ändern: `solaar profiles "G502 X PLUS" > a.yaml`, im aktiven Profil unter `lighting` den Eintrag `ID: 1, color: 0x…`
+  anpassen, `solaar profiles "G502 X PLUS" a.yaml`. Dazu `onboard_profiles = Profile 1`, `rgb_control = false`.
+  Rückweg: Sicherung `~/.local/state/desktop/g502-profiles-backup-2026-10-20.yaml` genauso laden. DPI kommt im
+  Profil-Modus aus `resolutions` (1200/1600/2000).
 - Nach Standby falsche Farbe: hypridle mit neuer Config neu starten, sonst `--delay 5`.
   Log: `journalctl --user --since -5min | grep rgb`.

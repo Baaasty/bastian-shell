@@ -90,6 +90,8 @@ yt-dlp
 kde-connect                    # Handy-Kopplung (kdeconnectd)
 # equibop                      # NICHT aus einem Repo: GitHub-RPM Equicord/Equibop (bootstrap Schritt 2, wie goxlr-utility)
 # goxlr-utility                # NICHT aus einem Repo: GitHub-RPM GoXLR-on-Linux/goxlr-utility (bootstrap Schritt 2)
+solaar                         # Logitech-Maus G502 X PLUS: Farbe/DPI ins Onboard-Profil (docs/knowledge/hardware.md)
+# openrgb                      # NICHT aus Fedora (rc2 zu alt): Codeberg-RPM 1.1 + hidapi-hotplug, siehe other.txt
 
 # == Entwicklung
 git
