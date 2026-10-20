@@ -33,6 +33,7 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] Bildschirmaufnahme: Auswahl wie beim Teilen (Screen / Window / Region), nie gemerkt (2026-10-20)
 - [x] Benachrichtigungen: Mail/Screenshot nur als Popup (nicht im Verlauf), einzeln löschen, Wecker entfernt (2026-10-20)
 - [x] UI-Feinschliff über alles: Tastenkappen (Mittelding Workspace-Modus/Bar), Schriftgrößen (Workspace-Modus etwas kleiner), Karten/Abstände überall angleichen (2026-10-20)
+- [x] Launcher nur noch mit Projects/Calculator/Files/Tabs/Claude, Rest ist Websuche; Emoji als Popup an der Eingabe (Super+.) (2026-10-20)
 - [ ] Dashboard-Benachrichtigungen per Tastatur bedienbar (wählen, öffnen, löschen)
 - [ ] Quickshell stürzt beim Hot-Reload ab (SIGSEGV in QQuickItem::setParentItem aus einem Binding, 4× am 2026-10-20, schon vor dem UI-Umbau) – Ursache finden; danach meldet sich der eigene Polkit-Agent ab
 
@@ -59,7 +60,7 @@ Dev-Dienste, Downloads, Updates, Absturz-Karte, Hyperfokus, Projektzeit, Privats
   7 Super+Q auf Spotify → weggeräumt; Alt+F4 → beendet · 8 Super+Alt+K → Layout speichern, auf leerem Desktop wiederherstellen
 - [ ] **D – Panels**
   1 Super+K, „discord“ → gefiltert · 2 Super+P, Klick ins Leere → zu · 3 Super+O → Logos, Tab → Gruppen-Chips ·
-  4 Super+T: Text + Enter → Inbox, „t test“ → To-do, ↓ → Inbox-Aktionen · 5 Super, `?wetter` Enter → Helium; `c hallo` → Claude ·
+  4 Super+T: Text + Enter → Inbox, „t test“ → To-do, ↓ → Inbox-Aktionen · 5 Super, `wetter` Enter → Websuche in Helium; `c hallo` → Claude ·
   6 Ressourcen-Popout: Zeile aufklappen · 7 `morning open`, Esc → zu · 8 Druck → Bereich, dann Enter / S / C / P / T (OCR)
 - [ ] **E – Hardware und System**
   1 `pkexec true` → eigener Dialog, Esc bricht ab · 2 Super+L, GoXLR-Fader verstellen, entsperren → Fader wie vorher ·

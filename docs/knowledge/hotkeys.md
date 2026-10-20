@@ -112,7 +112,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + Enter` | Terminal |
 | `Super + Shift + Enter` | Drop-down terminal |
 | `Super + V` | Clipboard history at the cursor (Enter pastes) |
-| `Super + ·` | Emoji picker |
+| `Super + ·` | Emoji picker at the cursor (Enter inserts) |
 | `Super + K` | Keyboard shortcuts |
 | `Super + P` | Package manager |
 | `Super + O` | Passwords |

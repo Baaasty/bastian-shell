@@ -14,8 +14,8 @@ location, projects) lives in local, git-ignored files with an `.example` next to
 - **Popouts** – sound, network, light (Hue, Key Light), resources, downloads, dev services, music, chat, tray, updates
 - **Workspace bar** – workspaces across all monitors with live window previews, quick links, git status and today's project time per workspace; keyboard mode (tap Alt)
 - **Dashboard** (tap Super) – clock & weather, agenda, mail, focus, Spotify, Discord, light & sound, notifications
-- **Launcher** – apps, windows and projects without prefix; prefixes for projects (`#`), calculator (`=`), emoji (`:`),
-  clipboard (`;`), files (`/`), browser tabs (`@`), passwords (`pw `), calendar (`cal `) and web searches (`g `, `yt `, `gh ` …, `?` lists them all)
+- **Launcher** – apps, windows, projects and tabs without prefix (anything else becomes a web search); prefixes for projects (`#`),
+  calculator (`=`), files (`/`), browser tabs (`@`), asking Claude (`c `) and web shortcuts (`g `, `yt `, `gh ` …)
 - **Cheat sheet** – Super+K shows every keybinding, generated from the Hyprland config
 - **Lock screen** – the shell locks itself (ext-session-lock, PAM), hyprlock as fallback; a matching login screen theme lives in `plasma/loginscreen/`
 - **Own dialogs** – polkit agent, screen-share picker, file picker, crash card, "app not responding"

@@ -110,18 +110,19 @@ Code: `scripts/share-pick` (Brücke xdph ↔ Shell), `shell/modules/sharepicker/
 
 ## Launcher
 Code: `shell/modules/launcher/Launcher.qml` (`sources`, `parse()`, `rebuild()`), `shell/services/LauncherSources.qml`, `WebShortcuts.qml` · Konfig: `config/launcher/web.json`, Zähler `~/.local/state/desktop/launcher.json` (nur IDs, nie Suchtexte)
-- `web.json`: das erste Kürzel ist das Standard-Kürzel (`?<text>`, „Search the web“); `url` braucht `http(s)://` + `{q}`; `pw`, `cal`, `c` sind reserviert. Kaputte Einträge → „Config problem“ unter `?`.
+- `web.json`: das erste Kürzel ist die Websuche, die ohne Präfix immer als letzte Zeile steht – darum kein eigener Websuche-Präfix; `url` braucht `http(s)://` + `{q}`; `c` ist reserviert. Kaputte Einträge → „Config problem“ im Web-Modus.
 - `c `: `claude://` an Claude Desktop (distrobox „ubuntu“), wenn `xdg-mime query default x-scheme-handler/claude` einen Handler hat, sonst claude.ai in Helium; geprüft einmal pro Shell-Start.
-- `pw ` lädt Metadaten höchstens alle 5 min (Tresor selbst: Timer `desktop-passwords`, alle 15 min). `@` braucht Helium mit Erweiterung „Desktop“ (`scripts/chrome-ext status`).
-- Verworfen (nicht wieder einbauen): Text-Bausteine `s ` und FMHY-Suche.
+- `@` braucht Helium mit Erweiterung „Desktop“ (`scripts/chrome-ext status`).
+- Verworfen (nicht wieder einbauen): Text-Bausteine `s `, FMHY-Suche; seit 2026-10-20 auch Präfixe für Emoji, Zwischenablage, Passwörter, Termine, Mail und `?`: zu viele Modi, die je ein eigenes Panel/Popup schon besser kann (Passwort-Panel, Agenda-/Mail-Kachel, Zwischenablage-/Emoji-Popup).
 
-## Zwischenablage
-Code: `shell/modules/clip/ClipPopup.qml` (Super+V, IPC `clip toggle`), `shell/services/Clipboard.qml` (`terminalClasses`, `pasteDelay`), `scripts/clip-paste`; auch Launcher-Modus `;` · Favoriten `~/.local/state/desktop/clip-pins.json`
+## Zwischenablage und Emoji
+Code: `shell/modules/clip/InlinePopup.qml` (gemeinsame Basis: Position, Ziel-Fenster, Karte), `ClipPopup.qml`, `EmojiPopup.qml`, `shell/services/Clipboard.qml` (`terminalClasses`, `pasteDelay`), `Emoji.qml`, `scripts/clip-paste` · Favoriten `~/.local/state/desktop/clip-pins.json`, zuletzt benutzte Emoji `emoji-recent.json`
 - Popup an der Maus, wenn sie im aktiven Fenster steht, sonst im unteren Drittel des Fensters (Schreibmarke fremder Apps ist unter Wayland nicht abfragbar); am Rand eingeklemmt, unten kein Platz → über der Maus.
 - Enter = kopieren + einfügen: Ziel-Fenster wird beim Öffnen gemerkt; nach `pasteDelay` (Panel weg) holt `clip-paste` den Fokus nur zurück, wenn er woanders gelandet ist, und schickt dann Strg+V per `hyprctl dispatch sendshortcut` (Klasse in `terminalClasses` → Strg+Shift+V). Shift+Enter = nur kopieren.
 - Warum zurückholen: endet der Fokus-Grab des Popups, gibt Hyprland den Fokus an das Fenster unter der Maus. `focuswindow` läuft deshalb im Batch mit erzwungenem `cursor:no_warps` (danach alter Wert) – die Maus bleibt, wo sie ist.
 - Warum `sendshortcut` statt `wtype`: wtypes virtuelle Tastatur bringt eine eigene Keymap, Chromium/Electron (Discord, Claude) verschluckt die Taste dann oft. Ohne echten Fokus fügt keine App ein (Zwischenablage gibt es nur mit Tastaturfokus).
 - Kein Zielfenster mehr → nur kopieren, still. Bilder gehen genauso.
+- Emoji als eigenes Popup statt Launcher-Präfix: es soll dort landen, wo man tippt (wie unter Windows) – der Launcher kennt kein Ziel-Fenster. Einfügen über die Zwischenablage wie oben (darum steht das Emoji danach auch im Verlauf), mit angehängtem VS16 (sonst kommen Symbole wie ☀ schwarz-weiß an). Suche nur über die englischen Unicode-Namen (`shell/data/emoji.json`); jedes Suchwort muss im Namen stecken, lose Buchstabenfolgen passen bei ~1400 Namen sonst fast überall.
 
 # Fokus & Alltag
 
@@ -141,8 +142,8 @@ Code: `shell/modules/bar/TodoPopout.qml`, `TodoChip.qml`, `shell/services/Notes.
 - Per Super+T ohne Fokus-Griff reicht die Bar die Tasten weiter: Tippen/Rücktaste/Enter landen trotzdem im Feld (`KeyNav.preKey`).
 
 ## Mail öffnen, als gelesen markieren, löschen
-Code: `shell/services/Mail.qml` (`openMessage`, `markRead`, `trash`), `MailTile.qml`, Launcher `m ` · `scripts/mail-action open|seen|trash [--dry-run]` (Test `python3 scripts/tests/mail-action-test.py`), Abruf `scripts/mail-status` (liefert `uid`), Meldungen `scripts/mail-watch`
-- Tastatur: Launcher/Dashboard `m ` → ↵ öffnet in Thunderbird + gelesen, Ctrl+R nur gelesen, Ctrl+D Papierkorb (nicht Entf: löscht im Suchfeld Zeichen). Maus: Klick auf die Zeile, Häkchen/Mülleimer beim Überfahren; Meldung „Open“ / „Mark read“ / „Delete“.
+Code: `shell/services/Mail.qml` (`openMessage`, `markRead`, `trash`), `MailTile.qml` · `scripts/mail-action open|seen|trash [--dry-run]` (Test `python3 scripts/tests/mail-action-test.py`), Abruf `scripts/mail-status` (liefert `uid`), Meldungen `scripts/mail-watch`
+- Nur Kachel und Meldung (der Launcher-Modus `m ` ist seit 2026-10-20 weg).
 - Nie direkt `thunderbird mid:…`: Thunderbird sucht die ID nur in seinen `.msf`-Indizes – frisch gestartet „Message for message-id … not found“. `mail-action` schickt `mid:` erst, wenn die ID im `.msf` des Ordners steht (Kaltstart ≈ 30 s, Index schreibt er verzögert), sonst bleibt es nach 60 s beim Posteingang.
 - Verworfen: `imap://…/fetch>UID>…`-URL (Thunderbird 15x zeigt nur ein leeres Nachrichtenfenster), `.eml`-Kopie (hängt nicht am Ordner).
 - Gelesen = IMAP `UID STORE +FLAGS (\Seen)`; Löschen = nur diese UID in den Papierkorb (SPECIAL-USE `\Trash`, sonst Namen wie „Deleted Messages“; MOVE, iCloud kann das nicht → COPY + `\Deleted` + `UID EXPUNGE`, ohne UIDPLUS gar kein EXPUNGE). Beides nur, wenn die UID noch zur Message-ID passt (sonst Exit 3); Mail fliegt sofort aus `mail.json`.

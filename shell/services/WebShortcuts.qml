@@ -7,12 +7,12 @@ import Quickshell.Io
 //   { "g": { "name": "Google", "url": "https://www.google.com/search?q={q}" }, … }
 // Tippen: „g wetter berlin“ + Enter -> öffnet die Seite in Helium. {q} wird URL-kodiert eingesetzt.
 // Datei wird beobachtet (Änderung gilt sofort). Ungültige Einträge werden übersprungen, Grund steht in `problem`.
-// Reserviert (gehören dem Launcher): pw, cal, c
+// Reserviert (gehört dem Launcher): c
 Singleton {
     id: root
 
     readonly property string file: Quickshell.shellDir + "/../config/launcher/web.json"
-    readonly property var reserved: ["pw", "cal", "c"]
+    readonly property var reserved: ["c"]
 
     property var list: []          // [{ key, name, url, host }] in Dateireihenfolge
     property string problem: ""    // leer = alles ok

@@ -9,8 +9,10 @@ import qs.services
 import qs.components
 
 // Launcher: ein Feld, Tastatur zuerst – die eine Suche für alles (Doku: docs/knowledge/shell-features.md).
-// Einzeichen-Präfixe: # Projekte, = Rechner, : Emoji, ; Zwischenablage, / Dateien, @ Browser-Tabs (Helium), ? Hilfe (leer) bzw. Websuche (?<text>)
-// Wort-Präfixe (mit Leerzeichen): pw Passwörter, cal Termine, c Claude fragen, dazu die Web-Kürzel aus config/launcher/web.json (g, yt, gh …)
+// Einzeichen-Präfixe: # Projekte, = Rechner, / Dateien, @ Browser-Tabs (Helium)
+// Wort-Präfixe (mit Leerzeichen): c Claude fragen, dazu die Web-Kürzel aus config/launcher/web.json (g, yt, gh …).
+// Ohne Präfix steht unten immer „Search the web“ – darum kein eigener Websuche-Präfix.
+// Emoji und Zwischenablage sind eigene Popups an der Eingabe (modules/clip), Passwörter/Termine/Mail eigene Panels und Kacheln.
 Scope {
     id: root
 
@@ -32,21 +34,15 @@ Scope {
     property bool embedded: false   // Panel steckt gerade im offenen Dashboard
     readonly property bool searching: open || embedded   // vom Dashboard aus sitzt das Feld dort, wo dessen Suchleiste war
 
-    // Quellen mit Präfix: die Hilfe (?) und die Modus-Chips werden daraus gebaut.
+    // Quellen mit Präfix: die Modus-Chips (und der Abschnitt in Super+K, shell/modules/keys/appkeys.py) werden daraus gebaut.
     // Web-Kürzel kommen dynamisch aus config/launcher/web.json (WebShortcuts).
     readonly property var sources: [
         { prefix: "", label: "All", hint: "Apps, windows, projects, tabs, actions · Tab switches mode" },
         { prefix: "#", label: "Projects", hint: "Start a project workspace or create a new one" },
         { prefix: "=", label: "Calculator", hint: "Calculate · ↵ copies the result" },
-        { prefix: ":", label: "Emoji", hint: "Find an emoji · ↵ copies it" },
-        { prefix: ";", label: "Clipboard", hint: "History and pins · ↵ pastes · Shift+↵ copies · Ctrl+P pins" },
         { prefix: "/", label: "Files", hint: "Find files by name · ↵ opens" },
         { prefix: "@", label: "Tabs", hint: "Open Helium tabs · ↵ jumps to the tab" },
-        { prefix: "pw ", label: "Passwords", hint: "Title, website or user · ↵ copies the password" },
-        { prefix: "cal ", label: "Calendar", hint: "Upcoming events · ↵ opens the calendar" },
-        { prefix: "m ", label: "Mail", hint: "Unread mail · ↵ opens it in Thunderbird and marks it read · Ctrl+R marks read · Ctrl+D deletes" },
-        { prefix: "c ", label: "Claude", hint: "Ask Claude · ↵ starts a new chat with your text" },
-        { prefix: "?", label: "Web search", hint: "Search the web (default engine) · ↵ opens in Helium · ? alone shows this help" }
+        { prefix: "c ", label: "Claude", hint: "Ask Claude · ↵ starts a new chat with your text" }
     ]
     readonly property var modes: WebShortcuts.chipPrefix ? sources.concat([{ prefix: WebShortcuts.chipPrefix, label: "Web" }]) : sources
     readonly property var parsed: parse(query)
@@ -56,17 +52,9 @@ Scope {
     // Suchtext -> { mode, term, key }; mode "" = alles, sonst Einzeichen- oder Wort-Präfix
     // (rebuild() ruft das direkt auf: onQueryChanged kann vor den Bindings laufen)
     function parse(q: string): var {
-        if (q.length && "#=:;/@?".includes(q[0]))
+        if (q.length && "#=/@".includes(q[0]))
             return { mode: q[0], term: q.slice(1).trim(), key: "" };
         return LauncherSources.parse(q) ?? { mode: "", term: q.trim(), key: "" };
-    }
-
-    // Launcher mit Text öffnen (Hilfe-Zeilen)
-    function openWith(text: string): void {
-        open = true;
-        query = text;
-        selected = 0;
-        Clipboard.refresh();
     }
 
     function toggle(): void {
@@ -74,7 +62,6 @@ Scope {
         if (open) {
             query = "";
             selected = 0;
-            Clipboard.refresh();
             rebuild();
         }
     }
@@ -83,7 +70,6 @@ Scope {
     function reset(): void {
         query = "";
         selected = 0;
-        Clipboard.refresh();
         rebuild();
     }
 
@@ -173,26 +159,6 @@ Scope {
             for (const f of Files.results)
                 add({ id: "file:" + f.path, glyph: "description", title: f.name, sub: f.rel, kind: "File", run: () => Files.open(f.path) }, Fuzzy.score(t, f.name));
         }
-        if (mode === ":") {
-            for (const [ch, name] of Emoji.list)
-                add({ id: "emoji:" + ch, emoji: ch, title: name, sub: "Copy", kind: "Emoji", run: () => Emoji.copy(ch) }, t ? Fuzzy.score(t, name) : 1);
-        }
-        if (mode === ";") {
-            for (const p of Clipboard.pins)
-                add({ id: "pin:" + p, glyph: "push_pin", pinText: p, title: p, sub: "Pinned · Ctrl+P to unpin", kind: "Pinned", run: copyOnly => Clipboard.copyText(p, !copyOnly, null) }, t ? Fuzzy.score(t, p) : 2);
-            for (const c of Clipboard.entries) {
-                if (!c.image && Clipboard.isPinned(c.text))
-                    continue;
-                add({
-                    id: "clip:" + c.id, clipId: c.id, glyph: "content_paste",
-                    thumb: c.image ? Clipboard.thumb(c.id) : "",
-                    pinText: c.image ? "" : c.text,
-                    title: c.image ? "Image · " + c.w + " × " + c.h : c.text,
-                    sub: c.image ? c.image.toUpperCase() : "",
-                    kind: "Clipboard", run: copyOnly => Clipboard.copy(c.id, !copyOnly, null)
-                }, t ? Fuzzy.score(t, c.image ? "image picture bild " + c.image : c.text) : 1);
-            }
-        }
 
         // Web-Kürzel (g, yt, …): gewähltes zuerst; ohne Suchtext die Liste aller Kürzel
         if (mode === WebShortcuts.chipPrefix && mode !== "") {
@@ -203,57 +169,16 @@ Scope {
                 add({ id: "web:" + w.key, glyph: "travel_explore", title: t ? "Search “" + t + "”" : w.name, sub: (t ? w.name + " · " : "") + w.host + " · " + (t ? "opens in Helium" : "type " + w.key + " <search>"), kind: w.key, run: () => WebShortcuts.open(w, t) }, (chosen ? 5000 : 1000) - i);
             });
         }
-        // kein Treffer-Ersatz im Hauptmodus: unten immer die Websuche anbieten
-        if (mode === "" && t && WebShortcuts.defaultKey) {
+        // Web-Kürzel-Liste: kaputte Einträge in web.json melden
+        if (mode === WebShortcuts.chipPrefix && mode !== "" && !t && WebShortcuts.problem)
+            add({ id: "web:problem", glyph: "warning", title: "Config problem", sub: WebShortcuts.problem, kind: "Web", run: () => {} }, 6000);
+        // kein Treffer-Ersatz im Hauptmodus: unten immer die Websuche (erstes Kürzel in config/launcher/web.json)
+        if (mode === "" && t) {
             const w = WebShortcuts.find(WebShortcuts.defaultKey);
-            out.push({ id: "web:fallback", glyph: "travel_explore", title: "Search the web for “" + t + "”", sub: w.name + " · " + w.host, kind: w.key, score: 0.5, run: () => WebShortcuts.open(w, t) });
-        }
-        // Passwörter (nur Metadaten): Enter kopiert das Passwort, kein Klartext in der Liste
-        if (mode === "pw ") {
-            LauncherSources.pwEnsure();
-            if (LauncherSources.pwError)
-                add({ id: "pw:err", glyph: "key_off", title: "Passwords not available", sub: LauncherSources.pwError, kind: "Passwords", run: () => {} }, 1);
-            else if (!LauncherSources.pwReady)
-                add({ id: "pw:load", glyph: "key", title: "Loading passwords…", sub: "", kind: "Passwords", run: () => {} }, 1);
-            else if (!t)
-                add({ id: "pw:hint", glyph: "key", title: "Type a title, website or username", sub: LauncherSources.pwItems.length + " logins · ↵ copies the password (cleared after 30 s)", kind: "Passwords", run: () => Quickshell.execDetached(["qs", "ipc", "--any-display", "-p", Quickshell.shellDir, "call", "passwords", "open"]) }, 1);
-            else {
-                for (const m of LauncherSources.pwSearch(t)) {
-                    const e = m.e;
-                    add({ id: "pw:" + e.id, glyph: "key", title: e.title || m.host || "(no title)", sub: [m.host, e.user].filter(x => x).join(" · ") + (e.hasPassword || e.hasTotp ? "" : " · nothing to copy"), kind: "Password", run: () => LauncherSources.pwCopy(e) }, m.score);
-                }
-                add({ id: "pw:open", glyph: "open_in_new", title: "Open Passwords panel", sub: "Details, 2FA code, websites", kind: "Passwords", run: () => Quickshell.execDetached(["qs", "ipc", "--any-display", "-p", Quickshell.shellDir, "call", "passwords", "search", t]) }, 0.2);
-            }
-        }
-        // Termine (aus dem Agenda-Dienst)
-        if (mode === "cal ") {
-            if (!Agenda.configured)
-                add({ id: "cal:setup", glyph: "event_busy", title: "Calendar not set up", sub: "See docs/setup/mail-calendar.md", kind: "Calendar", run: () => {} }, 1);
-            else {
-                let n = 0;
-                for (const ev of LauncherSources.upcoming()) {
-                    const sc = t ? Math.max(Fuzzy.score(t, ev.title), Fuzzy.score(t, ev.location || "") - 80, Fuzzy.score(t, ev.calendar || "") - 80) : 1000 - n;
-                    n++;
-                    add({ id: "cal:" + ev.start + ev.title, glyph: "event", title: ev.title || "(no title)", sub: LauncherSources.when(ev) + (ev.location ? " · " + ev.location : ""), kind: ev.calendar || "Event", run: () => Agenda.openClient() }, sc);
-                }
-                if (out.length === 0)
-                    add({ id: "cal:none", glyph: "event_available", title: t ? "No event matches" : "No upcoming events", sub: "↵ opens the calendar", kind: "Calendar", run: () => Agenda.openClient() }, 1);
-            }
-        }
-        // Ungelesene Mails (Mail-Dienst): ↵ öffnet in Thunderbird + gelesen, Ctrl+R nur gelesen, Ctrl+D Papierkorb (LauncherPanel)
-        if (mode === "m ") {
-            if (!Mail.configured)
-                add({ id: "mail:setup", glyph: "mail_lock", title: "Mail not set up", sub: "See docs/setup/mail-calendar.md", kind: "Mail", run: () => {} }, 1);
-            else {
-                let n = 0;
-                for (const m of Mail.latest) {
-                    const sc = t ? Math.max(Fuzzy.score(t, m.from || ""), Fuzzy.score(t, m.subject || "") - 40) : 1000 - n;
-                    n++;
-                    add({ id: "mail:" + m.accountName + ":" + m.uid + ":" + m.mid, glyph: "mail", title: m.from || "?", sub: (m.subject || "(no subject)") + " · " + Mail.when(m.date), kind: Mail.accounts.length > 1 ? m.account : "Mail", keys: Mail.canMarkRead(m) ? "↵ open · ^R read · ^D delete" : "↵ open", mail: m, run: () => Mail.openMessage(m) }, sc);
-                }
-                if (out.length === 0)
-                    add({ id: "mail:none", glyph: "done_all", title: t ? "No unread mail matches" : "Inbox zero", sub: "↵ opens Thunderbird", kind: "Mail", run: () => Mail.openClient() }, 1);
-            }
+            if (w)
+                out.push({ id: "web:fallback", glyph: "travel_explore", title: "Search the web for “" + t + "”", sub: w.name + " · " + w.host, kind: w.key, score: 0.5, run: () => WebShortcuts.open(w, t) });
+            else
+                out.push({ id: "web:none", glyph: "warning", title: "No search engine", sub: WebShortcuts.problem || "config/launcher/web.json has no entries", kind: "Web", score: 0.5, run: () => {} });
         }
         // Claude fragen (c <text>): neuer Chat mit dem Text – Claude Desktop, sonst claude.ai in Helium
         if (mode === "c ") {
@@ -261,35 +186,8 @@ Scope {
             const where = LauncherSources.claudeHandler ? "Claude Desktop" : "claude.ai in Helium";
             add({ id: "claude:ask", glyph: "chat", title: t ? "Ask Claude: “" + t + "”" : "Type what you want to ask Claude", sub: (t ? "New chat · " : "↵ opens a new chat · ") + where, kind: "Claude", run: () => LauncherSources.askClaude(t) }, 1);
         }
-        // Websuche (?<text>): Standard-Suchmaschine (erstes Kürzel in config/launcher/web.json)
-        if (mode === "?" && t) {
-            const w = WebShortcuts.find(WebShortcuts.defaultKey);
-            if (w)
-                add({ id: "web:help", glyph: "travel_explore", title: "Search the web for “" + t + "”", sub: w.name + " · " + w.host + " · opens in Helium", kind: w.key, run: () => WebShortcuts.open(w, t) }, 1);
-            else
-                add({ id: "web:none", glyph: "warning", title: "No search engine", sub: WebShortcuts.problem || "config/launcher/web.json has no entries", kind: "Web", run: () => {} }, 1);
-        }
-        // Hilfe: alle Präfixe aus den Quellen (+ Web-Kürzel dynamisch)
-        if (mode === "?" && !t) {
-            for (const src of sources) {
-                if (src.prefix === "")
-                    continue;
-                const px = src.prefix;
-                add({ id: "help:" + px, glyph: "keyboard_command_key", title: px === "?" ? "?<text>" : px === "c " ? "c <prompt>" : px.trim() + " " + (px.length > 1 && px.endsWith(" ") ? "<search>" : ""), sub: src.hint, kind: src.label, run: () => root.openWith(px) }, 1000 - sources.indexOf(src));
-            }
-            if (WebShortcuts.list.length) {
-                const first = WebShortcuts.list[0];
-                add({ id: "help:web", glyph: "travel_explore", title: first.key + " <search>", sub: WebShortcuts.list.map(w => w.key + " " + w.name).join("  ·  "), kind: "Web", run: () => root.openWith(first.key + " ") }, 1);
-            }
-            if (WebShortcuts.problem)
-                add({ id: "help:problem", glyph: "warning", title: "Config problem", sub: WebShortcuts.problem, kind: "Help", run: () => {} }, 2000);
-        }
-
-        if (mode === ";" && !t)
-            out = out.slice(0, 50); // Favoriten, dann neueste zuerst
-        else
-            out.sort((a, b) => b.score - a.score);
-        results = out.slice(0, mode === "?" && !t ? 12 : 8);
+        out.sort((a, b) => b.score - a.score);
+        results = out.slice(0, 8);
         selected = 0;
     }
 
@@ -320,15 +218,14 @@ Scope {
         _noSearch = false;
     }
 
-    // copyOnly (Shift+Enter): Zwischenablage-Treffer nur kopieren statt einfügen; andere Treffer ignorieren es
-    function activate(i: int, copyOnly: bool): void {
+    function activate(i: int): void {
         const r = results[i];
         if (!r)
             return;
         counts[r.id] = (counts[r.id] || 0) + 1;
         countsFile.setText(JSON.stringify(counts));
         open = false;
-        r.run(!!copyOnly);
+        r.run();
     }
 
     onQueryChanged: if (searching) rebuild()
@@ -336,10 +233,6 @@ Scope {
     // Listen kommen asynchron: neu suchen, sobald sie da sind
     Connections {
         target: Projects
-        function onListChanged() { if (root.searching) root.rebuild(); }
-    }
-    Connections {
-        target: Emoji
         function onListChanged() { if (root.searching) root.rebuild(); }
     }
     Connections {
@@ -352,29 +245,14 @@ Scope {
     }
     Connections {
         target: LauncherSources
-        function onPwItemsChanged() { if (root.searching && root.mode === "pw ") root.rebuild(); }
-        function onPwErrorChanged() { if (root.searching && root.mode === "pw ") root.rebuild(); }
         function onClaudeHandlerChanged() { if (root.searching && root.mode === "c ") root.rebuild(); }
     }
     Connections {
         target: WebShortcuts
         function onListChanged() { if (root.searching) root.rebuild(); }
     }
-    Connections {
-        target: Agenda
-        function onAllEventsChanged() { if (root.searching && root.mode === "cal ") root.rebuild(); }
-    }
-    Connections {
-        target: Mail
-        function onAccountsChanged() { if (root.searching && root.mode === "m ") root.rebuild(); }
-    }
-    Connections {
-        target: Clipboard
-        function onEntriesChanged() { if (root.searching) root.rebuild(); }
-        function onThumbsVersionChanged() { if (root.searching) root.rebuild(); }
-    }
     // Dienste schon beim Start laden (Singletons entstehen sonst erst beim ersten Zugriff)
-    Component.onCompleted: [Projects.list, Emoji.list, Clipboard.entries, ChromeTabs.tabs, WebShortcuts.list]
+    Component.onCompleted: [Projects.list, ChromeTabs.tabs, WebShortcuts.list]
 
     // „Choose Folder…“: eigener Ordner-Wähler der Shell (services/FilePicker.qml, früher kdialog)
     function pickProjectFolder(): void {
@@ -400,15 +278,6 @@ Scope {
 
         function toggle(): void {
             root.toggle();
-        }
-        function clipboard(): void {
-            if (root.open && root.mode === ";") {
-                root.open = false;
-                return;
-            }
-            if (!root.open)
-                root.toggle();
-            root.query = ";";
         }
         // zum Testen: Launcher mit Suchbegriff öffnen
         function search(text: string): void {

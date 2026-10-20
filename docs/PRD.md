@@ -62,9 +62,9 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 ### Dashboard & Launcher
 
 - **F17** Dashboard (Super antippen): Uhr & Wetter, Agenda, Mail, Fokus, Spotify, Discord, Licht & Sound, Benachrichtigungen, Stats.
-  Mail: öffnen in Thunderbird, nur als gelesen markieren oder in den Papierkorb – auch per Tastatur über den Launcher `m ` (↵ / Ctrl+R / Ctrl+D).
-- **F18** Launcher: Apps, Fenster, Projekte ohne Präfix; `#` `=` `:` `;` `/` `@` `pw`, `cal`, `m`, `g`/`yt`/`gh` (mit Leerzeichen), `c` fragt Claude, `?` listet alles ([LAUNCHER.md](knowledge/shell-features.md)).
-- **F19** Zwischenablage (Super+V) als Popup an der Eingabe – Enter fügt direkt ein; Zwischenablage (`;`) und Emoji (Super+.) auch als Launcher-Modi.
+  Mail: öffnen in Thunderbird, nur als gelesen markieren oder in den Papierkorb (Kachel und Meldung).
+- **F18** Launcher: Apps, Fenster, Projekte, Tabs ohne Präfix, sonst Websuche; wenige Präfixe für Projekte, Rechner, Dateien, Tabs, Claude fragen und Web-Kürzel ([Launcher](knowledge/shell-features.md)).
+- **F19** Zwischenablage (Super+V) und Emoji (Super+.) als Popup an der Eingabe – Enter fügt direkt ins Fenster ein.
 - **F20** Benachrichtigungen: Popups + Verlauf (einzeln löschbar, Rückmeldungen nur als Popup), Ruhezeiten, Hover hält an, leiser, dumpfer Einzelton zum Popup; Super+Alt+Z/X ([NOTIFICATIONS.md](knowledge/shell-features.md)).
 - **F21** Kürzel-Übersicht Super+K, erzeugt aus `hypr/binds.conf` plus App-Kürzel.
 - **F22** OSD (Lautstärke, Helligkeit per DDC/CI, Medien) und Power-Menü (Super+Esc, Strg+Alt+Entf).

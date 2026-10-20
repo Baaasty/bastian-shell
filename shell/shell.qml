@@ -38,6 +38,7 @@ ShellRoot {
     BreakCard {}
     CamWall {}
     ClipPopup {}
+    EmojiPopup {}
     Attention {}
     Crash {}
     Dashboard {

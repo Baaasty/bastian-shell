@@ -25,8 +25,8 @@ Item {
     signal dismissed()
     signal activated()
 
-    function run(i: int, copyOnly: bool): void {
-        launcher.activate(i, !!copyOnly);
+    function run(i: int): void {
+        launcher.activate(i);
         activated();
     }
 
@@ -89,46 +89,10 @@ Item {
                     font.pixelSize: Theme.fontXl
                     focus: true
                     Keys.onEscapePressed: panelRoot.dismissed()
-                    Keys.onReturnPressed: event => panelRoot.run(launcher.selected, !!(event.modifiers & Qt.ShiftModifier))
-                    Keys.onEnterPressed: event => panelRoot.run(launcher.selected, !!(event.modifiers & Qt.ShiftModifier))
+                    Keys.onReturnPressed: panelRoot.run(launcher.selected)
+                    Keys.onEnterPressed: panelRoot.run(launcher.selected)
                     Keys.onDownPressed: launcher.selected = Math.min(launcher.results.length - 1, launcher.selected + 1)
                     Keys.onUpPressed: launcher.selected = Math.max(0, launcher.selected - 1)
-                    Keys.onDeletePressed: {
-                        const r = launcher.results[launcher.selected];
-                        if (r && r.clipId)
-                            Clipboard.remove(r.clipId);
-                        else if (r && r.id.startsWith("pin:"))
-                            Clipboard.togglePin(r.pinText);
-                        else
-                            return;
-                        launcher.rebuild();
-                    }
-                    Keys.onPressed: event => {
-                        // Ctrl+R: Mail als gelesen markieren, Ctrl+D: in den Papierkorb (Modus „m “), Zeile verschwindet.
-                        // Nicht Entf: das löscht im Suchfeld Zeichen, ein Vertipper würde sonst eine Mail wegwerfen.
-                        if ((event.key === Qt.Key_R || event.key === Qt.Key_D) && (event.modifiers & Qt.ControlModifier)) {
-                            const r = launcher.results[launcher.selected];
-                            if (r && r.mail && Mail.canMarkRead(r.mail)) {
-                                const keep = launcher.selected;
-                                if (event.key === Qt.Key_R)
-                                    Mail.markRead(r.mail);
-                                else
-                                    Mail.trash(r.mail);
-                                launcher.rebuild();
-                                launcher.selected = Math.min(keep, Math.max(0, launcher.results.length - 1));
-                            }
-                            event.accepted = true;
-                            return;
-                        }
-                        if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier)) {
-                            const r = launcher.results[launcher.selected];
-                            if (r && r.pinText) {
-                                Clipboard.togglePin(r.pinText);
-                                launcher.rebuild();
-                            }
-                            event.accepted = true;
-                        }
-                    }
                     Keys.onTabPressed: {
                         const i = launcher.modes.findIndex(m => m.prefix === launcher.mode);
                         const nextMode = launcher.modes[(i + 1) % launcher.modes.length].prefix;
@@ -230,15 +194,6 @@ Item {
                         radius: Theme.radiusSm
                         color: row.modelData.icon ? "transparent" : Theme.wood
                         clip: true
-                        Image {
-                            anchors.fill: parent
-                            visible: !!row.modelData.thumb
-                            source: row.modelData.thumb || ""
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            cache: false
-                            sourceSize.width: 80
-                        }
                         IconImage {
                             anchors.centerIn: parent
                             visible: !!row.modelData.icon
@@ -247,17 +202,10 @@ Item {
                         }
                         Icon {
                             anchors.centerIn: parent
-                            visible: !row.modelData.icon && !row.modelData.emoji && !row.modelData.thumb
+                            visible: !row.modelData.icon
                             name: row.modelData.glyph || ""
                             size: 22
-                            fill: row.modelData.glyph === "push_pin" || !!row.modelData.glyphFill
-                            color: row.modelData.glyph === "push_pin" || row.modelData.glyphFill ? Theme.accentText : Theme.text
-                        }
-                        Text {
-                            anchors.centerIn: parent
-                            visible: !!row.modelData.emoji
-                            text: row.modelData.emoji || ""
-                            font.pixelSize: 24
+                            color: Theme.text
                         }
                     }
                     Column {
@@ -298,7 +246,7 @@ Item {
                         font.pixelSize: Theme.fontSm
                         font.weight: Font.Normal
                     }
-                    // gewählte Zeile: ihre Taste als kleine Kappe (meist ↵)
+                    // gewählte Zeile: ihre Taste als kleine Kappe
                     KeyHintRow {
                         id: rowKey
                         visible: row.on
@@ -306,7 +254,7 @@ Item {
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
                         small: true
-                        hints: [[row.modelData.keys || "↵", ""]]
+                        hints: [["↵", ""]]
                     }
                     MouseArea {
                         id: rowArea
@@ -322,11 +270,8 @@ Item {
             KeyHintRow {
                 visible: !panelRoot.idle
                 x: Theme.space1
-                hints: launcher.mode === ";" ? (Clipboard.canPaste ? [["↵", "paste"], ["Shift+↵", "copy"]] : [["↵", "copy"]]).concat([["Ctrl+P", "pin"], ["Del", "delete"], ["Esc", "close"]])
-                         : launcher.mode === "?" && launcher.term ? [["↵", "open in Helium"], ["↑↓", "select"], ["Tab", "mode"], ["Esc", "close"]]
-                         : launcher.mode === "c " ? [["↵", "ask Claude"], ["Tab", "mode"], ["Esc", "close"]]
-                         : launcher.mode === "m " ? [["↵", "open + read"], ["Ctrl+R", "mark read"], ["Ctrl+D", "delete"], ["Esc", "close"]]
-                         : [["↵", "open"], ["↑↓", "select"], ["Tab", "mode"], ["?", "prefixes"], ["Esc", "close"]]
+                hints: launcher.mode === "c " ? [["↵", "ask Claude"], ["Tab", "mode"], ["Esc", "close"]]
+                         : [["↵", "open"], ["↑↓", "select"], ["Tab", "mode"], ["Esc", "close"]]
             }
         }
     }
