@@ -28,9 +28,12 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] Popouts: Klick daneben (VS Code, anderer Monitor) schließt und bleibt zu · Hand-Zeiger/Tooltip auf anderen Chips, ein Klick wechselt · Songwechsel/Discord-Ereignis lässt es offen (2026-10-20)
 - [x] Teilen-Chip (Super+Alt+P): Stop bei einer Browser-Freigabe · Mittelklick stoppt alles · gemerktes DP-2 startet Discord-Stream ohne Karte (Forget ✓, Picker-Vorrang ✓) (2026-10-20)
 - [x] Snip mit Pfeiltasten: 1 px / Shift 10 px, Enter = Start, Pfeile = Auswahl, Enter = fertig, Esc = zurück (auch Super+R, Super+Shift+C) (2026-10-20)
-- [ ] Hotkey-Hinweise einheitlich: Bar-Modus (Super+Leertaste) zeigt die Kürzel im selben Stil wie die Hover-Tooltips
-- [ ] Snip: Pipette nur noch im Screenshot (eigenes Kürzel weg) – Farbe aus dem Screenshot holen und kopieren
-- [ ] Bildschirmaufnahme: Auswahl wie beim Teilen (Screen / Window / Region), nie gemerkt
+- [x] Hotkey-Hinweise einheitlich: Bar-Modus (Super+Leertaste) zeigt die Kürzel im selben Stil wie die Hover-Tooltips (2026-10-20)
+- [x] Snip: Pipette nur noch im Screenshot (eigenes Kürzel weg) – Farbe aus dem Screenshot holen und kopieren (2026-10-20)
+- [x] Bildschirmaufnahme: Auswahl wie beim Teilen (Screen / Window / Region), nie gemerkt (2026-10-20)
+- [x] Benachrichtigungen: Mail/Screenshot nur als Popup (nicht im Verlauf), einzeln löschen, Wecker entfernt (2026-10-20)
+- [ ] UI-Feinschliff über alles: Tastenkappen (Mittelding Workspace-Modus/Bar), Schriftgrößen (Workspace-Modus etwas kleiner), Karten/Abstände überall angleichen
+- [ ] Dashboard-Benachrichtigungen per Tastatur bedienbar (wählen, öffnen, löschen)
 
 ## Handtest (Bastian) – je Block „ok“ oder z. B. „A3 kaputt“ melden
 
@@ -44,7 +47,7 @@ Dev-Dienste, Downloads, Updates, Absturz-Karte, Hyperfokus, Projektzeit, Privats
   5 Super+Alt+L zweimal → Licht auf/zu · 6 Super+Alt+H → Dev-Popout, Reiter Server ·
   7 Super+Alt+Y, ↓, →, Enter → Tray-Menü, ← zurück · 8 Spotify-Popout: Maus rein, Fenster öffnen → bleibt; weghovern → zu
 - [ ] **B – Benachrichtigungen und Workspaces**
-  1 `notify-send -a Test Hallo Text`, Super+Alt+Z, S, 1 → später erinnern · 2 neue Karte, Super+Alt+X → weg ·
+  1 `notify-send -a Test Hallo Text`, Super+Alt+Z, Entf → weg, auch aus dem Dashboard · 2 neue Karte, Super+Alt+X → weg ·
   3 Maus auf Karte → bleibt stehen · 4 Alt antippen → Workspace-Modus, Alt+←/→ markiert, Esc ·
   5 im Modus auf Projekt-Workspace Q → Quicklinks · 6 Alt+1…3 → Leiste zeigt kurz, wo man ist ·
   7 Maus über Kachelkopf → Projektzeit-Tooltip mit Woche · 8 Fenster-Symbol auf andere Kachel ziehen → Fenster wandert

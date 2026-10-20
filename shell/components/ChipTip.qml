@@ -3,13 +3,16 @@ import Quickshell
 import Quickshell.Wayland
 import qs.config
 
-// Tooltip unter einem Bar-Chip (Chip.tip): kleines deckendes Fenster, erst nach kurzem Verweilen.
+// Tooltip unter einem Bar-Chip (Chip.tip): kleines deckendes Fenster mit der gemeinsamen Hinweis-Karte (KeyTip).
+// Beim Hovern erst nach kurzem Verweilen, am im Bar-Modus gewählten Chip sofort (delay 0).
 // Nimmt keine Eingaben an (leere Maske) – sonst könnte es Hover/Klicks der Bar oder eines Popouts stören.
 PopupWindow {
     id: tip
 
     property Item chip
     property string text: ""
+    // ruhig: erst nach 600 ms Verweilen, nicht schon beim Drüberwischen
+    property int delay: 600
 
     anchor.window: chip ? chip.hostWindow : null
     anchor.edges: Edges.Bottom
@@ -20,9 +23,8 @@ PopupWindow {
     visible: false
     mask: Region {}
 
-    // ruhig: erst nach 600 ms Verweilen, nicht schon beim Drüberwischen
     Timer {
-        interval: 600
+        interval: tip.delay
         running: !!tip.chip && tip.text !== ""
         onTriggered: {
             tip.place();
@@ -41,21 +43,10 @@ PopupWindow {
         Region { x: 0; y: 0; width: 1; height: 1 }
     }
 
-    Glass {
+    KeyTip {
         id: card
         x: 4
         y: 4
-        width: tipTxt.implicitWidth + 24
-        height: 30
-        radius: Theme.radiusMd
-        strong: true
-        Txt {
-            id: tipTxt
-            anchors.centerIn: parent
-            text: tip.text
-            font.pixelSize: 12
-            font.weight: Font.Normal
-            elide: Text.ElideNone
-        }
+        text: tip.text
     }
 }

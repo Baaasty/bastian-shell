@@ -44,12 +44,15 @@ Rectangle {
         key: chip.hintKey
     }
 
+    // im Bar-Modus mit ←/→ gewählt: denselben Tooltip sofort zeigen (Name · Kürzel zum Buchstaben)
+    readonly property bool modeSel: BarKeys.modeOn && hintKey !== "" && BarKeys.keyFor(BarKeys.sel) === hintKey
     LazyLoader {
-        active: chip.tipText !== "" && chip._hovered && !chip.active && !chip._tipOff && !BarKeys.modeOn
+        active: chip.tipText !== "" && (chip.modeSel || (chip._hovered && !chip.active && !chip._tipOff && !BarKeys.modeOn))
         ChipTip {
             // die eigene Property „chip“ verdeckt hier die id → Chip über die MouseArea holen
             chip: area.parent
             text: area.parent.tipText
+            delay: area.parent.modeSel ? 0 : 600
         }
     }
 

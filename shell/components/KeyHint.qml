@@ -1,9 +1,9 @@
 import QtQuick
-import qs.config
 import qs.services
 
-// Buchstabe am Chip, solange der Bar-Modus (Super+Leertaste) läuft: kleine Taste unten mittig, ragt etwas aus der Bar
-Rectangle {
+// Buchstabe am Chip, solange der Bar-Modus läuft: dieselbe kleine Tastenkappe wie im Tooltip (KeyTip),
+// unten mittig, ragt etwas aus der Bar
+KeyCap {
     id: hint
 
     property string key: ""
@@ -12,19 +12,7 @@ Rectangle {
     anchors.horizontalCenter: parent.horizontalCenter
     y: parent.height - 8
     z: 10
-    width: Math.max(18, keyTxt.implicitWidth + 8)
-    height: 18
-    radius: 6
-    color: Theme.surfaceRaised
-    border.width: 1
-    border.color: Theme.accent
-
-    MonoTxt {
-        id: keyTxt
-        anchors.centerIn: parent
-        text: hint.key
-        font.pixelSize: 11
-        font.weight: Font.Bold
-        color: Theme.accentText
-    }
+    small: true
+    main: true
+    label: key
 }

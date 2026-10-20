@@ -65,22 +65,12 @@ Row {
                 Region { x: 0; y: 0; width: 1; height: 1 }
             }
 
-            Glass {
+            // dieselbe Hinweis-Karte wie die Chip-Tooltips
+            KeyTip {
                 id: tipCard
                 x: 4
                 y: 4
-                width: tipTxt.implicitWidth + 28
-                height: 34
-                radius: Theme.radiusMd
-                strong: true
-                Txt {
-                    id: tipTxt
-                    anchors.centerIn: parent
-                    text: dot.title + ": " + dot.apps.join(", ")
-                    font.pixelSize: 13
-                    font.weight: Font.Normal
-                    elide: Text.ElideNone
-                }
+                text: dot.title + ": " + dot.apps.join(", ")
             }
         }
     }

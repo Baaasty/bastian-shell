@@ -29,7 +29,7 @@ PanelWindow {
         right: true
     }
     // + Luft für den Schatten (nur Optik; Klicks gehen per mask nur an die Chips)
-    implicitHeight: Theme.barMargin + Theme.barHeight + 34
+    implicitHeight: Theme.barMargin + Theme.barHeight + 42
     // reserviert den Platz der Bar: Fenster (auch maximiert) fangen darunter an, die Bar bleibt immer sichtbar.
     // Nur im echten Vollbild/Spiel (Windows.bare) ist sie ganz weg und gibt den Platz wieder frei.
     exclusionMode: ExclusionMode.Normal
@@ -433,25 +433,31 @@ PanelWindow {
             // ließ die Bar während eines Fokusblocks ein Viertel der Zeit mit 360 Hz neu zeichnen
         }
     }
-    // Bar-Modus: kleine Zeile unter der Uhr (Buchstaben stehen an den Chips) oder kurze Meldung
-    Rectangle {
-        visible: (BarKeys.modeOn || BarKeys.note !== "") && win.shown
+    // Bar-Modus: kleine Zeile unter der Uhr (Buchstaben stehen an den Chips) oder kurze Meldung – dieselbe Karte wie
+    // die Tooltips. Ist ein Chip gewählt, zeigt der seinen Tooltip; die Zeile weicht, damit nichts übereinander liegt
+    KeyTip {
+        visible: (BarKeys.note !== "" || (BarKeys.modeOn && win.selChip === null)) && win.shown
         anchors.horizontalCenter: bar.horizontalCenter
-        y: bar.y + bar.height + 4
-        width: modeHintTxt.implicitWidth + 24
-        height: 26
-        radius: Theme.radiusSm
-        color: Theme.surfaceRaised
-        border.width: 1
-        border.color: Theme.borderStrong
-        Txt {
-            id: modeHintTxt
-            anchors.centerIn: parent
-            text: BarKeys.note !== "" ? BarKeys.note : "Letter or ←→ + Enter opens · Z notifications · Esc closes"
-            color: BarKeys.note !== "" ? Theme.text : Theme.textMuted
-            font.pixelSize: 12
-        }
+        // gleiche Höhe wie die Tooltips (ChipTip: Bar-Unterkante + 4 + 4)
+        y: bar.y + bar.height + 8
+        text: BarKeys.note
+        textColor: BarKeys.note !== "" ? Theme.text : Theme.textMuted
+        parts: BarKeys.note !== "" ? null : win.modeHintParts
     }
+    readonly property var modeHintParts: [
+        { kind: "text", text: "Letter or" },
+        { kind: "key", text: "←", main: true },
+        { kind: "key", text: "→", main: true },
+        { kind: "plus" },
+        { kind: "key", text: "Enter", main: true },
+        { kind: "text", text: "opens" },
+        { kind: "sep" },
+        { kind: "key", text: "Z", main: true },
+        { kind: "text", text: "notifications" },
+        { kind: "sep" },
+        { kind: "key", text: "Esc", main: true },
+        { kind: "text", text: "closes" }
+    ]
 
     // Bar-Modus: ruhiger Glut-Rahmen um den mit ←/→ gewählten Chip
     Rectangle {
