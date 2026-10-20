@@ -83,7 +83,7 @@ Row {
 
     Chip {
         id: title
-        hintKey: BarKeys.keyFor("spotify")   // Bar-Modus (Super+B)
+        hintKey: BarKeys.keyFor("spotify")   // Bar-Modus (Super+Leertaste)
         active: popout.visible
         onClicked: {
             if (!root.player)
@@ -239,7 +239,7 @@ Row {
                 }
             }
 
-            // Web API nur abfragen, solange die jeweilige Ansicht offen ist
+            // offene Ansicht -> SpotifyApi lädt dafür nach (die Liste selbst ist schon vorgeladen, siehe SpotifyApi)
             Binding {
                 target: SpotifyApi
                 property: "active"

@@ -1,6 +1,6 @@
 {
   "name": "Spotify",
-  "about": "Play, next and previous also work on the media keys and in the bar (Super+B, M)",
+  "about": "Play, next and previous also work on the media keys and in the bar (Super+Alt+M)",
   "match": { "class": ["spotify", "com.spotify.client"] },
   "order": 80,
   "sections": [

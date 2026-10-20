@@ -16,10 +16,30 @@ Item {
             artist: "Artist"
         })[SpotifyApi.contextType] || ""
 
-    // Zeilen: { kind: head|track|note, … }
+    // Zeilen: { kind: head|track|note, … }; jeder Song nur einmal
     readonly property var rows: {
         const r = [];
-        const q = SpotifyApi.queue.slice(0, queueLimit);
+        const shuffle = SpotifyApi.shuffleOn;
+        const playing = SpotifyApi.playingUri;
+        // Shuffle: Playlist-Reihenfolge ab dem aktuellen Song enthält auch schon Gehörtes -> raus (das Skript filtert
+        // zusätzlich die zuletzt gehörten laut Spotify, die aber erst nach Minuten auftauchen)
+        let ctx = SpotifyApi.contextTracks;
+        if (shuffle)
+            ctx = ctx.filter(t => t.uri === playing || SpotifyApi.played.indexOf(t.uri) < 0);
+        const ctxUris = new Set(ctx.map(t => t.uri));
+        // Ohne Shuffle sind Warteschlangen-Songs meist nur die nächsten des Kontexts -> nur dort zeigen (Warteschlange =
+        // selbst eingereihte). Mit Shuffle ist die Warteschlange die echte Reihenfolge -> dort zeigen, im Kontext weglassen.
+        const seen = new Set();
+        const q = SpotifyApi.queue.filter(t => {
+            if ((!shuffle && ctxUris.has(t.uri)) || seen.has(t.uri))
+                return false;
+            seen.add(t.uri);
+            return true;
+        }).slice(0, queueLimit);
+        if (shuffle) {
+            const shown = new Set(q.map(t => t.uri));
+            ctx = ctx.filter(t => t.uri === playing || !shown.has(t.uri));
+        }
         if (q.length > 0) {
             r.push({ kind: "head", text: "Queue" });
             for (const t of q)
@@ -27,9 +47,9 @@ Item {
         }
         if (contextLabel !== "") {
             r.push({ kind: "head", text: contextLabel });
-            if (SpotifyApi.contextRestricted && SpotifyApi.contextTracks.length === 0)
+            if (SpotifyApi.contextRestricted && ctx.length === 0)
                 r.push({ kind: "note", text: "Spotify only lists songs for your own playlists" });
-            for (const t of SpotifyApi.contextTracks)
+            for (const t of ctx)
                 r.push(Object.assign({ kind: "track", ctx: SpotifyApi.contextUri }, t));
         }
         return r;

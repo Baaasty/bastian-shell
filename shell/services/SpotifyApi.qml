@@ -3,9 +3,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Spotify Web API über scripts/spotify-api (JSON auf stdout). Sparsam: lädt nur, solange das
-// Popout offen ist (active) und dann bei Songwechsel. Tokens liest nur das Skript, nie die Shell.
-// Kopplung: docs/setup/spotify.md
+// Spotify Web API über scripts/spotify-api (JSON auf stdout). Tokens liest nur das Skript, nie die Shell.
+// Vorladen, damit das Popout sofort eine Liste hat: letzter Stand aus now.json beim Start, dann still im
+// Hintergrund bei Songwechsel (höchstens alle bgGap) – nur solange Spotify läuft. Kopplung: docs/setup/spotify.md
 Singleton {
     id: root
 
@@ -26,12 +26,27 @@ Singleton {
     property string contextImage: ""
     property bool contextRestricted: false   // Dev-Mode: fremde Playlists ohne Inhalt
     property var contextTracks: []       // wie queue + { index, current }
+    property bool apiShuffle: false      // laut API (Ersatz, falls MPRIS kein Shuffle meldet)
+    property real fetchedAt: 0           // Stand der Liste (ms, auch aus now.json)
+    property real lastFetchAt: 0         // letzter Abruf-Start (Drossel für den Hintergrund)
+    property string listUri: ""          // Song, auf den queue gerade ausgerichtet ist (siehe trim)
+    property var played: []              // in dieser Sitzung gehörte Songs (Shuffle-Filter), neueste zuerst
+    property string lastMpris: ""
+    property bool bgPending: false       // Hintergrund-Abruf steht noch aus (z. B. wegen Sperre)
+    readonly property int bgGap: 20000   // ms – höchstens ein Hintergrund-Abruf so oft
+    readonly property real bornAt: Date.now()
+
+    readonly property bool spotifyRunning: Players.spotify !== null
+    readonly property bool shuffleOn: {
+        const p = Players.spotify;
+        return p && p.shuffleSupported ? p.shuffle : apiShuffle;
+    }
 
     property var playlists: []           // [{ uri, name, image, owner, own, liked, total }]
     property bool playlistsLoading: false
     property real playlistsAt: 0
     property real blockedUntil: 0        // nach 429 bis hier Ruhe
-    readonly property int maxBlock: 120  // s – längste Pause nach 429 (siehe parse)
+    readonly property int maxBlock: 900  // s – nur Schutz gegen Unsinn; die Pause (mit Verdopplung) rechnet das Skript
 
     // Durchstöbern: eine Playlist, seitenweise (50) nachgeladen
     property var browse: ({})            // { uri, name, image, owner, total, restricted }
@@ -69,15 +84,52 @@ Singleton {
     }
 
     function refresh(): void {
-        if (!configured || blocked())
-            return;
+        if (!configured || blocked() || !spotifyRunning)
+            return;  // Spotify zu: nichts zu zeigen, also auch nichts fragen
         if (nowProc.running) {
             again.pending = true;
             return;
         }
         if (status !== "ok")
             status = "loading";
+        lastFetchAt = Date.now();
         nowProc.running = true;
+    }
+
+    // Liste veraltet? (zu alt oder auf einen anderen Song ausgerichtet als MPRIS spielt)
+    function stale(maxAge: int): bool {
+        return Date.now() - fetchedAt > maxAge || (mprisUri !== "" && mprisUri !== current);
+    }
+
+    // Still im Hintergrund nachladen: frühestens nach settle (API hinkt MPRIS hinterher), höchstens alle bgGap.
+    // Neustart bei jedem Songwechsel -> beim Durchskippen am Ende genau ein Abruf.
+    function refreshBackground(): void {
+        if (!configured || !spotifyRunning)
+            return;
+        bgPending = true;
+        const at = Math.max(Date.now() + settle.interval, lastFetchAt + bgGap);
+        bgTimer.interval = Math.max(1, at - Date.now());
+        bgTimer.restart();
+    }
+
+    // Songwechsel sofort zeigen, ohne auf die API zu warten: Gespieltes oben abschneiden
+    function trim(): void {
+        const uri = mprisUri;
+        if (uri === "")
+            return;
+        if (uri !== listUri) {
+            // Warteschlange enthält den laufenden Song nicht -> nur einmal je Song schneiden (sonst träfe es eine Wiederholung)
+            const qi = queue.findIndex(t => t.uri === uri);
+            if (qi >= 0)
+                queue = queue.slice(qi + 1);
+            listUri = uri;
+        }
+        if (!shuffleOn) {
+            // mit Shuffle sagt die Playlist-Position nichts – dort filtert SpotifyQueue über played
+            const ci = contextTracks.findIndex(t => t.uri === uri);
+            if (ci > 0)
+                contextTracks = contextTracks.slice(ci);
+        }
     }
 
     function loadPlaylists(force: bool): void {
@@ -173,8 +225,7 @@ Singleton {
         }
         if (j && j.error) {
             if (j.error === "rate_limited") {
-                // Spotify schickt manchmal Retry-After von Stunden (2026-10-18: ~5 h), antwortet aber oft viel früher
-                // wieder. Darum höchstens maxBlock warten, dann ein Versuch; ist die Sperre noch da, wieder maxBlock Ruhe.
+                // retry_after kommt schon gedeckelt und mit Verdopplung aus dem Skript (auch das eigene Anfragen-Budget)
                 blockedUntil = Date.now() + Math.min(j.retry_after || 5, maxBlock) * 1000;
                 blockFile.setText(String(blockedUntil));
             }
@@ -196,32 +247,100 @@ Singleton {
         const q = j.queue || {};
         const c = j.context || {};
         queue = q.queue || [];
-        current = c.current || (q.current ? q.current.uri : "");
+        // Warteschlange zuerst: im Notfall (Kontext gesperrt) liefert das Skript den alten Kontext mit altem current
+        current = q.current ? q.current.uri : (c.current || "");
+        listUri = current;
+        apiShuffle = !!c.shuffle;
         contextUri = c.uri || "";
         contextType = c.type || "";
         contextName = c.name || "";
         contextImage = c.image || "";
         contextRestricted = !!c.restricted;
         contextTracks = c.tracks || [];
+        fetchedAt = j.saved_at || Date.now();
         error = "";
-        status = "ok";
+        if (configured)
+            status = "ok";
+        trim();  // API hinkt MPRIS manchmal hinterher
     }
 
-    // Bibliothek vorladen: beim Start und beim Öffnen des Popouts, damit sie sofort da ist
+    // Popout auf: Liste ist schon da (Vorladen), nur still nachladen, wenn sie nicht frisch ist
     onActiveChanged: {
         if (!active)
             return;
-        refresh();
+        trim();
+        if (stale(10000)) {
+            bgTimer.stop();
+            bgPending = false;
+            refresh();
+        }
         loadPlaylists(false);
     }
     onLibraryOpenChanged: if (libraryOpen) loadPlaylists(false)
+    // Spotify später gestartet -> vorladen; beim Shell-Start übernimmt das der Start-Timer
+    onSpotifyRunningChanged: if (spotifyRunning && Date.now() - bornAt > 10000) refreshBackground()
 
-    // Songwechsel: kurz warten, die API hinkt MPRIS etwas hinterher
+    onMprisUriChanged: {
+        if (mprisUri === "")
+            return;
+        if (lastMpris !== "" && lastMpris !== mprisUri)
+            played = [lastMpris].concat(played.filter(u => u !== lastMpris)).slice(0, 100);
+        lastMpris = mprisUri;
+        trim();
+    }
+
+    // Songwechsel: kurz warten, die API hinkt MPRIS etwas hinterher; Popout zu -> gedrosselt im Hintergrund
     Connections {
         target: Players.spotify
         function onTrackTitleChanged() {
             if (root.active)
                 settle.restart();
+            else
+                root.refreshBackground();
+        }
+    }
+
+    Timer {
+        id: bgTimer
+        onTriggered: {
+            if (root.active) {
+                root.bgPending = false;  // Popout lädt selbst
+                return;
+            }
+            if (root.blocked())
+                return;  // unblock holt es nach
+            root.bgPending = false;
+            if (root.stale(5000))  // Liste passt schon (z. B. Popout hat eben geladen) -> keine Anfrage
+                root.refresh();
+        }
+    }
+
+    // Einmal kurz nach dem Start: Spotify läuft schon -> Liste und Bibliothek vorladen.
+    // Liste aus now.json noch frisch und zum Song passend -> keine Anfrage (Shell-Neustarts beim Basteln)
+    Timer {
+        interval: 10000
+        running: true
+        onTriggered: {
+            if (!root.spotifyRunning)
+                return;
+            if (root.stale(60000))
+                root.refreshBackground();
+            root.loadPlaylists(false);
+        }
+    }
+
+    // letzter now-Stand (schreibt scripts/spotify-api) -> erstes Öffnen ohne „Loading…“
+    FileView {
+        path: Quickshell.env("HOME") + "/.cache/desktop/spotify/now.json"
+        printErrors: false
+        onLoaded: {
+            if (root.fetchedAt > 0)
+                return;  // schon frischer geladen
+            try {
+                const j = JSON.parse(text());
+                if (j && j.queue && j.context)
+                    root.apply(j);
+            } catch (e) {}
         }
     }
 
@@ -239,12 +358,18 @@ Singleton {
             root.blockedUntil = t > Date.now() ? Math.min(t, Date.now() + root.maxBlock * 1000) : 0;
         }
     }
-    // Sperre vorbei: von selbst neu laden (sonst bliebe „rate-limiting“ stehen, bis sich am Song etwas ändert)
+    // Sperre vorbei: von selbst neu laden (sonst bliebe „rate-limiting“ stehen, bis sich am Song etwas ändert);
+    // Popout zu -> nur, wenn ein Hintergrund-Abruf liegen geblieben ist
     Timer {
         id: unblock
         interval: Math.max(1000, root.blockedUntil - Date.now() + 500)
         running: root.blockedUntil > Date.now()
-        onTriggered: root.refresh()
+        onTriggered: {
+            if (root.active)
+                root.refresh();
+            else if (root.bgPending)
+                root.refreshBackground();
+        }
     }
 
     Timer {
@@ -297,10 +422,11 @@ Singleton {
             if (!ok)
                 root.status = "unconfigured";
             else if (root.status === "unconfigured") {
-                root.status = "idle";
+                root.status = root.fetchedAt > 0 ? "ok" : "idle";  // now.json war evtl. schneller da
                 if (root.active)
                     root.refresh();
-                root.loadPlaylists(root.libraryOpen);
+                if (root.libraryOpen)
+                    root.loadPlaylists(true);  // Vorladen beim Start macht der Start-Timer (nur mit laufendem Spotify)
             }
         }
         onLoadFailed: {
@@ -317,8 +443,10 @@ Singleton {
                 const j = root.parse(text);
                 // kurze Sperre bei schon geladener Liste: Liste behalten, nur Hinweis (lädt nach der Pause von selbst neu)
                 if (j.failed === "rate_limited" && root.status === "ok") {
-                    root.notice = "Spotify is busy – list may be a bit behind";
-                    noticeOff.restart();
+                    if (root.active) {
+                        root.notice = "Spotify is busy – list may be a bit behind";
+                        noticeOff.restart();
+                    }
                 } else if (j.failed)
                     root.fail(j.failed);
                 else

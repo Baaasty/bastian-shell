@@ -2,8 +2,9 @@
 """Spotify Web API für die Shell: gibt JSON auf stdout aus, erneuert das Token selbst.
 
   scripts/spotify-api queue                      Warteschlange (GET /me/player/queue)
-  scripts/spotify-api context                    aktueller Kontext + bis zu 50 Songs um den aktuellen herum
-  scripts/spotify-api now                        queue + context in einem Aufruf
+  scripts/spotify-api context                    aktueller Kontext + bis zu 50 Songs ab dem aktuellen
+                                                 (Shuffle: ohne zuletzt gehörte)
+  scripts/spotify-api now                        queue + context in einem Aufruf (landet auch in now.json im Cache)
   scripts/spotify-api playlists                  eigene/gefolgte Playlists (bis 100) + Lieblingssongs, zuletzt gehörte zuerst
   scripts/spotify-api playlist <uri|id> [offset] Songs einer Playlist, seitenweise (50 ab offset)
   scripts/spotify-api play-track <uri> [ctx]     Song spielen (im Kontext, falls angegeben)
@@ -14,11 +15,15 @@ Fehler kommen als {"error": "<art>", ...} (Exit 1): unconfigured, reauth, premiu
 rate_limited (+retry_after), no_device, not_found, network, http.
 Tokens stehen nur in secrets.json und werden nie ausgegeben. Kopplung: scripts/spotify-auth
 Gesperrte (fremde/Spotify-)Playlists: Songliste aus der öffentlichen Einbett-Seite (ohne Token).
+Rate-Limit: höchstens BUCKET_SIZE Anfragen je BUCKET_WINDOW s über alle Aufrufe (ratelimit.json im Cache);
+nach 429 Pause mit Verdopplung bis BACKOFF_MAX – beides antwortet wie Spotify mit rate_limited + retry_after.
 Test-Umgebung: SPOTIFY_SECRETS, SPOTIFY_API_BASE, SPOTIFY_TOKEN_URL, SPOTIFY_CACHE, SPOTIFY_EMBED_BASE.
 """
 import argparse
+import contextlib
 import fcntl
 import json
+import math
 import os
 import pathlib
 import socket
@@ -38,12 +43,20 @@ CACHE = pathlib.Path(os.environ.get("SPOTIFY_CACHE")
 LOCK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()) / "desktop-spotify.lock"
 
 WINDOW = 50          # so viele Kontext-Songs gehen an die Shell
-BEFORE = 3           # davon vor dem aktuellen Song
+BEFORE = 0           # davon vor dem aktuellen Song – Gehörtes interessiert in „Als Nächstes“ nicht
 MAX_SCAN = 500       # so weit wird eine Playlist höchstens nach dem aktuellen Song durchsucht
 PAGE = 50
 MAX_PLAYLISTS = 100
 COLLECTION_TTL = 600  # Lieblingssongs-Cache (s), haben keine snapshot_id
+META_TTL = 300        # Playlist-Kopf (Name, Cover, snapshot_id) – sonst kostet jeder Songwechsel eine Anfrage mehr
+RECENT_TTL = 300      # zuletzt gehörte Songs (Shuffle-Filter, Playlist-Sortierung)
 TIMEOUT = 10
+
+BUCKET_SIZE = 20      # Anfragen …
+BUCKET_WINDOW = 60    # … je so viele Sekunden, für alle Aufrufe zusammen (Shell, Kürzel, Hand)
+BACKOFF_BASE = 30     # s – Pause nach dem ersten 429 (mindestens; längeres Retry-After gilt)
+BACKOFF_MAX = 900     # s – Spotify schickt teils Retry-After von Stunden, antwortet aber oft früher wieder
+BACKOFF_FORGET = 3600  # s ohne neues 429 -> Stufe zählt wieder von vorn
 
 
 class ApiError(Exception):
@@ -118,7 +131,7 @@ def refresh_request(client_id: str, refresh_token: str) -> dict:
             # Refresh-Token abgelaufen (6 Monate) oder widerrufen
             raise ApiError("reauth", e.code, "re-pair: scripts/spotify-auth")
         if e.code == 429:
-            raise ApiError("rate_limited", 429, retry_after=retry_after(e))
+            raise ApiError("rate_limited", 429, retry_after=note_429(retry_after(e)))
         raise ApiError("http", e.code, err.get("error_description") or err.get("error") or "")
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise ApiError("network", message=type(e).__name__)
@@ -158,13 +171,81 @@ def retry_after(e: urllib.error.HTTPError) -> int:
         return 5
 
 
+# ---------- Rate-Limit (Datei + flock, gilt für alle laufenden Aufrufe) ----------
+
+@contextlib.contextmanager
+def rate_state():
+    """Zustand {tokens, at, level, until} lesen/ändern; geschrieben wird nur bei Änderung."""
+    try:
+        CACHE.mkdir(parents=True, exist_ok=True, mode=0o700)
+        lk = open(CACHE / ".ratelimit.lock", "a")
+    except OSError:
+        yield {}  # Cache nicht beschreibbar: lieber ohne Limit als gar nicht
+        return
+    with lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            st = json.loads((CACHE / "ratelimit.json").read_text())
+        except (OSError, ValueError):
+            st = {}
+        if not isinstance(st, dict):
+            st = {}
+        before = dict(st)
+        yield st
+        if st != before:
+            cache_put("ratelimit", st)
+
+
+def take_token() -> None:
+    """Eine Anfrage aus dem Topf nehmen; leer oder in der 429-Pause -> rate_limited, ohne Spotify zu fragen."""
+    now = time.time()
+    wait, why = 0.0, ""
+    with rate_state() as st:
+        until = float(st.get("until") or 0)
+        if until > now:
+            wait, why = until - now, "backoff"
+        else:
+            rate = BUCKET_SIZE / BUCKET_WINDOW
+            at = float(st.get("at") or now)
+            tokens = min(float(BUCKET_SIZE), float(st.get("tokens", BUCKET_SIZE)) + max(0.0, now - at) * rate)
+            if tokens < 1:
+                wait, why = (1 - tokens) / rate, "local budget"
+            else:
+                tokens -= 1
+            st["tokens"], st["at"] = round(tokens, 3), round(now, 3)
+    if wait > 0:
+        raise ApiError("rate_limited", message=why, retry_after=max(1, math.ceil(wait)))
+
+
+def note_429(ra: int) -> int:
+    """429 merken: Pause = Retry-After, mindestens BACKOFF_BASE·2^(Stufe-1), höchstens BACKOFF_MAX."""
+    now = time.time()
+    with rate_state() as st:
+        level = int(st.get("level") or 0)
+        if now - float(st.get("until") or 0) > BACKOFF_FORGET:
+            level = 0
+        level = min(level + 1, 10)
+        wait = int(min(BACKOFF_MAX, max(ra, BACKOFF_BASE * 2 ** (level - 1))))
+        st["level"], st["until"] = level, round(now + wait, 3)
+    return wait
+
+
+def note_ok() -> None:
+    """Erfolg setzt die Pausen-Stufe zurück (Datei nur anfassen, wenn nötig)."""
+    c = cache_get("ratelimit") or {}
+    if not c.get("level"):
+        return
+    with rate_state() as st:
+        st["level"] = 0
+
+
 def classify(code: int, err: dict, e: urllib.error.HTTPError | None = None) -> ApiError:
     reason = str(err.get("reason") or "")
     msg = str(err.get("message") or "")
     if code == 401:
         return ApiError("reauth", 401, msg)
     if code == 429:
-        return ApiError("rate_limited", 429, msg, retry_after(e) if e is not None else 5)
+        return ApiError("rate_limited", 429, msg, note_429(retry_after(e) if e is not None else 5))
     if code == 403:
         if reason == "PREMIUM_REQUIRED" or "premium" in msg.lower():
             return ApiError("premium", 403, msg)
@@ -180,6 +261,7 @@ def call(method: str, path: str, params: dict | None = None, body: dict | None =
     url = path if path.startswith("http") else API + path
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+    take_token()
     headers = {"Authorization": "Bearer " + get_token()}
     data = None
     if body is not None:
@@ -191,6 +273,7 @@ def call(method: str, path: str, params: dict | None = None, body: dict | None =
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             raw = r.read()
+            note_ok()
             if r.status == 204 or not raw.strip():
                 return None
             try:
@@ -253,10 +336,18 @@ def ctx_kind(uri: str) -> str:
     return parts[1] if len(parts) >= 3 else ""
 
 
-def window(items: list, current: str) -> list:
+def window(items: list, current: str, skip=frozenset()) -> list:
+    """Bis zu WINDOW Songs ab dem aktuellen; skip (schon gehört) fällt raus, der aktuelle Song bleibt."""
     idx = next((i for i, t in enumerate(items) if t["uri"] == current), -1)
     start = max(0, idx - BEFORE) if idx >= 0 else 0
-    return [dict(t, index=start + n, current=(start + n == idx)) for n, t in enumerate(items[start:start + WINDOW])]
+    out = []
+    for i in range(start, len(items)):
+        if i != idx and items[i]["uri"] in skip:
+            continue
+        out.append(dict(items[i], index=i, current=(i == idx)))
+        if len(out) >= WINDOW:
+            break
+    return out
 
 
 # ---------- Cache (nur Metadaten, keine Tokens) ----------
@@ -271,7 +362,7 @@ def cache_get(key: str) -> dict | None:
 def cache_put(key: str, value: dict) -> None:
     try:
         CACHE.mkdir(parents=True, exist_ok=True, mode=0o700)
-        tmp = CACHE / f".{key}.tmp"
+        tmp = CACHE / f".{key}.{os.getpid()}.tmp"  # eigene Datei je Prozess: Shell und Kürzel schreiben teils gleichzeitig
         tmp.write_text(json.dumps(value, ensure_ascii=False))
         os.replace(tmp, CACHE / f"{key}.json")
     except OSError:
@@ -288,20 +379,23 @@ def cache_for(key: str, stamp) -> dict:
 def fill(key: str, c: dict, url: str, params: dict, pick, enough, fallback_image: str = "", limit: int = MAX_SCAN) -> None:
     """Seiten nachladen, bis enough() oder Ende/limit; Stand landet im Cache (fortsetzbar)."""
     changed = False
-    while not c["done"] and c["offset"] < limit and not enough():
-        page = call("GET", url, dict(params, limit=PAGE, offset=c["offset"])) or {}
-        got = page.get("items") or []
-        for it in got:
-            t = track(pick(it) if isinstance(it, dict) else None, fallback_image)
-            if t:
-                c["items"].append(t)
-        c["offset"] += len(got)
-        if isinstance(page.get("total"), int):
-            c["total"] = page["total"]
-        c["done"] = not page.get("next") or not got
-        changed = True
-    if changed:
-        cache_put(key, c)
+    try:
+        while not c["done"] and c["offset"] < limit and not enough():
+            page = call("GET", url, dict(params, limit=PAGE, offset=c["offset"])) or {}
+            got = page.get("items") or []
+            for it in got:
+                t = track(pick(it) if isinstance(it, dict) else None, fallback_image)
+                if t:
+                    c["items"].append(t)
+            c["offset"] += len(got)
+            if isinstance(page.get("total"), int):
+                c["total"] = page["total"]
+            c["done"] = not page.get("next") or not got
+            changed = True
+    finally:
+        # auch bei Abbruch (Rate-Limit mitten im Scan) sichern – sonst kosten dieselben Seiten beim nächsten Mal wieder
+        if changed:
+            cache_put(key, c)
 
 
 def scan(key: str, url: str, params: dict, current: str, stamp, pick, fallback_image: str = "") -> list:
@@ -383,6 +477,46 @@ def embed_page(uri: str, pid: str, offset: int, meta: dict | None = None) -> dic
                 next_offset=offset + len(page) if len(items) > offset + PAGE else None)
 
 
+def playlist_meta(pid: str, fresh: bool = False) -> dict:
+    """Playlist-Kopf, META_TTL gecacht; forbidden/not_found werden mitgecacht (Spotify-Playlists im Dev-Mode)."""
+    key = f"meta-{pid}"
+    c = None if fresh else cache_get(key)
+    if c and time.time() - float(c.get("at") or 0) < META_TTL:
+        if c.get("error"):
+            raise ApiError(c["error"], c.get("status"))
+        return c.get("meta") or {}
+    try:
+        meta = call("GET", f"/playlists/{pid}", {"fields": "name,images,snapshot_id,owner(id,display_name)"}) or {}
+    except ApiError as e:
+        if e.kind in ("forbidden", "not_found"):
+            cache_put(key, {"at": time.time(), "error": e.kind, "status": e.status})
+        raise
+    cache_put(key, {"at": time.time(), "meta": meta})
+    return meta
+
+
+def recent() -> dict:
+    """{"tracks": [uri…], "contexts": [uri…]} der letzten 50 Songs (neueste zuerst), RECENT_TTL gecacht.
+    Ohne Scope user-read-recently-played (alte Kopplung) leer – auch das gecacht."""
+    c = cache_get("recent")
+    if c and time.time() - float(c.get("at") or 0) < RECENT_TTL:
+        return c
+    try:
+        items = (call("GET", "/me/player/recently-played", {"limit": 50}) or {}).get("items") or []
+    except ApiError as e:
+        if e.kind not in ("forbidden", "http"):
+            raise
+        items = []
+    c = {"at": time.time(), "tracks": [], "contexts": []}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        c["tracks"].append(((it.get("track") or {}).get("uri")) or "")
+        c["contexts"].append(((it.get("context") or {}).get("uri")) or "")
+    cache_put("recent", c)
+    return c
+
+
 def cmd_queue() -> dict:
     d = call("GET", "/me/player/queue") or {}
     return {
@@ -409,7 +543,7 @@ def cmd_context() -> dict:
     try:
         if kind == "playlist":
             pid = ctx_id(uri)
-            meta = call("GET", f"/playlists/{pid}", {"fields": "name,images,snapshot_id"}) or {}
+            meta = playlist_meta(pid)
             out["name"] = meta.get("name") or ""
             out["image"] = pick_image(meta.get("images"))
             try:
@@ -453,7 +587,15 @@ def cmd_context() -> dict:
             out["image"] = out["image"] or emb["meta"]["image"]
         else:
             out["restricted"] = True
-    out["tracks"] = window(items, out["current"])
+    skip = frozenset()
+    if out["shuffle"] and items:
+        # Shuffle: Playlist-Reihenfolge sagt nichts über „als Nächstes“ – wenigstens schon Gehörtes ausblenden
+        try:
+            skip = frozenset(recent()["tracks"])
+        except ApiError as e:
+            if e.kind not in ("rate_limited", "network"):
+                raise
+    out["tracks"] = window(items, out["current"], skip)
     return out
 
 
@@ -465,8 +607,13 @@ def cmd_now() -> dict:
     except ApiError as e:
         if e.kind != "rate_limited":
             raise
-        context = {"type": None, "uri": "", "name": "", "image": "", "current": "", "tracks": [], "restricted": True}
-    return {"queue": queue, "context": context}
+        # letzter bekannter Kontext ist besser als ein leerer (die Shell schneidet bis zum aktuellen Song ab)
+        context = (cache_get("now") or {}).get("context") \
+            or {"type": None, "uri": "", "name": "", "image": "", "current": "", "tracks": [], "restricted": True}
+    res = {"queue": queue, "context": context}
+    # für die Shell: beim Start sofort eine Liste zeigen, ohne Spotify zu fragen
+    cache_put("now", dict(res, saved_at=int(time.time() * 1000)))
+    return res
 
 
 def cmd_playlists() -> dict:
@@ -503,15 +650,8 @@ def cmd_playlists() -> dict:
 def by_recent(playlists: list) -> list:
     """Zuletzt gehörte Playlists nach vorn (Reihenfolge der letzten 50 Songs), der Rest bleibt wie er ist.
     Ohne Scope user-read-recently-played (alte Kopplung) einfach unsortiert."""
-    try:
-        items = (call("GET", "/me/player/recently-played", {"limit": 50}) or {}).get("items") or []
-    except ApiError as e:
-        if e.kind in ("forbidden", "http"):
-            return playlists
-        raise
     rank = {}
-    for it in items:
-        uri = ((it or {}).get("context") or {}).get("uri") or ""
+    for uri in recent()["contexts"]:
         if uri.endswith(":collection"):
             uri = "collection"
         if uri and uri not in rank:
@@ -554,7 +694,7 @@ def cmd_playlist(ref: str, offset: int = 0) -> dict:
         c = cache_get(key) if offset > 0 else None  # Folgeseiten: Stand von Seite 0 gilt
         if not c or "meta" not in c:
             try:
-                meta = call("GET", f"/playlists/{pid}", {"fields": "name,images,snapshot_id,owner(id,display_name)"}) or {}
+                meta = playlist_meta(pid, fresh=True)  # Durchstöbern: immer der aktuelle Stand
             except ApiError as e:
                 if e.kind not in ("forbidden", "not_found"):
                     raise

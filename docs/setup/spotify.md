@@ -43,6 +43,16 @@ Popout: oben der laufende Song, darunter **Up Next**. **Library** → Playlist a
 (lädt beim Scrollen nach). Song anklicken spielt ihn in der Playlist. **Play** startet bei Song 1
 (Zufallswiedergabe aus), **Shuffle** startet gemischt. Zurück-Pfeil oder **Esc** geht eine Ebene hoch.
 
+## Spotify-App als RPM (lpf)
+
+Die App kommt nicht als Flatpak, sondern als RPM `spotify-client`, das `lpf-spotify-client` (RPM Fusion nonfree)
+lokal aus Spotifys Paket baut – verteilen darf es niemand fertig gebaut.
+
+- Einmal: in der Gruppe `pkg-build` sein (`sudo usermod -aG pkg-build $USER`, neu anmelden), dann `lpf update spotify-client`
+  (Lizenz bestätigen, bauen, installieren). Danach `scripts/flatpak-to-native migrate spotify` (Login, Einstellungen).
+- **Updates:** `dnf upgrade` bringt nur ein neues Rezept `lpf-spotify-client`; die App selbst baut erst `lpf update`.
+  Offenes zeigt `lpf state` (`OK` = aktuell). Spotify aktualisiert sich als RPM nicht selbst.
+
 ## Gut zu wissen
 
 - **Nach 6 Monaten neu koppeln.** Spotify lässt das Refresh-Token seit Juli 2026 nach 6 Monaten
