@@ -88,9 +88,9 @@ Singleton {
         return w && w.address ? { address: String(w.address), cls: Hypr.appId(w) } : null;
     }
 
-    // ---------- Einfügen über wtype (Wayland virtual-keyboard, kein Dienst nötig) ----------
-    // Fehlt wtype, kopiert Enter nur (eine Info im Log, kein Fehler).
-    property bool canPaste: false
+    // ---------- Einfügen über Hyprland (scripts/clip-paste: Fokus ohne Mausspringen zurück, dann sendshortcut) ----------
+    // Außerhalb von Hyprland kopiert Enter nur.
+    readonly property bool canPaste: Hypr.running
     // Fensterklassen, die Strg+V selbst belegen und Strg+Shift+V zum Einfügen nehmen
     readonly property var terminalClasses: ["kitty", "org.kde.konsole", "konsole", "foot", "footclient", "Alacritty", "com.mitchellh.ghostty", "org.wezfurlong.wezterm", "org.gnome.Ptyxis", "org.gnome.Console", "xterm"]
     // erst wenn das Panel weg ist (Launcher blendet 110 ms aus), holt scripts/clip-paste den Fokus zurück
@@ -125,15 +125,6 @@ Singleton {
         onExited: (code, status) => {
             if (code !== 0 && code !== 3)
                 console.warn("Clipboard: clip-paste exited with " + code);
-        }
-    }
-    Process {
-        running: true
-        command: ["sh", "-c", "command -v wtype"]
-        onExited: (code, status) => {
-            root.canPaste = code === 0;
-            if (!root.canPaste)
-                console.info("Clipboard: wtype not found, Enter only copies");
         }
     }
     function remove(id: string): void {

@@ -360,7 +360,9 @@ Singleton {
     }
 
     // ---------- aktuell halten (Events statt Polling) ----------
-    property bool noWarps: false
+    // Wert aus hypr/general.conf (true), bis hyprctl antwortet – mit false stellte der Desktop-Wechsel
+    // (switchCmds) cursor:no_warps auf 0 zurück, wenn die Abfrage noch nicht gelaufen war: Maus sprang danach
+    property bool noWarps: true
     Process {
         id: warpsProc
         command: ["hyprctl", "getoption", "cursor:no_warps", "-j"]

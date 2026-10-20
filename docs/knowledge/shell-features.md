@@ -95,9 +95,10 @@ Code: `shell/modules/launcher/Launcher.qml` (`sources`, `parse()`, `rebuild()`),
 ## Zwischenablage
 Code: `shell/modules/clip/ClipPopup.qml` (Super+V, IPC `clip toggle`), `shell/services/Clipboard.qml` (`terminalClasses`, `pasteDelay`), `scripts/clip-paste`; auch Launcher-Modus `;` · Favoriten `~/.local/state/desktop/clip-pins.json`
 - Popup an der Maus, wenn sie im aktiven Fenster steht, sonst im unteren Drittel des Fensters (Schreibmarke fremder Apps ist unter Wayland nicht abfragbar); am Rand eingeklemmt, unten kein Platz → über der Maus.
-- Enter = kopieren + einfügen: Ziel-Fenster wird beim Öffnen gemerkt; nach `pasteDelay` (Panel weg) holt `clip-paste` den Fokus per `focuswindow` ausdrücklich zurück, wartet auf `activewindow` und tippt dann Strg+V per `wtype` (Klasse in `terminalClasses` → Strg+Shift+V). Shift+Enter = nur kopieren.
-- Warum ausdrücklich: schließt ein Layer-Panel mit Tastaturfokus, gibt Hyprland den Fokus nach `follow_mouse` weiter (oft an das Fenster unter der Maus) – daher ging er vorher verloren.
-- Kein Zielfenster mehr oder kein `wtype` (einmal pro Shell-Start geprüft) → nur kopieren, still. ydotool bewusst nicht (braucht Dienst/uinput). Bilder gehen genauso.
+- Enter = kopieren + einfügen: Ziel-Fenster wird beim Öffnen gemerkt; nach `pasteDelay` (Panel weg) holt `clip-paste` den Fokus nur zurück, wenn er woanders gelandet ist, und schickt dann Strg+V per `hyprctl dispatch sendshortcut` (Klasse in `terminalClasses` → Strg+Shift+V). Shift+Enter = nur kopieren.
+- Warum zurückholen: endet der Fokus-Grab des Popups, gibt Hyprland den Fokus an das Fenster unter der Maus. `focuswindow` läuft deshalb im Batch mit erzwungenem `cursor:no_warps` (danach alter Wert) – die Maus bleibt, wo sie ist.
+- Warum `sendshortcut` statt `wtype`: wtypes virtuelle Tastatur bringt eine eigene Keymap, Chromium/Electron (Discord, Claude) verschluckt die Taste dann oft. Ohne echten Fokus fügt keine App ein (Zwischenablage gibt es nur mit Tastaturfokus).
+- Kein Zielfenster mehr → nur kopieren, still. Bilder gehen genauso.
 
 # Fokus & Alltag
 

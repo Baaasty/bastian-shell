@@ -1,32 +1,43 @@
 #!/usr/bin/env bash
-# Zwischenablage einfügen: Fokus ausdrücklich zurück an das Fenster, in dem getippt wurde, warten, bis Hyprland es als
-# aktiv meldet, dann Strg+V per wtype. Aufruf aus shell/services/Clipboard.qml (Doku: docs/knowledge/shell-features.md).
+# Zwischenablage einfügen: Fokus (nur falls nötig) zurück an das Fenster, in dem getippt wurde – ohne den Mauszeiger
+# zu bewegen –, dann Strg+V per Hyprland `sendshortcut`. Aufruf aus shell/services/Clipboard.qml
+# (Doku: docs/knowledge/shell-features.md).
 #
 #   clip-paste <adresse> [term]   adresse = Hyprland-Fensteradresse (0x…), term = Strg+Shift+V statt Strg+V
 #
-# Warum ausdrücklich: schließt ein Layer-Panel mit Tastaturfokus, gibt Hyprland den Fokus nach follow_mouse weiter –
-# oft an das Fenster unter der Maus statt an das vorige. Exit 3 = Fenster nicht mehr da/nicht fokussierbar (nur kopiert).
+# Warum Fokus zurückholen: schließt das Popup, gibt Hyprland den Tastaturfokus beim Ende des Fokus-Grabs an das
+# Fenster unter der Maus (refocus), nicht an das vorige. `focuswindow` würde dabei die Maus in die Fenstermitte
+# setzen, deshalb läuft es in einem Batch mit erzwungenem cursor:no_warps (danach alter Wert).
+# Warum sendshortcut statt wtype: Hyprland schickt die Taste über die echte Tastatur des Seats; wtypes virtuelle
+# Tastatur bringt eine eigene Keymap mit, die Chromium/Electron (Discord, Claude) oft verschlucken.
+# Das Ziel muss wirklich fokussiert sein: Apps lesen die Zwischenablage nur mit Tastaturfokus.
+# Exit 3 = Fenster nicht mehr da/nicht fokussierbar (nur kopiert).
 set -u
 addr="${1:-}"
 mode="${2:-}"
 [[ "$addr" =~ ^(0x)?[0-9a-fA-F]+$ ]] || { echo "clip-paste: Adresse fehlt" >&2; exit 2; }
 addr="0x${addr#0x}"
-command -v wtype >/dev/null || exit 4
 
-hyprctl dispatch focuswindow "address:$addr" >/dev/null
-ok=0
-for _ in $(seq 1 20); do
-    if hyprctl activewindow -j | grep -q "\"address\": \"$addr\""; then
-        ok=1
-        break
-    fi
-    sleep 0.02
-done
-[[ $ok == 1 ]] || exit 3
-# Die App braucht nach wl_keyboard.enter einen Moment, bevor sie Tasten annimmt
-sleep 0.05
+is_active() { hyprctl activewindow -j | grep -q "\"address\": \"$addr\""; }
 
-if [[ "$mode" == term ]]; then
-    exec wtype -M ctrl -M shift -k v -m shift -m ctrl
+if ! is_active; then
+    hyprctl clients -j | grep -q "\"address\": \"$addr\"" || exit 3
+    prev=$(hyprctl getoption cursor:no_warps -j | grep -o '"int": *[01]' | grep -o '[01]$')
+    hyprctl --batch "keyword cursor:no_warps 1 ; dispatch focuswindow address:$addr ; keyword cursor:no_warps ${prev:-1}" >/dev/null
+    ok=0
+    for _ in $(seq 1 20); do
+        if is_active; then
+            ok=1
+            break
+        fi
+        sleep 0.02
+    done
+    [[ $ok == 1 ]] || exit 3
+    # nach wl_keyboard.enter bekommt die App das Zwischenablage-Angebot erst einen Moment später
+    sleep 0.06
 fi
-exec wtype -M ctrl -k v -m ctrl
+
+mods=CTRL
+[[ "$mode" == term ]] && mods="CTRL SHIFT"
+out=$(hyprctl dispatch sendshortcut "$mods, V, address:$addr")
+[[ "$out" == ok ]] || { echo "clip-paste: sendshortcut: $out" >&2; exit 1; }
