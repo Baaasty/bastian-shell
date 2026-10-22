@@ -9,7 +9,7 @@
 //
 // Renderer-Seite:
 //  - liest Stores (VoiceStateStore, MediaEngineStore, …) und schickt bei jeder Änderung einen Zustand ("S"),
-//  - führt Befehle der Shell aus (Mic/Taub/Kamera/Bildschirm/Verlassen/Beitreten/Lautstärke),
+//  - führt Befehle der Shell aus (Mic/Taub/Kamera/Bildschirm/Verlassen/Beitreten/Zufalls-Call/Lautstärke),
 //  - greift NUR die von der Shell gepinnten Kameras/Streams ab und schickt sie als JPEG ("F"). Quelle: direkt Discords
 //    Video-Engine (wie Discords eigene Kacheln: VideoStreamStore -> streamId -> createDiscordStream + DirectVideoOutputSink,
 //    Discords Referenzzählung), gelesen per MediaStreamTrackProcessor -> geht auch ohne sichtbare Call-Ansicht und bei
@@ -18,7 +18,7 @@
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByCodeLazy, findStoreLazy } from "@webpack";
-import { ApplicationStreamingSettingsStore, ApplicationStreamingStore, ChannelActions, ChannelStore, FluxDispatcher, GuildChannelStore, GuildMemberStore, GuildStore, MediaEngineStore, NavigationRouter, SelectedChannelStore, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
+import { ApplicationStreamingSettingsStore, ApplicationStreamingStore, ChannelActions, ChannelStore, FluxDispatcher, GuildChannelStore, GuildMemberStore, GuildStore, MediaEngineStore, NavigationRouter, PermissionStore, PermissionsBits, SelectedChannelStore, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 
 const Native = VencordNative.pluginHelpers.DesktopBridge as PluginNative<typeof import("./native")>;
 
@@ -545,6 +545,72 @@ function channelPeople(id: string) {
     };
 }
 
+// Zufalls-Call: Sprachkanäle aller Server, in denen mindestens ein aktiver Mensch ist (kein Bot, nicht taub) und noch
+// Platz ist. AFK- und Stage-Kanäle fallen raus (AFK = niemand redet, Stage = Zuhörer-Modus), ebenso der eigene Kanal,
+// die zuletzt per Zufall besuchten (sonst springt „Next“ hin und her) und alles ohne Beitrittsrecht (sonst schlägt
+// selectVoiceChannel still fehl). Auch aus einem Call heraus: dann ist es „nächster Call“. Nie zweimal hintereinander
+// derselbe Server (Bastian will Abwechslung) – außer es gibt gerade nur dort passende Calls. Gelost wird erst der
+// Server, dann der Kanal: sonst gewinnen große Server mit vielen Calls fast immer.
+const RANDOM_RECENT = 10;
+const RANDOM_CHECK_MS = 4000;
+const RANDOM_TRIES = 3;
+let randomRecent: string[] = [];
+let randomLastGuild = "";
+let randomCheck: ReturnType<typeof setTimeout> | null = null;
+
+const activeHuman = (s: any, me: string) => s.userId !== me && !UserStore.getUser(s.userId)?.bot && !s.selfDeaf && !s.deaf;
+
+function randomCall(triesLeft = RANDOM_TRIES) {
+    if (randomCheck) clearTimeout(randomCheck);
+    randomCheck = null;
+    const me = UserStore.getCurrentUser()?.id ?? "";
+    const mine = SelectedChannelStore.getVoiceChannelId() ?? "";
+    const lastGuild = (mine && ChannelStore.getChannel(mine)?.guild_id) || randomLastGuild;
+    let open: string[][] = [];         // je Server die passenden Kanäle
+    let sameGuild: string[][] = [];
+    for (const guild of GuildStore.getGuildsArray()) {
+        const fits: string[] = [];
+        for (const { channel } of GuildChannelStore.getChannels(guild.id)?.VOCAL ?? []) {
+            if (channel.type !== 2 || channel.id === mine || channel.id === guild.afkChannelId || randomRecent.includes(channel.id)) continue;
+            const states = Object.values(VoiceStateStore.getVoiceStatesForChannel(channel.id) ?? {}) as any[];
+            if (!states.length) continue;
+            const limit = channel.userLimit ?? 0;
+            if (limit > 0 && states.length >= limit) continue;
+            if (!states.some(s => activeHuman(s, me))) continue;
+            if (!PermissionStore.can(PermissionsBits.CONNECT, channel) || !PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel)) continue;
+            fits.push(channel.id);
+        }
+        if (fits.length && guild.id === lastGuild) sameGuild = [fits];
+        else if (fits.length) open.push(fits);
+    }
+    if (!open.length) open = sameGuild;
+    if (!open.length) {
+        // alles schon besucht: Merkliste leeren, damit der nächste Druck wieder etwas findet
+        const hadRecent = randomRecent.length > 0;
+        randomRecent = [];
+        event({ event: "actionFailed", action: "random", message: hadRecent ? "No new calls – press again to start over" : "No open calls with people right now" });
+        return;
+    }
+    const any = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    const pick = any(any(open));
+    const ch = ChannelStore.getChannel(pick);
+    const who = Object.values(VoiceStateStore.getVoiceStatesForChannel(pick) ?? {}).map((s: any) => nameOf(s.userId, ch?.guild_id));
+    console.log(`[DesktopBridge] random: ${open.flat().length} candidates on ${open.length} servers, joining "${ch?.name}" (${GuildStore.getGuild(ch?.guild_id ?? "")?.name}) with ${who.join(", ")}`);
+    randomRecent = [pick, ...randomRecent].slice(0, RANDOM_RECENT);
+    randomLastGuild = ch?.guild_id ?? "";
+    ChannelActions.selectVoiceChannel(pick);
+    // Discords Speicher kann veralten (große Server) oder die Person geht gerade: nach dem Beitritt nachsehen, allein = weiter
+    randomCheck = setTimeout(() => {
+        randomCheck = null;
+        if (SelectedChannelStore.getVoiceChannelId() !== pick) return;   // inzwischen selbst gewechselt/aufgelegt
+        const others = Object.values(VoiceStateStore.getVoiceStatesForChannel(pick) ?? {}).filter((s: any) => activeHuman(s, me));
+        if (others.length) return;
+        console.log(`[DesktopBridge] random: "${ch?.name}" is empty after joining, ${triesLeft > 1 ? "trying the next one" : "giving up"}`);
+        if (triesLeft > 1) randomCall(triesLeft - 1);
+        else event({ event: "actionFailed", action: "random", message: "Only empty calls found – press again" });
+    }, RANDOM_CHECK_MS);
+}
+
 function event(obj: object) {
     Native.push("E", JSON.stringify(obj));
 }
@@ -559,6 +625,7 @@ function runCommand(line: string) {
         case "stream": setStream(a === "1"); break;
         case "leave": ChannelActions.selectVoiceChannel(null); break;
         case "join": if (num(a)) ChannelActions.selectVoiceChannel(a); break;
+        case "random": randomCall(); break;
         case "umute": {
             if (!num(a)) break;
             if (MediaEngineStore.isLocalMute(a) !== (b === "1")) VoiceActions.toggleLocalMute(a);

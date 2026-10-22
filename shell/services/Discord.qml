@@ -123,6 +123,17 @@ Singleton {
         send("join " + ch.id + (force ? " 1" : ""));
     }
 
+    // Zufalls-Call über alle Server (Plugin sucht aus: Leute drin, nicht voll); im Call = nächster Call
+    function randomCall(): void {
+        if (!viaPlugin)
+            lastError = "Random call needs the Discord plugin";
+        else if (send("random"))
+            return;
+        else
+            lastError = "Discord isn’t reachable";
+        errorClear.restart();
+    }
+
     property var dms: []                 // [{ id, name }] aus secrets.json
 
     // Chat im Discord-Fenster öffnen und das Fenster rausholen
@@ -546,6 +557,10 @@ Singleton {
         }
         function reauth(): void {
             root.reauth();
+        }
+        // Super+Alt+J: zufälliger Call mit Leuten, der nicht voll ist; im Call der nächste
+        function randomCall(): void {
+            root.randomCall();
         }
     }
 }

@@ -410,6 +410,12 @@ PopupWindow {
                     tint: Cams.show ? Theme.accentText : Theme.textMuted
                     onClicked: Cams.toggleShow()
                 }
+                // im Call: nächster Zufalls-Call (Discord.randomCall)
+                IconChip {
+                    visible: Discord.inVoice && Discord.viaPlugin
+                    glyph: "shuffle"
+                    onClicked: Discord.randomCall()
+                }
                 IconChip {
                     glyph: Parked.out.discord === true ? "close_fullscreen" : "open_in_new"
                     active: Parked.out.discord === true
@@ -888,6 +894,47 @@ PopupWindow {
                     spacing: 2
 
                     readonly property var recentOnly: Discord.recents.filter(r => !Discord.isFavorite(r.id))
+
+                    // Zufalls-Call über alle Server (nur übers Plugin, Discord.randomCall)
+                    Rectangle {
+                        visible: Discord.viaPlugin
+                        width: parent.width
+                        height: 34
+                        radius: Theme.radiusMd
+                        color: rndArea.containsMouse ? Theme.raise : "transparent"
+                        Behavior on color { ColorAnimation { duration: pop.quick } }
+
+                        MouseArea {
+                            id: rndArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: Discord.randomCall()
+                        }
+                        Icon {
+                            id: rndIcon
+                            x: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "shuffle"
+                            size: 16
+                            color: Theme.accentText
+                        }
+                        Txt {
+                            anchors.left: rndIcon.right
+                            anchors.leftMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Random call"
+                        }
+                        Txt {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "people in, not full"
+                            color: Theme.textFaint
+                            font.pixelSize: Theme.fontSm
+                            font.weight: Font.Normal
+                        }
+                    }
 
                     // Favoriten
                     Reveal {

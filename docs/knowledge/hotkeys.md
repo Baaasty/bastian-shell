@@ -122,6 +122,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 | `Super + Alt + →` | Call cameras: dock right |
 | `Super + Alt + ↑` | Call cameras: dock top |
 | `Super + Alt + ↓` | Call cameras: dock bottom |
+| `Super + Alt + J` | Random call / next call (people in, not full) |
 
 ## Screenshots
 

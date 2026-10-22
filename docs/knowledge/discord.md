@@ -21,7 +21,7 @@ Rückfall: scripts/discord-bridge  offizielle Discord-RPC (discord-ipc-N, OAuth 
 - **Zwei Datenwege, ein Format.** Das Plugin schickt denselben Zustand wie `discord-bridge` (Kanal, Leute mit Spricht/Mic/
   Taub/Kamera/Übertragung/Lautstärke, `self`, `since`). Ist es verbunden (`Cams.connected`), hat es Vorrang; fällt es weg,
   gilt wieder die RPC-Bridge mit ihrem letzten Stand. Das Plugin braucht keine Developer-App und kann zusätzlich Kameras.
-- **Befehle** der Shell ans Plugin: Mic/Taub/Kamera/Bildschirm/Verlassen, Beitreten, Lautstärke/Stumm pro Person, Server-/Kanallisten, Peek,
+- **Befehle** der Shell ans Plugin: Mic/Taub/Kamera/Bildschirm/Verlassen, Beitreten, Zufalls-Call, Lautstärke/Stumm pro Person, Server-/Kanallisten, Peek,
   Chat öffnen, `pin`/`unpin <key>` (`<userId>` = Kamera, `<userId>:stream` = Übertragung).
   Kamera/Bildschirm nur übers Plugin (RPC kann das nicht). Bildschirm ruft Discords eigene Picker-Funktion wie das Go-Live-
   Kürzel (`presentNativeScreenSharePicker("window")` + `NATIVE_SCREEN_SHARE_PICKER_PRESENT`; ohne Stil-Argument wirft Host
@@ -56,6 +56,10 @@ Discord muss dabei beendet sein. Rückweg: `scripts/equicord uninject`.
 - Kamera-Kacheln gibt es nur, solange Discord die **Call-Ansicht** rendert; in der Textkanal-Ansicht gibt es kein `<video>`.
 - **Im echten Call noch nicht geprüft:** ob Bilder kommen (`srcObject`), ob das Abgreifen bei weggeräumtem Fenster
   weiterläuft (Hyprland/Chromium drosseln evtl.), ob „größere Kachel = Übertragung“ stimmt.
+- **Zufalls-Call** sucht nur, was Discord im Speicher hat (`VoiceStateStore` aller Server; bei sehr großen Servern kann
+  Discord Sprachzustände nachladen – 22.10. einmal allein gelandet). Deshalb prüft das Plugin nach dem Beitritt nach und
+  springt allein weiter; die zuletzt besuchten überspringt es, nie zweimal derselbe Server (außer nur dort ist was frei). „Aktiv“ = kein Bot und nicht taub; Mic aus zählt.
+  Wahl und Kandidaten stehen im stderr-Log (`[DesktopBridge] random:`). Nur übers Plugin (RPC sieht keine fremden Calls).
 - Über die RPC-Bridge (Rückfall): keine Kameras, keine DM-/Freundesliste, Einstellungen pro Person nur bis zum Verbindungsende.
 
 ## Stolperfallen
