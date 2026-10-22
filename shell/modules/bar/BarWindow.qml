@@ -333,14 +333,25 @@ PanelWindow {
             Row {
                 id: rightRow
 
+                readonly property real othersWidth: {
+                    let w = 0;
+                    for (const c of children)
+                        if (c !== spotify && c.visible && c.width > 0)
+                            w += c.width + spacing;
+                    return w;
+                }
+
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
 
                 SpotifyChip {
+                    id: spotify
                     anchors.verticalCenter: parent.verticalCenter
                     visible: !rightZone.quiet   // immer da; ohne Spotify: Play startet es im Hintergrund
                     barWindow: win
+                    // bis 20 px vor die Uhr, abzüglich der übrigen Chips rechts (ohne sich selbst: keine Schleife)
+                    maxWidth: rightZone.parent.width - (clock.x + clock.width) - 20 - rightZone.anchors.rightMargin - rightRow.othersWidth
                 }
                 VSep {
                     anchors.verticalCenter: parent.verticalCenter

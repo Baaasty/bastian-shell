@@ -12,6 +12,11 @@ Row {
     id: root
 
     property var barWindow
+    // Platz, den die Bar dem Chip lässt (BarWindow: bis zur Uhr); wird es eng, fällt erst der Interpret weg,
+    // dann wird der Titel gekürzt – sonst schiebt sich der Chip in Uhr und Datum
+    property real maxWidth: 100000
+    readonly property real textMax: maxWidth - (prevBtn.visible ? prevBtn.width : 0) - playBtn.width
+        - (nextBtn.visible ? nextBtn.width : 0) - 2 * title.padding - 22 - (player !== null ? 20 : 10)
     readonly property var player: Players.spotify
     // Spotify läuft, aber nichts geladen: zuletzt gehörten Song gedimmt zeigen, Play spielt ihn per Web API weiter
     readonly property bool idle: SpotifyApi.idle
@@ -84,6 +89,7 @@ Row {
     }
 
     Btn {
+        id: prevBtn
         glyph: "skip_previous"
         visible: root.player !== null
         onClicked: if (root.player) root.player.previous()
@@ -132,15 +138,16 @@ Row {
         }
         Txt {
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, 260)
+            width: Math.max(0, Math.min(implicitWidth, 260, root.textMax - (artistTxt.visible ? artistTxt.width : 0)))
             text: root.idle ? (root.last ? root.last.name : "Spotify")
                 : root.player ? root.player.trackTitle : root.starting ? "Starting Spotify…" : "Spotify"
             color: root.player && !root.idle ? Theme.text : Theme.textMuted
         }
         Txt {
+            id: artistTxt
             anchors.verticalCenter: parent.verticalCenter
-            visible: root.player !== null
-            width: Math.min(implicitWidth, 160)
+            visible: root.player !== null && root.textMax >= 200
+            width: Math.min(implicitWidth, 160, root.textMax * 0.4)
             text: root.idle ? root.idleHint : root.player ? root.player.trackArtist : ""
             color: root.idle ? (SpotifyApi.resumeError ? Theme.warning : Theme.textFaint) : Theme.textMuted
             font.weight: Font.Normal
@@ -148,11 +155,13 @@ Row {
     }
 
     Btn {
+        id: playBtn
         glyph: root.player && root.player.isPlaying ? "pause" : "play_arrow"
         filled: true
         onClicked: root.player ? SpotifyApi.playPause() : root.startAndPlay()
     }
     Btn {
+        id: nextBtn
         glyph: "skip_next"
         visible: root.player !== null
         onClicked: if (root.player) root.player.next()
