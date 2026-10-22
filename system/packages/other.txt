@@ -28,6 +28,7 @@ hyprland-preview-share-picker    github.com/WhySoBad/hyprland-preview-share-pick
 equicord                         github.com/Equicord/Equicord             → von Hand klonen (git clone), dann scripts/equicord build; Hinweis in bootstrap 11
                                  (Plugin desktopBridge liegt in equicord/ im Repo; Details docs/knowledge/discord.md)
 libfastprobe.so                  eigene Quelle tools/v4l2-fastprobe/  → scripts/fastprobe build (gcc) → ~/.local/lib/desktop/; lädt scripts/app-run in Discord
+libnvencblock.so                 eigene Quelle tools/nvenc-block/     → scripts/nvenc-block build (gcc) → ~/.local/lib/desktop/; lädt scripts/app-run in Discord
 
 ## RPMs aus GitHub-Releases (kein Repo → nicht in dnf.txt; bootstrap 2 lädt das neueste)
 goxlr-utility 1.2.4       GoXLR-on-Linux/goxlr-utility, goxlr-utility-<ver>-1.x86_64.rpm (nicht die -suse-Datei)

@@ -72,16 +72,21 @@ Discord muss dabei beendet sein. Rückweg: `scripts/equicord uninject`.
   ohne Equicord und kein Call → einmal automatisch `restart`; im Call oder Call-Stand unbekannt → nur Meldung/Knopf.
 - **arRPC** (Equibop) legt einen eigenen `discord-ipc-0` an, der nur Rich Presence kann (`Unknown command`, Code 1000).
   Die Bridge überspringt solche Sockets; ist es der einzige, zeigt das Popout „has no call API“.
-- **Renderer-Absturz (SIGSEGV) im Call mit Kamera/Go Live:** 10 von 11 Kernen seit 18.10. (Flatpak und RPM, mit und ohne
+- **Renderer-Absturz (SIGSEGV) im Call mit Kamera/Go Live:** fast alle Kerne seit 18.10. (Flatpak und RPM, mit und ohne
   Plugin) stehen an derselben Stelle `libnvcuvid.so.615.78.08 + 0x1b021` (Zeiger auf ungemappten Speicher). Geladen über
   `libnvidia-encode` = **NVENC** im Voice-Modul (Log: `nvidia_media_encoding`, Encoder „nvidia: cuda“ wird minütlich neu
-  erzeugt/verworfen). VA-API aus (`app-run`) hilft nicht. Abhilfe (ungetestet): Voice & Video → Video-Codec → Hardware-Beschleunigung aus.
-  Prüfen: `coredumpctl info <pid>` + NT_FILE-Mappings (`eu-readelf -n`) des Kerns.
-  20.10. (Host 1.0.164) neu: **SIGABRT** im Renderer 0,4 s nach dem ersten Kamerastart, ohne NVIDIA-Bibliothek, zweiter Start ging.
-  Stack fehlt (Kern abgeschnitten, Crashpad aus wegen Equicords `ELECTRON_ENABLE_STACK_DUMPING`) → `app-run` schreibt
-  stderr nach `~/.local/state/desktop/discord-stderr.log`, dort steht der Stack beim nächsten Absturz.
-  Abends 3 weitere Renderer-Abstürze, wieder `libnvcuvid + 0x1b021` (Kamera H.264 und Go Live H.265 über NVENC) – Discord/NVIDIA,
-  nicht Plugin oder fastprobe. Ein Absturz des Hauptprozesses kam von KDEs `colorreload-gtk-module` (Ursache: `theme/gen/gtk.py`).
+  erzeugt/verworfen) – Discord/NVIDIA, nicht Plugin oder fastprobe. VA-API aus hilft nicht.
+  **Abhilfe `nvenc-block`** (`tools/nvenc-block/`, LD_PRELOAD über `scripts/app-run`): sperrt das `dlopen` beider
+  Bibliotheken, das Voice-Modul kodiert dann in Software. Test 21./22.10.: 25 h ohne Absturz, danach ohne Sperre
+  gestartet → zwei Abstürze in 30 min. Greift nur ab dem nächsten Start über `app-run` (Discords Selbst-Neustart
+  nach Host-Update hat sie nicht, wie fastprobe). Ob aktiv: `scripts/nvenc-block status`, im stderr-Log steht „gesperrt“.
+  Stack: `app-run` schreibt stderr nach `~/.local/state/desktop/discord-stderr.log` (Crashpad aus wegen Equicords
+  `ELECTRON_ENABLE_STACK_DUMPING`, Kerne abgeschnitten). 20.10. einmal SIGABRT 0,4 s nach Kamerastart ohne NVIDIA-Bibliothek.
+  Ein Absturz des Hauptprozesses kam von KDEs `colorreload-gtk-module` (Ursache: `theme/gen/gtk.py`).
+- **Discord nie aus einer Claude-/Terminal-Shell starten** (auch nicht mit `uwsm app --`): Zygote, GPU-, Netz- und
+  Audio-Prozess bleiben im Scope des Aufrufers, nur der Hauptprozess zieht in `app-discord-<pid>.scope` um. Endet die
+  Session, bekommen sie SIGTERM → „GPU process isn't usable. Goodbye.“ (22.10., 02:18). Neustart über die Shell
+  (`Launch.qml`, „Restart Discord“) oder `hyprctl dispatch exec`.
 - Discord-Updates können DOM-Selektoren und Store-Namen brechen (das Plugin patcht nichts, ist also weniger fragil).
 - Eigener Equicord-Build = Updates nur per `scripts/equicord update`.
 - **Testen ohne Call:** `scripts/cam-fake` gibt sich als Plugin aus (nur bei beendetem Discord). `DESKTOP_CAMS_SOCK` und

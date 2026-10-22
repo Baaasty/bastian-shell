@@ -42,7 +42,7 @@ Einzelne Schritte: `system/bootstrap --list`, dann z. B. `--only 4,5`.
 | 3 | System: Gruppe kvm, vhost_vsock, nodocker, Anmeldung Plasma Login, Firewall rdp (nur mit krdp), podman.socket | **ja** |
 | 4 | Flatpaks + Overrides (System-Flatpaks fragen per polkit) | polkit |
 | 5 | VS Code-Erweiterungen | – |
-| 6 | User-Tools: Bun, Claude CLI, Starship, Godot, pnpm, `uv tool install magic-wormhole`, Schriften, icp · Hyprland: `scripts/session build` (hyprflow), Equicord klonen + `scripts/equicord build`, `scripts/fastprobe build` | – |
+| 6 | User-Tools: Bun, Claude CLI, Starship, Godot, pnpm, `uv tool install magic-wormhole`, Schriften, icp · Hyprland: `scripts/session build` (hyprflow), Equicord klonen + `scripts/equicord build`, `scripts/fastprobe build`, `scripts/nvenc-block build` | – |
 | 7 | distrobox `ubuntu` + Claude Desktop (sudo nur **im** Container) | – |
 | 8 | Dotfiles: `system/dotfiles` verlinken, `system/copies` kopieren | – |
 | 9 | Desktop gemeinsam: `theme/gen/all.py`, `rice theme on`, `scripts/kitty-theme install`, `scripts/zsh-setup install` (Standard-Shell per pkexec), `scripts/sshs install`, Wallpaper-Bilder, `scripts/claude-skills install`, Helium-Host (`scripts/chrome-ext install --browser helium`), User-Dienste (Key Light/GoXLR, `rice feeds` wenn `secrets.json` da) | – |

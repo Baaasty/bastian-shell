@@ -87,11 +87,15 @@ case "$(which_app "$app")" in
             if fp=$("$(dirname -- "$(readlink -f -- "$0")")/fastprobe" preload 2>/dev/null); then
                 export LD_PRELOAD="$fp${LD_PRELOAD:+:$LD_PRELOAD}"
             fi
+            # Ohne NVENC: Renderer stürzt sonst im Call in libnvcuvid ab (discord.md → Renderer-Absturz)
+            if nb=$("$(dirname -- "$(readlink -f -- "$0")")/nvenc-block" preload 2>/dev/null); then
+                export LD_PRELOAD="$nb${LD_PRELOAD:+:$LD_PRELOAD}"
+            fi
         fi
         if [ "$app" = discord ] || [ "$app" = equibop ]; then
             # Ohne Hardware-Videodekodierung über VA-API (nvidia-vaapi-driver, offiziell nur für Firefox); Zeichnen bleibt
             # auf der GPU. Unbekannter Treibername = VA-API startet nicht, auch nicht im Voice-Modul von Discord.
-            # Gegen den SIGSEGV in libnvcuvid hilft das NICHT – der kommt aus NVENC (Hardware-Kodierung), siehe discord.md.
+            # Gegen den SIGSEGV in libnvcuvid hilft das NICHT – der kommt aus NVENC, dagegen hilft nvenc-block (oben).
             export LIBVA_DRIVER_NAME=none
             set -- --disable-accelerated-video-decode "$@"
         fi

@@ -15,7 +15,8 @@ Der alte KWin-Weg ist aus dem Repo entfernt und liegt nur noch im Git-Tag `kwin-
 - `refs/` ist nur Referenz (caelestia, end-4, noctalia …). Code daraus ist GPL-3.0: Herkunfts-Header behalten
   und Zeile in `THIRD_PARTY.md` ergänzen.
 - Apps aus der Shell nur über `Launch.qml` starten (`uwsm app --`, sonst `systemd-run --user --scope`), nie direkt
-  (sonst sterben sie mit, wenn Quickshell neu startet).
+  (sonst sterben sie mit, wenn Quickshell neu startet). Auch aus Claude-Bash nie Apps starten – sie sterben mit der Session
+  (Discord-Absturz 22.10.); nötig → `hyprctl dispatch exec`.
   Discord/Spotify/Thunderbird sind RPMs (früher Flatpak): starten über `Launch.run("discord")` bzw. `scripts/app-run`
   (RPM zuerst, Flatpak-Fallback), Umzug der Daten: `scripts/flatpak-to-native`.
 - Keine neue Abhängigkeit (dnf-Paket, COPR, Python-Modul, QML-Plugin) ohne Rückfrage – dann in `system/packages/` + `docs/TECHSTACK.md`.
@@ -49,7 +50,8 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - `shell/` Quickshell-Config (`shell.qml`, `services/`, `components/`, `modules/`)
 - `hypr/` Hyprland-Konfig (binds, rules, monitors) · `config/` App- und Shell-Einstellungen (`*.json`)
 - `scripts/` Hilfsprogramme für Shell und Kürzel · `systemd/` User-Dienste (`desktop-shell-hyprland` u. a.)
-- `tools/` eigene C-Quellen, gebaut nach `~/.local/lib/desktop/` (`v4l2-fastprobe`: schnellerer Kamerastart in Discord, `scripts/fastprobe`)
+- `tools/` eigene C-Quellen, gebaut nach `~/.local/lib/desktop/` (`v4l2-fastprobe`: schnellerer Kamerastart in Discord, `scripts/fastprobe`;
+  `nvenc-block`: Discord ohne NVENC gegen Renderer-Abstürze, `scripts/nvenc-block`)
 - `theme/` `palette.json` + Generatoren `theme/gen/` für alle Apps · `design/` Inspos, Design-Brief, `preview.html`
 - `projects/` Projekt-Registry (`projects.json`: Farbe, Ports, Öffnen, Links – nur über `scripts/project`) · `profiles/` Desktop-Vorlagen
 - `equicord/` Discord-Plugin `desktopBridge` · `plasma/loginscreen/` Theme des Login-Bildschirms (Plasma Login Manager, `scripts/loginscreen`)
@@ -67,6 +69,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
   (User-Unit `desktop-shell-hyprland`, Log: `journalctl --user -u desktop-shell-hyprland`)
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/hypr panic` (Shell aus, Konsole auf)
 - Discord-Kamera schneller: `scripts/fastprobe build|on|off|status|bench` (wirkt beim nächsten Discord-Start)
+- Discord ohne NVENC (gegen Renderer-Absturz): `scripts/nvenc-block build|on|off|status` (wirkt beim nächsten Discord-Start)
 - Bildschirm teilen: `scripts/share-picker status|remembered|forget [app]` (gemerkte Auswahl je App) · laufende Freigaben: `scripts/share-stop list|stop <node>|stop all`
 - Klänge: `scripts/sounds play [notify-urgent]|build|on|off|status` (Probehören, neu erzeugen, Sound-Theme für Apps)
 - Kürzel geändert: `scripts/hotkeys-md` (Cheat-Sheet neu) · Farben geändert: `python3 -I theme/gen/all.py`

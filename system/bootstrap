@@ -58,7 +58,7 @@ STEPS=(
     "3|[sudo] System (kvm, vhost_vsock, nodocker, Anmeldung Plasma Login, Firewall, podman.socket)"
     "4|Flatpaks (System-Flatpaks fragen per polkit)"
     "5|VS Code-Erweiterungen"
-    "6|User-Tools (Bun, Claude CLI, Starship, Godot, pnpm, uv-Tools, Schriften, icp; Hyprland: hyprflow, Equicord, fastprobe bauen)"
+    "6|User-Tools (Bun, Claude CLI, Starship, Godot, pnpm, uv-Tools, Schriften, icp; Hyprland: hyprflow, Equicord, fastprobe, nvenc-block bauen)"
     "7|distrobox ubuntu + Claude Desktop"
     "8|Dotfiles (system/dotfiles → ~ verlinken, system/copies → ~ kopieren)"
     "9|Desktop gemeinsam (Theme erzeugen + an, Kitty, zsh, sshs, Wallpaper, Claude-Skills, Helium-Host, User-Dienste)"
@@ -389,6 +389,9 @@ if want 6; then
         # Discord-Kamera ohne ~7 s Format-Abfrage (LD_PRELOAD, lädt scripts/app-run; docs/knowledge/hardware.md)
         if [ -f "$HOME/.local/lib/desktop/libfastprobe.so" ]; then ok "fastprobe gebaut"
         else run "'$REPO/scripts/fastprobe' build"; fi
+        # Discord ohne NVENC (Renderer-Absturz in libnvcuvid; docs/knowledge/discord.md)
+        if [ -f "$HOME/.local/lib/desktop/libnvencblock.so" ]; then ok "nvenc-block gebaut"
+        else run "'$REPO/scripts/nvenc-block' build"; fi
     fi
 fi
 

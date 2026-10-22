@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# nvenc-block – Discord ohne NVENC (Hardware-Kodierung) starten: LD_PRELOAD-Bibliothek aus tools/nvenc-block bauen,
+# ein-/ausschalten. Hintergrund (Renderer-Absturz in libnvcuvid): docs/knowledge/discord.md.
+#
+#   scripts/nvenc-block build     bauen nach ~/.local/lib/desktop/libnvencblock.so (gcc)
+#   scripts/nvenc-block on|off    für Discord ein-/ausschalten (Merker ~/.config/desktop/nvenc-block.off), wirkt beim nächsten Discord-Start
+#   scripts/nvenc-block status    gebaut? an? geladen? (Exit 0 = wird beim Discord-Start geladen)
+#   scripts/nvenc-block preload   Pfad für LD_PRELOAD ausgeben, wenn gebaut und an (sonst nichts, Exit 1) – nutzt scripts/app-run
+#
+# Rückweg: scripts/nvenc-block off (oder rm ~/.local/lib/desktop/libnvencblock.so), danach Discord neu starten.
+set -u
+
+REPO=$(cd "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+SRC="$REPO/tools/nvenc-block"
+LIB="$HOME/.local/lib/desktop/libnvencblock.so"
+OFF="${XDG_CONFIG_HOME:-$HOME/.config}/desktop/nvenc-block.off"
+
+case "${1:-}" in
+    build)
+        mkdir -p "$(dirname "$LIB")"
+        tmp="$LIB.tmp.$$"
+        gcc -O2 -Wall -Wextra -fPIC -shared -o "$tmp" "$SRC/nvencblock.c" -ldl || { rm -f "$tmp"; exit 1; }
+        mv -f "$tmp" "$LIB"          # atomar: ein laufendes Discord behält seine alte Kopie
+        echo "gebaut: $LIB" ;;
+    on)  rm -f "$OFF"; echo "an (ab dem nächsten Discord-Start)" ;;
+    off) mkdir -p "$(dirname "$OFF")"; : > "$OFF"; echo "aus (ab dem nächsten Discord-Start)" ;;
+    status)
+        [ -f "$LIB" ] && echo "gebaut: $LIB" || echo "nicht gebaut (scripts/nvenc-block build)"
+        [ -e "$OFF" ] && echo "aus ($OFF)" || echo "an"
+        pids=$(pgrep -f 'discord.*--type=renderer' || true)
+        for p in $pids; do
+            grep -q libnvencblock "/proc/$p/maps" 2>/dev/null && echo "geladen in Discord-PID $p"
+            grep -q libnvcuvid "/proc/$p/maps" 2>/dev/null && echo "NVENC aktiv in Discord-PID $p (Discord neu starten)"
+        done
+        [ -f "$LIB" ] && [ ! -e "$OFF" ] ;;
+    preload)
+        [ -f "$LIB" ] && [ ! -e "$OFF" ] || exit 1
+        echo "$LIB" ;;
+    *)
+        sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2
+        exit 2 ;;
+esac
