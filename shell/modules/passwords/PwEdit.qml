@@ -2,20 +2,22 @@ import QtQuick
 import qs.config
 import qs.components
 
-// Rechte Seite im Bearbeiten-Modus (F2): Titel, Benutzer, Passwort, Websites, 2FA, Notizen.
-// Speichern schreibt über scripts/passwords edit → icp nach iCloud (Passwort/Notiz/2FA nur über stdin).
-// Leeres Passwort- bzw. 2FA-Feld = unverändert. Tastatur: Tab/Shift+Tab Felder, Ctrl+S speichern, Esc abbrechen,
-// Ctrl+D zweimal = löschen (landet wie in der Passwörter-App unter „Zuletzt gelöscht“).
+// Rechte Seite im Bearbeiten-Modus (F2) bzw. „Neuer Login“ (Ctrl+N, pw.creating): Titel, Benutzer, Passwort,
+// Websites, 2FA, Notizen. Speichern schreibt über scripts/passwords edit bzw. create → icp nach iCloud
+// (Passwort/Notiz/2FA nur über stdin). Bearbeiten: leeres Passwort- bzw. 2FA-Feld = unverändert.
+// Tastatur: Tab/Shift+Tab Felder, Ctrl+S speichern, Esc abbrechen, Ctrl+G Passwort erzeugen,
+// Ctrl+D zweimal = löschen (landet wie in der Passwörter-App unter „Zuletzt gelöscht“; nicht beim Neuanlegen).
 Item {
     id: f
 
     required property var pw
-    readonly property var e: pw.cur
+    readonly property var e: pw.creating ? null : pw.cur
     property bool removeTotp: false
+    property bool showPw: false         // erzeugtes Passwort sichtbar, damit man es sieht, bevor es gespeichert wird
     property bool deleteArmed: false    // erster Druck/Klick scharf, zweiter innerhalb 4 s löscht
 
     function askDelete(): void {
-        if (pw.editBusy)
+        if (pw.editBusy || pw.creating)
             return;
         if (deleteArmed) {
             deleteArmed = false;
@@ -31,8 +33,16 @@ Item {
         onTriggered: f.deleteArmed = false
     }
 
+    function generate(): void {
+        pw.run(["generate"], (t, code) => {
+            if (code === 0 && t.trim()) {
+                pwIn.text = t.trim();
+                showPw = true;
+            }
+        });
+    }
     function begin(): void {
-        const e = pw.cur;
+        const e = f.e;
         titleIn.text = e ? e.title : "";
         userIn.text = e ? e.user : "";
         pwIn.text = "";
@@ -41,6 +51,15 @@ Item {
         notesIn.text = pw.editNotes;
         removeTotp = false;
         deleteArmed = false;
+        showPw = false;
+        if (pw.creating) {
+            // Suchtext wie „github.com“ gleich als Website übernehmen; starkes Passwort schon vorschlagen
+            const q = pw.query.trim();
+            urlsIn.text = /^[^\s\/]+\.[a-z]{2,}$/i.test(q) ? q.toLowerCase() : "";
+            generate();
+            (urlsIn.text ? userIn : urlsIn).forceActiveFocus();
+            return;
+        }
         titleIn.forceActiveFocus();
         titleIn.selectAll();
     }
@@ -59,7 +78,10 @@ Item {
             form.totp = totpIn.text.trim();
         else if (removeTotp)
             form.removeTotp = true;
-        pw.saveEdit(form);
+        if (pw.creating)
+            pw.saveCreate(form);
+        else
+            pw.saveEdit(form);
     }
     // gemeinsame Tasten aller Felder
     function keys(event: var): void {
@@ -71,6 +93,9 @@ Item {
             event.accepted = true;
         } else if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_D) {
             askDelete();
+            event.accepted = true;
+        } else if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_G) {
+            generate();
             event.accepted = true;
         }
     }
@@ -208,7 +233,7 @@ Item {
                     id: hIcon
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    name: "edit"
+                    name: f.pw.creating ? "add_circle" : "edit"
                     size: 22
                     color: Theme.accentText
                 }
@@ -216,7 +241,7 @@ Item {
                     anchors.left: hIcon.right
                     anchors.leftMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Edit login"
+                    text: f.pw.creating ? "New login" : "Edit login"
                     font.pixelSize: Theme.fontLg
                     font.weight: Font.DemiBold
                 }
@@ -236,6 +261,7 @@ Item {
                 active: titleIn.activeFocus
                 Line {
                     id: titleIn
+                    hint: f.pw.creating ? "optional · defaults to the website" : ""
                     KeyNavigation.tab: userIn
                     KeyNavigation.backtab: notesIn
                 }
@@ -256,15 +282,26 @@ Item {
                 active: pwIn.activeFocus
                 Line {
                     id: pwIn
-                    hint: "unchanged"
-                    echoMode: TextInput.Password
+                    anchors.rightMargin: genBtn.width + 8
+                    hint: f.pw.creating ? "Ctrl+G for a strong one" : "unchanged · Ctrl+G for a new strong one"
+                    echoMode: f.showPw ? TextInput.Normal : TextInput.Password
                     font.family: Theme.fontMono
                     KeyNavigation.tab: urlsIn
                     KeyNavigation.backtab: userIn
                 }
+                // starkes Passwort erzeugen (wie Ctrl+G)
+                Button {
+                    id: genBtn
+                    small: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Generate"
+                    icon: "casino"
+                    onClicked: f.generate()
+                }
             }
             Box {
-                label: "Websites · one per line, the first is the main one"
+                label: f.pw.creating ? "Website · more can be added later with F2" : "Websites · one per line, the first is the main one"
                 icon: "language"
                 active: urlsIn.activeFocus
                 bodyHeight: Math.max(22, urlsIn.contentHeight)
@@ -328,7 +365,7 @@ Item {
             elide: Text.ElideRight
             maximumLineCount: 2
             wrapMode: Text.Wrap
-            text: f.deleteArmed ? "Moves it to Recently Deleted on all devices" : f.pw.editError || "Ctrl+S save  ·  Esc cancel  ·  Tab next  ·  Ctrl+D delete"
+            text: f.deleteArmed ? "Moves it to Recently Deleted on all devices" : f.pw.editError || (f.pw.creating ? "Ctrl+S save  ·  Esc cancel  ·  Tab next  ·  Ctrl+G new password" : "Ctrl+S save  ·  Esc cancel  ·  Tab next  ·  Ctrl+G new password  ·  Ctrl+D delete")
             font.pixelSize: Theme.fontXs
             font.weight: Font.Normal
             color: (f.pw.editError || f.deleteArmed) && !f.pw.editBusy ? Theme.error : Theme.textFaint
@@ -346,6 +383,7 @@ Item {
             }
             Button {
                 small: true
+                visible: !f.pw.creating
                 text: f.deleteArmed ? "Are you sure?" : "Delete"
                 icon: "delete"
                 enabled: !f.pw.editBusy

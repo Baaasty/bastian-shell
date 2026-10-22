@@ -22,6 +22,8 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] icp-Schreibweg als PRs an Sank6: #17 Sync-Drosselung, #18 Logins bearbeiten/löschen (2026-10-20)
 - [ ] Discord ohne NVENC (`nvenc-block`, Renderer-Absturz in libnvcuvid): nächster Start über die Shell → Call mit Kamera/Go Live ohne Absturz, Zuschauer sehen Bild
 - [ ] Discord-Popout „Random call“ (Super+Alt+J): Plugin neu einspielen (Restart Discord), dann mehrmals drücken – landet jedes Mal in einem anderen Call mit Leuten, nie voll/AFK; allein gelandet → springt selbst weiter
+- [ ] Passwörter: neuen Login anlegen (Super+O → Ctrl+N, Passwort-Vorschlag Ctrl+G) → erscheint am iPhone
+- [ ] Passwörter: Browser fragt beim Registrieren/Anmelden „Speichern / Aktualisieren / Als weiteren Login“ (Shell-Meldung, sonst Leiste in der Seite)
 - [ ] KWallet ohne Abfrage beim Autologin: Wallet-Passwort leer (Bastian, `kwalletmanager5`) → nach dem nächsten Login keine Abfrage, Helium/Claude bleiben eingeloggt
 - [x] Bar-Tooltips: Maus auf einen Chip → „Name · Kürzel“, auch wenn daneben ein Popout offen ist (2026-10-20)
 - [x] Spotify aus dem Launcher holt das weggeräumte Fenster; Symbol im Chip, wenn Spotify aus ist (2026-10-20)

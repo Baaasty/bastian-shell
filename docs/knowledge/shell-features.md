@@ -240,6 +240,9 @@ Code: `shell/services/ProjectTime.qml`, Anzeige im Kachelkopf `shell/modules/wor
 
 ## Externe Dienste: Drosselung
 Regel: nie im Sekunden-/Minutentakt gegen fremde APIs; bei Fehlern wachsender Abstand, `Retry-After` gilt.
+- Passwörter neu anlegen (`icp add`): nur eine Website (weitere danach per Bearbeiten); Website + Benutzer, die es schon gibt,
+  lehnt iCloud ab (ein Eintrag je Paar) → Hinweis, stattdessen bearbeiten. Titel/Notiz/2FA brauchen ein vorhandenes
+  Metadaten-Objekt als Vorlage, sonst nur Login + Warnung.
 - Passwörter (icp): Timer 15 min + beim Öffnen ab 5 min alt; icp selbst ≥ 5 min Abstand, Backoff 5 min → 6 h, `~/.config/icp/state.json`.
 - Wetter (`Weather.qml`): 15 min; Fehler → 1, 2, 4 … 15 min. Mail 2 min / Kalender 5 min (eigene Timer), stats.fm ≥ 30 min, nach 429 30 min Pause.
 - GitHub-CI (`scripts/gitinfo`) je Projekt ≥ 5 min; Hue ist lokal (Bridge, 15 s nur bei offenem Popout); Favicons nur auf Abruf, Cache 30/7 Tage.

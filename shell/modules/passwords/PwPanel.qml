@@ -47,13 +47,25 @@ Glass {
             }
         }
 
+        // neuer Login (wie Ctrl+N), rechts neben dem Suchfeld
+        Button {
+            id: newBtn
+            anchors.right: parent.right
+            anchors.verticalCenter: sf.verticalCenter
+            height: sf.height
+            text: "New login"
+            icon: "add"
+            enabled: !panel.pw.editing
+            onClicked: panel.pw.startCreate()
+        }
         // Suchfeld
         Rectangle {
             id: sf
             anchors.top: head.bottom
             anchors.topMargin: 14
             anchors.left: parent.left
-            anchors.right: parent.right
+            anchors.right: newBtn.left
+            anchors.rightMargin: 10
             height: 46
             radius: Theme.radiusMd
             color: Theme.raise
@@ -137,6 +149,10 @@ Glass {
                         panel.pw.startEdit();
                         event.accepted = true;
                     }
+                    if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_N) {
+                        panel.pw.startCreate();
+                        event.accepted = true;
+                    }
                 }
 
                 Txt {
@@ -150,17 +166,16 @@ Glass {
             }
         }
 
-        // Gruppen-Chips: nur wenn es geteilte Gruppen gibt
-        Row {
+        // Gruppen-Chips: nur wenn es geteilte Gruppen gibt; brechen um, statt rechts abgeschnitten zu werden
+        Flow {
             id: chips
             anchors.top: sf.bottom
             anchors.topMargin: 10
             anchors.left: parent.left
             anchors.right: parent.right
             spacing: 4
-            clip: true
             visible: panel.pw.groups.length > 0
-            height: visible ? 32 : 0
+            height: visible ? implicitHeight : 0
             Repeater {
                 model: panel.pw.groups
                 delegate: Tab {
@@ -239,7 +254,7 @@ Glass {
             anchors.bottom: parent.bottom
             small: true
             gap: Theme.space3
-            hints: [["↵", "copy password"], ["Ctrl+U", "user"], ["Ctrl+T", "2FA"], ["Ctrl+E", "show"], ["F2", "edit"]].concat(panel.pw.groups.length ? [["Tab", "group"]] : [])
+            hints: [["↵", "copy password"], ["Ctrl+U", "user"], ["Ctrl+T", "2FA"], ["Ctrl+E", "show"], ["F2", "edit"], ["Ctrl+N", "new"]].concat(panel.pw.groups.length ? [["Tab", "group"]] : [])
         }
 
         // Logos rechts

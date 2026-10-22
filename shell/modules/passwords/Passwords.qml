@@ -7,7 +7,7 @@ import qs.config
 import qs.services
 
 // Passwort-Speicher (Super+O): iCloud-Schlüsselbund über scripts/passwords (icp).
-// F2 bearbeitet den gewählten Login (PwEdit) und schreibt über icp zurück nach iCloud;
+// F2 bearbeitet den gewählten Login (PwEdit), Ctrl+N legt einen neuen an; beides schreibt über icp nach iCloud;
 // geteilte Gruppen und WLAN bleiben nur lesbar.
 // Aktualisieren ohne Knopf: Timer desktop-passwords (alle 15 min) + beim Öffnen, wenn älter als 5 min;
 // icp bremst selbst (Mindestabstand, Backoff, nie Passwort-Login/2FA im Hintergrund).
@@ -54,6 +54,7 @@ Scope {
 
     // Bearbeiten (F2): Formular rechts statt Details, Speichern über scripts/passwords edit → icp
     property bool editing: false
+    property bool creating: false       // Formular legt einen neuen Login an (Ctrl+N) statt den gewählten zu ändern
     property bool editBusy: false
     property string editError: ""
     property string editNotes: ""       // Notiz im Klartext fürs Formular, nur solange es offen ist
@@ -180,8 +181,10 @@ Scope {
     }
     function close(): void {
         open = false;
-        if (!editBusy)
+        if (!editBusy) {
             editing = false;
+            creating = false;
+        }
         editNotes = "";
         resetDetail();
     }
@@ -345,9 +348,51 @@ Scope {
         if (editBusy)
             return;
         editing = false;
+        creating = false;
         editNotes = "";
         editError = "";
         editEnded();
+    }
+    // ------------------------------------------------------------ Neu anlegen
+    function startCreate(): void {
+        if (editing)
+            return;
+        editError = "";
+        editId = "";
+        editNotes = "";
+        creating = true;
+        editing = true;
+    }
+    // form wie bei saveEdit (urls[0] = Website); gespeichert wird im Hintergrund, Ergebnis per IPC
+    // (createDone / createFailed). Gibt es Website + Benutzer schon (Exit 3), bleibt das Formular offen.
+    function saveCreate(form: var): void {
+        if (editBusy)
+            return;
+        editBusy = true;
+        editError = "";
+        jobComp.createObject(root, {
+            command: [bin, "create", "--detach"],
+            input: JSON.stringify(form) + "\n",
+            cb: (text, code, err) => {
+                editBusy = false;
+                let d = null;
+                try {
+                    d = code === 0 ? JSON.parse(text) : null;
+                } catch (x) {
+                    d = null;
+                }
+                if (!d) {
+                    editError = err || "Could not save";
+                    return;
+                }
+                pendingSel = d.id;
+                editing = false;
+                creating = false;
+                showToast("Saving the new login to iCloud…");
+                editEnded();
+            },
+            running: true
+        });
     }
     // form = {title, user, notes, urls, password?, totp?, removeTotp?} – geht als JSON-Zeile über stdin
     // Prüfen geht schnell (lokal), gespeichert wird im Hintergrund: Formular sofort zu, Liste zeigt den neuen
@@ -513,6 +558,17 @@ Scope {
         function editFailed(id: string, message: string): void {
             root.clearPending(id);
             root.load();
+            if (root.open)
+                root.showToast("Couldn't save · " + message);
+        }
+        // von scripts/passwords _create-worker: neuer Login gespeichert (Liste neu, ihn wählen) bzw. gescheitert
+        function createDone(id: string): void {
+            root.pendingSel = id;
+            root.load();
+            if (root.open)
+                root.showToast("Saved to iCloud");
+        }
+        function createFailed(message: string): void {
             if (root.open)
                 root.showToast("Couldn't save · " + message);
         }
