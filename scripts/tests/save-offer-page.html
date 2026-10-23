@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- Testseite für „Speichern anbieten“ der Browser-Erweiterung (von Hand, kein automatischer Test):
+     python3 -m http.server 8765 --bind 127.0.0.1 -d scripts/tests  ->  http://localhost:8765/save-offer-page.html
+     Passwort „wrong“ = Login schlägt fehl (dann darf nichts angeboten werden). Passwörter landen nie in der URL. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Save offer test</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.4 system-ui, sans-serif; max-width: 440px; margin: 32px auto; padding: 0 16px; }
+  form, .box { display: grid; gap: 8px; margin: 0 0 28px; }
+  input, button { font: inherit; padding: 6px 8px; }
+  #state:empty { display: none; }
+  #state { padding: 8px 10px; border: 1px solid; border-radius: 8px; }
+</style>
+</head>
+<body>
+<p id="state"></p>
+<div id="forms">
+  <h2>1 · Login, then navigation</h2>
+  <form id="nav">
+    <input name="username" autocomplete="username" placeholder="Username">
+    <input type="password" name="password" autocomplete="current-password" placeholder="Password">
+    <button>Sign in</button>
+  </form>
+
+  <h2>2 · Login without navigation (SPA)</h2>
+  <div class="box" id="spa">
+    <input type="email" autocomplete="username" placeholder="Email">
+    <input type="password" autocomplete="current-password" placeholder="Password">
+    <button type="button" id="spa-go">Log in</button>
+  </div>
+
+  <h2>3 · Sign up (password + repeat)</h2>
+  <form id="signup">
+    <input type="email" name="email" autocomplete="email" placeholder="Email">
+    <input type="password" autocomplete="new-password" placeholder="New password">
+    <input type="password" autocomplete="new-password" placeholder="Repeat password">
+    <button>Create account</button>
+  </form>
+
+  <h2>4 · Email first, then password</h2>
+  <form id="step1">
+    <input type="email" autocomplete="username" placeholder="Email">
+    <button>Next</button>
+  </form>
+  <form id="step2" hidden>
+    <input type="password" autocomplete="current-password" placeholder="Password">
+    <button>Sign in</button>
+  </form>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const state = document.getElementById("state");
+  const say = text => { state.textContent = text; };
+  const pw = root => root.querySelector('input[type="password"]').value;
+  // Erfolg = Formulare weg (wie nach einem echten Login); Navigation nur mit ?welcome bzw. ?error, nie mit Passwort
+  const done = text => { document.getElementById("forms").remove(); say(text + " · back: " + location.pathname); };
+  if (q.has("welcome"))
+    done("Signed in (after navigation)");
+  else if (q.has("error"))
+    say("Wrong password (after navigation) – nothing should be offered");
+
+  document.getElementById("nav").addEventListener("submit", ev => {
+    ev.preventDefault();
+    location.href = pw(ev.target) === "wrong" ? "?error=1" : "?welcome=1";
+  });
+  document.getElementById("spa-go").addEventListener("click", () => {
+    const box = document.getElementById("spa");
+    setTimeout(() => {
+      if (pw(box) === "wrong")
+        say("Wrong password (SPA) – nothing should be offered");
+      else
+        done("Signed in (SPA, no navigation)");
+    }, 400);
+  });
+  document.getElementById("signup").addEventListener("submit", ev => {
+    ev.preventDefault();
+    const [a, b] = ev.target.querySelectorAll('input[type="password"]');
+    if (a.value !== b.value)
+      return say("Passwords differ");
+    done("Account created (SPA)");
+  });
+  document.getElementById("step1").addEventListener("submit", ev => {
+    ev.preventDefault();
+    ev.target.hidden = true;
+    document.getElementById("step2").hidden = false;
+    document.querySelector("#step2 input").focus();
+  });
+  document.getElementById("step2").addEventListener("submit", ev => {
+    ev.preventDefault();
+    location.href = pw(ev.target) === "wrong" ? "?error=1" : "?welcome=1";
+  });
+</script>
+</body>
+</html>

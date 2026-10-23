@@ -1,6 +1,7 @@
 // Desktop – Autofill (Content-Script auf https-Seiten und http://localhost).
 // Dropdown an Login-Feldern (iCloud-Passwörter), an 2FA-Feldern (Code wird erst beim Klick geholt) und
-// Hide-My-Email-Vorschläge an E-Mail-Feldern bei Registrierungen. Daten: background.js -> Native Host
+// Hide-My-Email-Vorschläge an E-Mail-Feldern bei Registrierungen. Nach dem Abschicken eines Login-/Registrierungs-
+// formulars Speichern anbieten (Abschnitt „Speichern anbieten“). Daten: background.js -> Native Host
 // (scripts/chrome-ext) -> scripts/passwords.
 //
 // Herkunft: Feld-Erkennung (Benutzer/Passwort, Passwort als type=text, 2FA-Stichwörter, 4–10 Einzelfelder,
@@ -131,7 +132,16 @@
   // Eine Seite kann dasselbe Formular mehrfach enthalten -> erst im eigenen Formular suchen. Nur sichtbare Felder.
   function within(el, selector) {
     const scoped = el && el.form ? deepQueryAll(selector, el.form).filter(visible) : [];
-    return scoped.length ? scoped : deepQueryAll(selector).filter(visible);
+    if (scoped.length)
+      return scoped;
+    // ohne <form> (viele SPAs): kleinster Vorfahr mit einem passenden Feld außer el selbst – sonst landen Benutzer
+    // und Passwort bei mehreren Logins auf einer Seite in verschiedenen Formularen
+    for (let p = el && el.parentElement; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+      const near = deepQueryAll(selector, p).filter(visible);
+      if (near.some(x => x !== el))
+        return near;
+    }
+    return deepQueryAll(selector).filter(visible);
   }
 
   const passwordFields = anchor => within(anchor, FIELD_SEL).filter(looksLikePassword);
@@ -158,7 +168,10 @@
     return /sign[\s_-]?up|register|registr|create[\s_-]?(an?[\s_-]?)?account|new[\s_-]?account|join|enroll|konto[\s_-]?(erstellen|anlegen|eröffnen)|neues[\s_-]?konto/.test(hay);
   }
 
+  const ours = new WeakMap();   // Feld -> Wert, den wir selbst eingetragen haben (unverändert abgeschickt: nichts anbieten)
+
   function setValue(el, value) {
+    ours.set(el, value);
     const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
     el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
@@ -182,6 +195,7 @@
   let matches = null;   // Promise der Metadaten (ohne Geheimnisse), pro Dokument, 2 min gültig
   let matchesAt = 0;
   let aliases = null;
+  let emails = null;
 
   function getMatches() {
     if (!matches || Date.now() - matchesAt > 120000) {
@@ -189,6 +203,13 @@
       matches = send({ cmd: "match" }).then(r => (r.ok && Array.isArray(r.entries) ? r.entries : []));
     }
     return matches;
+  }
+
+  // eigene Adressen (Thunderbird, Konten, häufige Benutzer) – ändern sich selten, einmal pro Dokument
+  function getEmails() {
+    if (!emails)
+      emails = send({ cmd: "emails" }).then(r => (r.ok && Array.isArray(r.emails) ? r.emails : []));
+    return emails;
   }
 
   function getAliases() {
@@ -229,8 +250,18 @@
   }
 
   async function act(item, anchor) {
-    if (item.kind === "alias") {
-      setValue(anchor, item.alias.address);
+    if (item.kind === "alias-new") {
+      busy(true);
+      const r = await send({ cmd: "alias-new" });
+      if (!r.ok || !r.address)
+        return problem(r.error || "Couldn't create an address");
+      aliases = null;   // neue Adresse beim nächsten Öffnen mit in der Liste
+      setValue(anchor, r.address);
+      close();
+      return;
+    }
+    if (item.kind === "alias" || item.kind === "email") {
+      setValue(anchor, item.kind === "alias" ? item.alias.address : item.email.address);
       close();
       return;
     }
@@ -303,6 +334,8 @@
     key: "M7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm5.65-4A6 6 0 1 0 12.65 14H17v4h4v-4h2v-4H12.65Z",
     shield: "M12 2 4 5v6c0 5.25 3.4 10.15 8 11.5 4.6-1.35 8-6.25 8-11.5V5l-8-3Zm-1 14-3.5-3.5 1.4-1.4L11 13.2l4.6-4.6 1.4 1.4L11 16Z",
     mail: "M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm8 7 8-5H4l8 5Zm0 2L4 9v8h16V9l-8 5Z",
+    person: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5Z",
+    add: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5Z",
   };
 
   function el(tag, cls, text) {
@@ -384,6 +417,16 @@
       const meta = r.appendChild(el("div", "meta"));
       meta.appendChild(el("div", "main", item.alias.address));
       meta.appendChild(el("div", "sub", item.alias.label || item.alias.domain || "Hide My Email"));
+    } else if (item.kind === "alias-new") {
+      r.appendChild(el("div", "avatar alias")).appendChild(icon("add"));
+      const meta = r.appendChild(el("div", "meta"));
+      meta.appendChild(el("div", "main", "Create new Hide My Email"));
+      meta.appendChild(el("div", "sub", "for " + location.hostname.replace(/^www\./, "")));
+    } else if (item.kind === "email") {
+      r.appendChild(el("div", "avatar alias")).appendChild(icon("person"));
+      const meta = r.appendChild(el("div", "meta"));
+      meta.appendChild(el("div", "main", item.email.address));
+      meta.appendChild(el("div", "sub", { thunderbird: "Thunderbird", account: "Mail account" }[item.email.source] || "Your email"));
     } else {
       const e = item.entry;
       r.appendChild(el("div", "avatar", initial(e.title || e.site || e.user)));
@@ -472,7 +515,8 @@
     if (!otp && !loginish && !email)
       return close();
     const signup = email && signupContext(field);
-    const [entries, aliasList] = await Promise.all([getMatches(), signup ? getAliases() : Promise.resolve([])]);
+    const [entries, aliasList, emailList] = await Promise.all([getMatches(), signup ? getAliases() : Promise.resolve([]),
+                                                               email ? getEmails() : Promise.resolve([])]);
     if (seq !== openSeq || deepActive() !== field)
       return;
     const q = !isPw && !otp ? (field.value || "").trim().toLowerCase() : "";
@@ -491,10 +535,17 @@
         .sort((a, b) => (siteKey(b.domain) === site) - (siteKey(a.domain) === site))
         .slice(0, 6)
         .map(a => ({ kind: "alias", alias: a }));
+      const own = emailList
+        .filter(m => !q || m.address.toLowerCase().includes(q))
+        .slice(0, 5)
+        .map(m => ({ kind: "email", email: m }));
       const loginSection = { title: "iCloud Passwords", icon: "key", items: logins };
-      const aliasSection = { title: "Hide My Email", icon: "mail", items: al };
-      // Registrierung: Hide My Email zuerst
-      sections.push(...(signup ? [aliasSection, loginSection] : [loginSection, aliasSection]));
+      // neue Adresse nur beim Registrieren und solange nicht gefiltert wird (sonst sucht man eine vorhandene)
+      const aliasSection = { title: "Hide My Email", icon: "mail",
+                             items: (signup && !q ? [{ kind: "alias-new" }] : []).concat(al) };
+      const emailSection = { title: "Your email", icon: "person", items: own };
+      // Registrierung: Hide My Email zuerst, dann eigene Adressen; sonst die gespeicherten Logins zuerst
+      sections.push(...(signup ? [aliasSection, emailSection, loginSection] : [loginSection, emailSection, aliasSection]));
     }
     render(field, sections);
   }
@@ -571,6 +622,221 @@
       act(items[active], anchorEl);
     }
   }, true);
+
+  // ---------- Speichern anbieten (nur oberster Frame) ----------
+  // Abgeschickt = submit-Ereignis, Klick auf einen Absende-Knopf oder Enter in einem Feld (nur echte Eingaben).
+  // Das Passwort geht an background.js, das es hält, bis klar ist, ob der Login geklappt hat (Navigation oder
+  // Passwortfeld verschwunden). Gefragt wird per Benachrichtigung, die Leiste (Abschnitt darunter) nur, wenn die
+  // Shell sie unterdrückt.
+  const TOP = window === window.top;
+  const DOC = Math.random().toString(36).slice(2) + Date.now().toString(36);   // dieses Dokument (SPA vs. Navigation)
+  const SUBMIT_WORDS = /log\s?in|sign\s?(in|up|on)|anmeld|einlogg|registr|create|erstell|konto|account|continue|weiter|next|submit|join|speichern|save/;
+  let lastOffer = "";
+  let lastOfferAt = 0;
+  let watchSeq = 0;
+  let leaving = false;
+
+  // sichtbar, auch wenn die Seite das Feld während des Logins sperrt (visible() zählt gesperrte Felder nicht)
+  function shown(el) {
+    if (!el || !el.isConnected)
+      return false;
+    if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+      return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 4 && r.height > 4;
+  }
+
+  // Registrierung/Passwort ändern: das neue Passwort steht doppelt da (neu + wiederholen), sonst das letzte
+  function pickPassword(pws) {
+    const filled = pws.filter(p => p.value);
+    const fresh = filled.find(p => /new-password/.test(p.autocomplete || ""));
+    if (fresh || filled.length < 2)
+      return fresh || filled[0] || null;
+    return filled.find((p, i) => filled.some((q, j) => j !== i && q.value === p.value)) || filled[filled.length - 1];
+  }
+
+  function userValue(pw) {
+    const f = findUsernameField(pw);
+    if (f && f.value.trim())
+      return f.value.trim();
+    // E-Mail-Feld oder verstecktes autocomplete=username (Passwort-Schritt von E-Mail-zuerst-Logins)
+    const scope = pw.form || pw.getRootNode();
+    const hidden = deepQueryAll('input[type="email"], input[autocomplete~="username"], input[autocomplete~="email"]', scope)
+      .find(e => e.value.trim());
+    return hidden ? hidden.value.trim() : "";
+  }
+
+  // Login geklappt? Kein Passwortfeld mehr zu sehen -> fragen; nach 10 s noch da (Fehler) -> verwerfen
+  function watch() {
+    const seq = ++watchSeq;
+    const start = Date.now();
+    const tick = () => {
+      if (seq !== watchSeq || leaving)
+        return;   // Seite navigiert: background.js fragt die neue Seite
+      if (!deepQueryAll(FIELD_SEL).some(f => looksLikePassword(f) && shown(f)))
+        return void send({ cmd: "offer-commit", doc: DOC });
+      if (Date.now() - start > 10000)
+        return void send({ cmd: "offer-cancel", doc: DOC });
+      setTimeout(tick, 400);
+    };
+    setTimeout(tick, 600);
+  }
+
+  function capture(anchor) {
+    if (!TOP || !anchor)
+      return;
+    const pw = pickPassword(passwordFields(anchor));
+    if (!pw) {
+      // Schritt 1 eines E-Mail-zuerst-Logins: nur den Benutzer merken (background.js, nur im Speicher)
+      const u = [anchor, ...within(anchor, USERNAME_SEL)].find(e => e.matches && e.matches(USERNAME_SEL)
+        && e.value.trim() && !looksLikePassword(e) && !isOtpField(e) && (looksLikeUsername(e) || looksLikeEmail(e)));
+      if (u)
+        send({ cmd: "offer-user", user: u.value.trim() });
+      return;
+    }
+    if (ours.get(pw) === pw.value)
+      return;   // von uns ausgefüllt und unverändert
+    const user = userValue(pw);
+    const key = user + "\n" + pw.value;
+    if (key === lastOffer && Date.now() - lastOfferAt < 5000)
+      return;   // Klick + submit + Enter melden dasselbe Formular
+    lastOffer = key;
+    lastOfferAt = Date.now();
+    send({ cmd: "offer-save", doc: DOC, user, password: pw.value, signup: signupContext(pw) });
+    setTimeout(() => {
+      if (lastOffer === key)
+        lastOffer = "";
+    }, 5000);
+    watch();
+  }
+
+  function submitButton(ev) {
+    for (const n of ev.composedPath ? ev.composedPath() : [ev.target]) {
+      if (n === host || n === barHost)
+        return null;
+      if (!n.matches || !n.matches('button, input[type="submit"], input[type="button"], input[type="image"], [role="button"]'))
+        continue;
+      const type = (n.getAttribute("type") || "").toLowerCase();
+      if (n.form && (n.tagName === "BUTTON" ? !type || type === "submit" : type === "submit" || type === "image"))
+        return n;
+      return SUBMIT_WORDS.test((n.textContent || n.value || n.getAttribute("aria-label") || "").toLowerCase()) ? n : null;
+    }
+    return null;
+  }
+
+  if (TOP) {
+    document.addEventListener("submit", ev => {
+      if (ev.isTrusted && ev.target && ev.target.querySelector)
+        capture(ev.target.querySelector('input:not([type="hidden"])'));
+    }, true);
+    document.addEventListener("click", ev => {
+      if (!ev.isTrusted)
+        return;
+      const b = submitButton(ev);
+      if (b)
+        capture(b.form ? b.form.querySelector('input:not([type="hidden"])') || b : b);
+    }, true);
+    document.addEventListener("keydown", ev => {
+      if (!ev.isTrusted || ev.key !== "Enter" || ev.isComposing || (menu && active >= 0))
+        return;
+      const t = ev.composedPath ? ev.composedPath()[0] : ev.target;
+      if (t && t.tagName === "INPUT" && t.type !== "hidden")
+        capture(t);
+    }, true);
+    addEventListener("beforeunload", () => { leaving = true; });
+    addEventListener("pageshow", () => { leaving = false; });
+  }
+
+  // ---------- Leiste „Speichern?“ (Benachrichtigung unterdrückt, z. B. Fokus-Modus) ----------
+  const BAR_TEXT = {
+    save: ["Save login for %s?", "Save"],
+    add: ["Save another login for %s?", "Add"],
+    update: ["Update password for %s?", "Update"],
+  };
+  const barHost = document.createElement("desktop-save-bar");
+  barHost.style.cssText = host.style.cssText;
+  const barRoot = barHost.attachShadow({ mode: "closed" });
+  barRoot.adoptedStyleSheets = root.adoptedStyleSheets;
+  let barTimer = 0;
+
+  function closeBar() {
+    clearTimeout(barTimer);
+    barRoot.replaceChildren();
+    if (barHost.isConnected) {
+      try {
+        barHost.hidePopover();
+      } catch (e) {}
+      barHost.remove();
+    }
+  }
+
+  function showBar(msg) {
+    const text = BAR_TEXT[msg.kind];
+    if (!text || typeof msg.offer !== "string")
+      return false;
+    closeBar();
+    const answer = a => {
+      closeBar();
+      send({ cmd: "offer-answer", offer: msg.offer, answer: a });
+    };
+    const bar = el("div", "bar");
+    bar.setAttribute("role", "dialog");
+    bar.setAttribute("aria-label", "iCloud Passwords");
+    bar.appendChild(el("div", "avatar")).appendChild(icon("key"));
+    const meta = bar.appendChild(el("div", "meta"));
+    meta.appendChild(el("div", "main", text[0].replace("%s", String(msg.site || ""))));
+    meta.appendChild(el("div", "sub", `${msg.user || ""} · iCloud Passwords`));
+    const primary = bar.appendChild(el("button", "btn primary", text[1]));
+    const never = bar.appendChild(el("button", "btn", "Never"));
+    never.title = "Never for this site";
+    const x = bar.appendChild(el("button", "x", "×"));
+    x.setAttribute("aria-label", "Close");
+    for (const [b, a] of [[primary, msg.kind], [never, "never"], [x, "dismiss"]])
+      b.addEventListener("click", ev => {
+        ev.stopPropagation();
+        if (ev.isTrusted)
+          answer(a);
+      });
+    // Enter = Hauptknopf (bzw. der Knopf mit Fokus), Esc = schließen; nicht zur Seite durchreichen
+    bar.addEventListener("keydown", ev => {
+      if (!ev.isTrusted)
+        return;
+      ev.stopPropagation();
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        answer("dismiss");
+      } else if (ev.key === "Enter" && barRoot.activeElement !== never && barRoot.activeElement !== x) {
+        ev.preventDefault();
+        answer(msg.kind);
+      }
+    });
+    barRoot.appendChild(bar);
+    document.documentElement.appendChild(barHost);
+    try {
+      barHost.popover = "manual";
+      barHost.showPopover();
+    } catch (e) {}
+    // Fokus nur nehmen, wenn gerade nichts getippt wird
+    const a = deepActive();
+    if (!a || a === document.body || a === document.documentElement)
+      primary.focus({ preventScroll: true });
+    barTimer = setTimeout(closeBar, 115000);   // Host vergisst das Angebot nach 2 min
+    return true;
+  }
+
+  if (TOP)
+    chrome.runtime.onMessage.addListener((msg, sender, respond) => {
+      if (!msg || sender.id !== chrome.runtime.id)
+        return false;
+      if (msg.cmd === "offer-probe") {
+        // nach einer Navigation: steht hier wieder ein Login-/Registrierungsformular, hat es wohl nicht geklappt
+        const pws = passwordFields(null);
+        respond({ doc: DOC, login: pws.length > 0, signup: pws.length > 0 && signupContext(pws[0]) });
+      } else if (msg.cmd === "offer-bar") {
+        respond({ ok: showBar(msg) });
+      }
+      return false;
+    });
 
   addEventListener("scroll", () => place(), { capture: true, passive: true });
   addEventListener("resize", () => place(), { passive: true });

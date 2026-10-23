@@ -239,6 +239,16 @@ Code: `shell/services/ProjectTime.qml`, Anzeige im Kachelkopf `shell/modules/wor
 - Von Hand korrigieren: `total` ändern (zählt überall); `spans` ist nur Verlauf.
 - Ein Inhibitor (Video/Call) lässt trotz Leerlauf weiterzählen.
 
+## Passwörter: Speichern anbieten (Browser)
+- Erkannt wird nur im obersten Frame: submit, Klick auf einen Absende-Knopf (oder Knopf mit Login-Wörtern), Enter in einem Feld. Ohne erkannten Benutzer kein Angebot (iCloud braucht einen); E-Mail-zuerst-Logins merken den Benutzer aus Schritt 1.
+- Gefragt wird erst, wenn der Login wohl geklappt hat: Seite navigiert und zeigt kein Login-Formular mehr, bzw. (SPA) kein Passwortfeld binnen 10 s. Falsches Passwort → nichts.
+- Unterdrückt die Shell die Meldung (Fokus-Modus, Ruhezeit), kommt `notify-send` sofort leer zurück → Leiste oben in der Seite. Popup abgelaufen = nein. Wegklicken in der ersten Sekunde zählt als unterdrückt.
+- iCloud kennt Website + Benutzer nur einmal → gleicher Benutzer = „Update“, nie Dublette. Gespeichert wird der Host ohne Port (icp nimmt keine Ports).
+- „Never“ landet in `passwords-never.json` (nur Hostnamen) neben den Overrides; Apples „Nie sichern“-Einträge gelten auch. Zurück: Zeile dort löschen.
+- E-Mail-Felder: „Your email“ = nur Absender der in Thunderbird verknüpften Konten (bewusst nichts aus Logins geraten;
+  neues Konto in Thunderbird → erscheint von selbst). Apples „Nie sichern“ ist ein Login mit Benutzer
+  „Passwords not saved“ – wird nie vorgeschlagen. „Create new Hide My Email“ legt bei Apple echt eine Adresse an (Label = Host).
+
 ## Externe Dienste: Drosselung
 Regel: nie im Sekunden-/Minutentakt gegen fremde APIs; bei Fehlern wachsender Abstand, `Retry-After` gilt.
 - Passwörter neu anlegen (`icp add`): nur eine Website (weitere danach per Bearbeiten); Website + Benutzer, die es schon gibt,

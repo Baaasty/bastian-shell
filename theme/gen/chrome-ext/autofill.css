@@ -1,4 +1,5 @@
-/* Desktop – Autofill-Menü an Login-/2FA-/E-Mail-Feldern (im geschlossenen Shadow Root von autofill.js).
+/* Desktop – Autofill-Menü an Login-/2FA-/E-Mail-Feldern und Leiste „Login speichern?“ (je ein geschlossener
+   Shadow Root von autofill.js).
    Platzhalter in doppelten geschweiften Klammern = Wert aus theme/palette.json; theme/gen/chrome.py packt die Datei
    als String in autofill-css.js (adoptedStyleSheets, unabhängig von der CSP der Seite). */
 :host { all: initial; }
@@ -106,3 +107,66 @@
   color: {{accentText}};
   font-size: 12px;
 }
+
+/* Leiste „Login speichern?“ oben in der Seite – nur, wenn die Benachrichtigung unterdrückt ist (Fokus, Ruhezeit) */
+.bar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 24px));
+  padding: 8px 8px 8px 10px;
+  background: {{menuBg}};
+  color: {{text}};
+  border: 1px solid {{borderStrong}};
+  border-radius: {{radiusLg}};
+  box-shadow: {{shadowTile}}, {{highlight}};
+  font: 400 13px/1.35 {{fontUi}};
+  text-align: left;
+  pointer-events: auto;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  animation: drop 140ms ease-out;
+}
+
+@keyframes drop {
+  from { opacity: 0; transform: translate(-50%, -4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.btn, .x {
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: {{radiusMd}};
+}
+
+.btn {
+  padding: 6px 12px;
+  font: 500 12.5px/1.2 {{fontUi}};
+  color: {{text}};
+  background: {{surfaceSunken}};
+  border: 1px solid {{border}};
+}
+
+.btn.primary { background: {{accentFill}}; color: {{onAccent}}; border-color: transparent; }
+.btn:hover { border-color: {{borderStrong}}; }
+
+.x {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  color: {{textMuted}};
+  font: 400 17px/1 {{fontUi}};
+}
+
+.x:hover { background: {{activeBg}}; color: {{text}}; }
+.btn:focus-visible, .x:focus-visible { outline: 2px solid {{accent}}; outline-offset: 2px; }

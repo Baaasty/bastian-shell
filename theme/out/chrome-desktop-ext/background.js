@@ -3,7 +3,8 @@
 // führt Befehle der Shell aus (Tab aktivieren) und legt Shell-Daten (Termine, Wetter)
 // für die neue Tab-Seite in chrome.storage.local ab. Ohne installierten Host läuft die Seite trotzdem.
 // Dazu Passwörter (iCloud über scripts/passwords, siehe unten „Passwörter“): Vermittler zwischen
-// autofill.js / popup.js und dem Host, prüft Herkunft und gibt Geheimnisse nur auf Klick heraus.
+// autofill.js / popup.js und dem Host, prüft Herkunft und gibt Geheimnisse nur auf Klick heraus;
+// nach dem Abschicken eines Login-Formulars Speichern anbieten (siehe „Speichern anbieten“).
 const HOST = "de.bastian.desktop";
 const NEWTAB = chrome.runtime.getURL("newtab.html");
 
@@ -47,6 +48,8 @@ function onHost(msg) {
       waiting.delete(msg.id);
       done(msg);
     }
+  } else if (msg.type === "offer-bar") {
+    showBar(msg);
   } else if (msg.type === "hello") {
     hostFeatures = Array.isArray(msg.features) ? msg.features : [];
   } else if (msg.type === "activate" && Number.isInteger(msg.tabId)) {
@@ -247,6 +250,23 @@ async function fromPage(msg, sender) {
       return fail("not allowed here");
     return hostPw("aliases");
   }
+  case "alias-new": {
+    const page = senderPage(sender, true);
+    if (!page)
+      return fail("not allowed here");
+    return hostPw("alias-new", { url: page });
+  }
+  case "emails": {
+    if (!senderPage(sender, true))
+      return fail("not allowed here");
+    return hostPw("emails");
+  }
+  case "offer-user":
+  case "offer-save":
+  case "offer-commit":
+  case "offer-cancel":
+  case "offer-answer":
+    return fromPageOffer(msg, sender);
   case "fill":
   case "totp": {
     // Geheimnis: nur sichere Seite, nur dieser Frame, nur ein Eintrag, der laut Host zur Seite passt
@@ -328,6 +348,145 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener(tabId => lastPicked.delete(tabId));
+
+// ---------- Speichern anbieten ----------
+// autofill.js meldet ein abgeschicktes Formular („offer-save“). Gefragt wird erst, wenn der Login wohl geklappt hat:
+// Seite navigiert weg und die neue zeigt kein Login-Formular mehr, oder (SPA) das Passwortfeld ist verschwunden
+// („offer-commit“ vom Content-Script). Bis dahin liegt das Passwort nur hier in einer Variablen (nie in
+// chrome.storage), danach nur noch im Host. Die Leiste in der Seite bekommt es nie zurück.
+const OFFER_HOLD_MS = 60000;
+const USER_STEP_MS = 5 * 60000;
+const heldOffers = new Map();   // tabId -> {doc, url, user, password, signup, timer}
+const userSteps = new Map();    // tabId -> {site, user, at}: Benutzer aus Schritt 1 eines E-Mail-zuerst-Logins
+const barOffers = new Map();    // offer-id -> tabId (Leiste gezeigt, Antwort nur aus diesem Tab)
+
+function siteOf(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "").split(".").slice(-2).join(".");
+  } catch (e) {
+    return "";
+  }
+}
+
+function dropHeld(tabId) {
+  const h = heldOffers.get(tabId);
+  if (h) {
+    clearTimeout(h.timer);
+    heldOffers.delete(tabId);
+  }
+}
+
+async function commitHeld(tabId) {
+  const h = heldOffers.get(tabId);
+  if (!h)
+    return;
+  dropHeld(tabId);
+  let user = h.user;
+  const step = userSteps.get(tabId);
+  if (!user && step && step.site === siteOf(h.url) && Date.now() - step.at < USER_STEP_MS)
+    user = step.user;
+  userSteps.delete(tabId);
+  if (!user)
+    return;   // iCloud braucht einen Benutzer
+  // Antwort egal: fragt der Host, meldet er sich bei Bedarf selbst („offer-bar“)
+  await hostPw("offer", { url: h.url, user, password: h.password, signup: h.signup, tab: tabId });
+}
+
+// Seite fertig geladen, während ein Angebot wartet: neue Seite fragen, ob da wieder ein Login-Formular ist
+// (dann war das Passwort wohl falsch). Kein Content-Script (z. B. Weiterleitung auf http) -> trotzdem fragen.
+chrome.tabs.onUpdated.addListener(async (tabId, change) => {
+  if (change.status !== "complete" || !heldOffers.has(tabId))
+    return;
+  const h = heldOffers.get(tabId);
+  // document_idle: das Content-Script kann kurz nach „complete“ erst ankommen -> ein paar Versuche
+  let probe = null;
+  for (let i = 0; i < 4 && !probe; i++) {
+    if (i)
+      await new Promise(r => setTimeout(r, 400));
+    try {
+      probe = await chrome.tabs.sendMessage(tabId, { cmd: "offer-probe" }, { frameId: 0 });
+    } catch (e) {}
+  }
+  if (heldOffers.get(tabId) !== h)
+    return;
+  if (probe && probe.doc === h.doc)
+    return;   // dasselbe Dokument (SPA): entscheidet autofill.js selbst
+  if (probe && (h.signup ? probe.signup : probe.login))
+    dropHeld(tabId);
+  else
+    commitHeld(tabId);
+});
+
+chrome.tabs.onRemoved.addListener(tabId => {
+  dropHeld(tabId);
+  userSteps.delete(tabId);
+});
+
+async function fromPageOffer(msg, sender) {
+  // nur oberster Frame einer https-/localhost-Seite
+  const url = sender.frameId === 0 ? senderPage(sender, true) : null;
+  const tabId = sender.tab.id;
+  if (!url)
+    return fail("not allowed here");
+  switch (msg.cmd) {
+  case "offer-user":
+    if (typeof msg.user !== "string" || !msg.user.trim() || msg.user.length > 256)
+      return fail("bad request");
+    userSteps.set(tabId, { site: siteOf(url), user: msg.user.trim(), at: Date.now() });
+    return { ok: true };
+  case "offer-save": {
+    if (typeof msg.password !== "string" || !msg.password || msg.password.length > 1024
+        || typeof msg.user !== "string" || msg.user.length > 256 || typeof msg.doc !== "string")
+      return fail("bad request");
+    dropHeld(tabId);
+    const h = { doc: msg.doc, url, user: msg.user.trim(), password: msg.password, signup: !!msg.signup };
+    h.timer = setTimeout(() => {
+      if (heldOffers.get(tabId) === h)
+        heldOffers.delete(tabId);
+    }, OFFER_HOLD_MS);
+    heldOffers.set(tabId, h);
+    return { ok: true };
+  }
+  case "offer-commit":
+  case "offer-cancel": {
+    const h = heldOffers.get(tabId);
+    if (!h || h.doc !== msg.doc)
+      return fail("nothing held");
+    if (msg.cmd === "offer-cancel")
+      dropHeld(tabId);
+    else
+      commitHeld(tabId);
+    return { ok: true };
+  }
+  case "offer-answer": {
+    if (typeof msg.offer !== "string" || barOffers.get(msg.offer) !== tabId)
+      return fail("unknown offer");
+    barOffers.delete(msg.offer);
+    return hostPw("offer-answer", { offer: msg.offer, answer: msg.answer, tab: tabId });
+  }
+  }
+  return fail("unknown request");
+}
+
+// Host: Benachrichtigung wurde nicht gezeigt (Fokus-Modus, Ruhezeit) -> Leiste im obersten Frame des Tabs.
+// Kommt nur Website + Benutzer mit, nie das Passwort. Seite lädt evtl. noch: ein paar Mal versuchen.
+async function showBar(msg) {
+  if (typeof msg.offer !== "string" || !Number.isInteger(msg.tab))
+    return;
+  barOffers.set(msg.offer, msg.tab);
+  setTimeout(() => barOffers.delete(msg.offer), 125000);   // Host vergisst das Angebot nach OFFER_TTL
+  const bar = { cmd: "offer-bar", offer: msg.offer, kind: msg.kind, site: msg.site, user: msg.user };
+  for (let i = 0; i < 4; i++) {
+    try {
+      const r = await chrome.tabs.sendMessage(msg.tab, bar, { frameId: 0 });
+      if (r && r.ok)
+        return;
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  barOffers.delete(msg.offer);
+  hostPw("offer-answer", { offer: msg.offer, answer: "dismiss", tab: msg.tab });
+}
 
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);

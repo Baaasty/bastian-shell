@@ -23,14 +23,23 @@ Startet der Browser das Skript selbst (erstes Argument chrome-extension://…), 
       totp    url id    -> {"code", "remaining"}           frisch geholt, gleiche Prüfung
       copy    url id field (password|totp|user) -> {"clearAfter"}   per passwords copy (wl-copy --sensitive), Wert bleibt hier
       aliases           -> {"aliases": [{address,label,domain}]}    nur aktive Hide-My-Email-Adressen
+      alias-new         -> {"address","label"}   neue Hide-My-Email-Adresse für die Seite (echt bei Apple)
+      emails            -> {"emails": [{address,source}]}            eigene Adressen (scripts/passwords emails)
+      offer   url user password signup tab -> {"action": none|save|add|update, "offer"}   Speichern anbieten
+                        (Formular abgeschickt): fragt per Benachrichtigung; wird die unterdrückt, kommt
+                        {"type": "offer-bar", …} ohne Passwort an die Erweiterung (Leiste in der Seite)
+      offer-answer offer answer tab -> {}                  Antwort aus dieser Leiste (save|add|update|never|dismiss)
     Geheimnisse werden nie geloggt, nie gespeichert und nicht über den Shell-Socket herausgegeben.
+    Ein angebotenes Passwort liegt nur im Speicher dieses Prozesses, bis zur Antwort, höchstens OFFER_TTL.
 Nur RPM-Browser. Profile werden außer dem Host-Manifest nicht angefasst. Laufen beide Browser gleichzeitig mit der
 Erweiterung, gewinnt der zuletzt gestartete Host (Socket + Tabs-Datei sind nur einmal da).
 """
+import hmac
 import json
 import os
 import pathlib
 import re
+import secrets
 import socket
 import struct
 import subprocess
@@ -56,7 +65,7 @@ FEED = CACHE / "newtab-feed.json"        # Wikipedia + KI-Nudges, schreibt scrip
 FEED_EVERY_MS = 3 * 3600 * 1000
 SOCK = pathlib.Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}") / "desktop-chrome.sock"
 PASSWORDS = ROOT / "scripts/passwords"   # CLI über icp (iCloud-Schlüsselbund), liefert JSON
-FEATURES = ["tabs", "shell", "pw"]       # meldet der Host beim Start ("hello"), Erweiterung erkennt alte Hosts
+FEATURES = ["tabs", "shell", "pw", "save"]   # meldet der Host beim Start ("hello"), Erweiterung erkennt alte Hosts
 
 
 def ext_id() -> str:
@@ -183,12 +192,13 @@ class PwError(Exception):
     pass
 
 
-def pw_run(*args: str) -> str:
+def pw_run(*args: str, stdin: str | None = None) -> str:
+    """scripts/passwords aufrufen. Geheimnisse nur über stdin, nie als Argument (stünden sonst in /proc)."""
     if not os.access(PASSWORDS, os.X_OK):
         raise PwError("passwords CLI missing (scripts/passwords)")
+    io = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
     try:
-        r = subprocess.run([str(PASSWORDS), *args], capture_output=True, text=True, timeout=30,
-                           stdin=subprocess.DEVNULL)
+        r = subprocess.run([str(PASSWORDS), *args], capture_output=True, text=True, timeout=30, **io)
     except subprocess.TimeoutExpired:
         raise PwError("passwords CLI timed out") from None
     except OSError as e:
@@ -235,8 +245,8 @@ def pw_match(url: str) -> list:
              "site": site_label(e.get("urls")), "hasTotp": bool(e.get("hasTotp")),
              "hasPassword": bool(e.get("hasPassword"))}
             for e in data if isinstance(e, dict) and isinstance(e.get("id"), str)
-            # „Nie speichern“-Einträge o. Ä. ohne Benutzer, Passwort und 2FA: nichts zum Ausfüllen
-            and (e.get("user") or e.get("hasPassword") or e.get("hasTotp"))]
+            # „Nie speichern“-Einträge (Benutzer „Passwords not saved“) o. Ä. ohne Benutzer, Passwort und 2FA
+            and not e.get("never") and (e.get("user") or e.get("hasPassword") or e.get("hasTotp"))]
 
 
 def pw_entry(msg: dict, secure: bool) -> dict:
@@ -280,6 +290,22 @@ def pw_answer(msg: dict) -> dict:
         return {"aliases": [{"address": a.get("address"), "label": a.get("label") or "",
                              "domain": a.get("domain") or ""}
                             for a in data if isinstance(a, dict) and a.get("address") and a.get("active", True)]}
+    if op == "alias-new":
+        # legt bei Apple wirklich eine Adresse an – nur auf Klick in unserer Liste (background.js prüft die Seite);
+        # Beschriftung = Host der Seite, damit man sie in den iCloud-Einstellungen wiederfindet
+        label = site_host(page_url(msg.get("url"), secure=True))
+        if not label:
+            raise PwError("no site")
+        r = json.loads(pw_run("alias-new", label) or "{}")
+        return {"address": r.get("address") or "", "label": label}
+    if op == "emails":
+        data = json.loads(pw_run("emails") or "[]")
+        return {"emails": [{"address": m.get("address"), "source": m.get("source") or ""}
+                           for m in data if isinstance(m, dict) and m.get("address")]}
+    if op == "offer":
+        return pw_offer(msg)
+    if op == "offer-answer":
+        return pw_offer_answer(msg)
     raise PwError("unknown op")
 
 
@@ -296,6 +322,220 @@ def pw_handle(msg: dict) -> None:
         send({"type": "pw", "id": rid, **reply})
     except OSError:
         pass
+
+
+# ---------------- Speichern anbieten (Formular abgeschickt) ----------------
+# autofill.js meldet ein abgeschicktes Login-/Registrierungsformular. Ob gefragt wird, entscheidet nur der Host
+# (scripts/passwords match + Vergleich im Speicher). Das Passwort bleibt hier bis zur Antwort, geht nie zurück an
+# die Seite, nie in eine Datei, nie in argv von notify-send – zu scripts/passwords nur über stdin.
+
+NEVER = HOME / ".config/desktop/passwords-never.json"   # „Nie für diese Website“: nur Hostnamen, keine Geheimnisse
+OFFER_TTL = 120          # s: so lange hält der Host ein angebotenes Passwort höchstens
+SUPPRESSED_S = 1.0       # s: kommt notify-send schneller leer zurück, hat die Shell die Meldung gar nicht gezeigt
+OFFER_TEXT = {           # kind -> (Titel, Knopf)
+    "save": ("Save login for {site}?", "Save"),
+    "add": ("Save another login for {site}?", "Add"),
+    "update": ("Update password for {site}?", "Update"),
+}
+
+offers: dict = {}        # offer-id -> {kind, url, origin, site, user, password, entry, tab, state, created}
+offers_lock = threading.Lock()
+
+
+def site_host(url: str) -> str:
+    """Hostname klein, ohne www. – Schlüssel für die Nie-Liste und die Anzeige."""
+    try:
+        h = (urllib.parse.urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return ""
+    return h[4:] if h.startswith("www.") else h
+
+
+def load_never(path: pathlib.Path | None = None) -> set:
+    data = read_json(path or NEVER)
+    sites = data.get("sites") if isinstance(data, dict) else None
+    return {s for s in sites if isinstance(s, str)} if isinstance(sites, list) else set()
+
+
+def add_never(site: str, path: pathlib.Path | None = None) -> None:
+    path = path or NEVER
+    sites = sorted(load_never(path) | {site})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        os.fchmod(fh.fileno(), 0o600)
+        json.dump({"sites": sites}, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, path)
+
+
+def apple_never(entries: list, site: str) -> bool:
+    """„Nie sichern“ aus der Passwörter-App: Eintrag ohne Benutzer, Passwort und 2FA für genau diesen Host."""
+    return any((e.get("never") or (not e.get("user") and not e.get("hasPassword") and not e.get("hasTotp")))
+               and any(site_host(u if "//" in u else "https://" + u) == site for u in e.get("urls") or [])
+               for e in entries)
+
+
+def same_user(entries: list, user: str):
+    """Login mit demselben Benutzer (iCloud: Website + Benutzer gibt es nur einmal; Groß/klein egal)."""
+    u = user.strip().lower()
+    return next((e for e in entries if (e.get("user") or "").strip().lower() == u), None)
+
+
+def decide(entries: list, user: str, same_password: bool | None, never: bool = False) -> tuple:
+    """Was anbieten? -> (kind, entry-id). kind: none | update | add | save. entries = passwords match (beste zuerst)."""
+    if never:
+        return "none", None
+    e = same_user(entries, user)
+    if e:
+        # gleiches Passwort: nichts zu tun; geteilte Gruppe/WLAN kann icp nicht schreiben -> nicht fragen
+        if same_password or e.get("editable") is False:
+            return "none", None
+        return "update", e.get("id")
+    if any(e.get("user") or e.get("hasPassword") for e in entries):
+        return "add", None
+    return "save", None
+
+
+def offer_argv(kind: str, site: str, user: str) -> list:
+    """notify-send für die Frage. Transient: wird die Meldung unterdrückt (Fokus, Ruhezeit), verwirft die Shell sie
+    sofort und notify-send kommt leer zurück -> Leiste in der Seite. Nur Website + Benutzer, nie das Passwort."""
+    title, label = OFFER_TEXT[kind]
+    return ["notify-send", "-a", "Passwords", "-i", "dialog-password", "-e",
+            "-A", f"{kind}={label}", "-A", "never=Never for this site", "-w",
+            title.format(site=site), f"{user} · iCloud Passwords"]
+
+
+def run_notify(argv: list) -> tuple:
+    """-> (gewählte Aktion, abgelehnt/fehlgeschlagen, Sekunden bis zur Rückkehr)."""
+    t0 = time.monotonic()
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=OFFER_TTL, stdin=subprocess.DEVNULL)
+        return r.stdout.strip(), r.returncode != 0, time.monotonic() - t0
+    except subprocess.TimeoutExpired:
+        return "", False, OFFER_TTL
+    except OSError:
+        return "", True, 0.0
+
+
+def notify_error(site: str, err: str) -> None:
+    try:
+        subprocess.run(["notify-send", "-a", "Passwords", "-i", "dialog-password",
+                        f"Couldn't save login for {site}", err[:200]],
+                       capture_output=True, timeout=10, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def spawn(fn, *args) -> None:
+    threading.Thread(target=fn, args=args, daemon=True).start()
+
+
+def purge(now: float | None = None) -> None:
+    """Abgelaufene Angebote (samt Passwort) vergessen."""
+    now = time.monotonic() if now is None else now
+    with offers_lock:
+        for oid in [k for k, o in offers.items() if now - o["created"] > OFFER_TTL]:
+            del offers[oid]
+
+
+def pw_offer(msg: dict) -> dict:
+    url = page_url(msg.get("url"), secure=True)
+    user, password, tab = msg.get("user"), msg.get("password"), msg.get("tab")
+    if not isinstance(user, str) or not isinstance(password, str) or not isinstance(tab, int) \
+            or len(user) > 256 or not 0 < len(password) <= 1024:
+        raise PwError("bad offer")
+    user = user.strip()
+    site = site_host(url)
+    if not user or not site:
+        return {"action": "none"}      # iCloud braucht einen Benutzer; Formular ohne erkannten Benutzer: nicht fragen
+    purge()
+    with offers_lock:
+        if any(o["site"] == site and o["user"].lower() == user.lower() for o in offers.values()):
+            return {"action": "none"}  # läuft schon (Klick + submit + Enter melden dasselbe Formular)
+    entries = [e for e in json.loads(pw_run("match", url) or "[]") if isinstance(e, dict) and not e.get("wifi")]
+    never = site in load_never() or apple_never(entries, site)
+    e = None if never else same_user(entries, user)
+    same = None
+    if e and e.get("hasPassword") and ENTRY_ID.fullmatch(str(e.get("id"))):
+        same = hmac.compare_digest(pw_run("get", e["id"], "password").encode(), password.encode())
+    kind, entry = decide(entries, user, same, never)
+    if kind == "none":
+        return {"action": "none"}
+    u = urllib.parse.urlsplit(url)
+    oid = secrets.token_hex(8)
+    with offers_lock:
+        # Website ohne Port: icp speichert nur den Host (localhost:8000 lehnt es ab)
+        offers[oid] = {"kind": kind, "url": url, "origin": f"{u.scheme}://{u.hostname}", "site": site, "user": user,
+                       "password": password, "entry": entry, "tab": tab, "state": "asking",
+                       "created": time.monotonic()}
+    timer = threading.Timer(OFFER_TTL + 1, purge)
+    timer.daemon = True
+    timer.start()
+    spawn(ask, oid)
+    return {"action": kind, "offer": oid}
+
+
+def ask(oid: str) -> None:
+    with offers_lock:
+        o = offers.get(oid)
+        if not o:
+            return
+        argv = offer_argv(o["kind"], o["site"], o["user"])
+    answer, failed, took = run_notify(argv)
+    if answer or not (failed or took < SUPPRESSED_S):
+        resolve(oid, answer)   # gewählt, oder Popup abgelaufen/weggeklickt (leer) -> Angebot fällt weg
+        return
+    # nicht gezeigt (Fokus-Modus, Ruhezeit, keine Shell): Leiste in der Seite, ohne Passwort
+    with offers_lock:
+        o = offers.get(oid)
+        if not o:
+            return
+        o["state"] = "bar"
+        bar = {"type": "offer-bar", "offer": oid, "tab": o["tab"], "kind": o["kind"], "site": o["site"],
+               "user": o["user"]}
+    try:
+        send(bar)
+    except OSError:
+        pass
+
+
+def resolve(oid: str, answer: str, state: str | None = None, tab: int | None = None) -> bool:
+    """Angebot abschließen (genau einmal). state/tab: nur, wenn es gerade so steht (Antwort aus der Leiste)."""
+    with offers_lock:
+        o = offers.get(oid)
+        if not o or (state and o["state"] != state) or (tab is not None and o["tab"] != tab):
+            return False
+        del offers[oid]
+    if answer == "never":
+        add_never(o["site"])
+    elif answer == o["kind"]:
+        store(o)
+    return True
+
+
+def store(o: dict) -> None:
+    """In iCloud schreiben über scripts/passwords (--detach: Hintergrund-Worker meldet Erfolg/Fehler selbst)."""
+    try:
+        if o["kind"] == "update":
+            pw_run("edit", o["entry"], "--detach", stdin=json.dumps({"password": o["password"]}))
+        else:
+            pw_run("create", "--detach", stdin=json.dumps({"urls": [o["origin"]], "user": o["user"],
+                                                            "password": o["password"]}))
+    except PwError as e:
+        notify_error(o["site"], str(e))
+
+
+def pw_offer_answer(msg: dict) -> dict:
+    oid, answer, tab = msg.get("offer"), msg.get("answer"), msg.get("tab")
+    if not isinstance(oid, str) or answer not in ("save", "add", "update", "never", "dismiss") \
+            or not isinstance(tab, int):
+        raise PwError("bad answer")
+    purge()
+    if not resolve(oid, answer, state="bar", tab=tab):
+        raise PwError("offer expired")
+    return {}
 
 
 def read_exact(n: int) -> bytes:
