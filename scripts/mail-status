@@ -1,8 +1,8 @@
 #!/usr/bin/python3 -I
 """Ungelesene Mails pro Konto (IMAP, nur lesen) -> ~/.cache/desktop/mail.json.
 
-Konten: secrets.json im Repo-Root, Abschnitt "accounts" (Vorlage: secrets.example.json),
-inkl. app-spezifischem Passwort. Das Passwort bleibt im Speicher, nie in argv, Log oder Ausgabe.
+Konten: secrets.json im Repo-Root, Abschnitt "accounts" (Vorlage: secrets.example.json), dazu die aus Thunderbird (scripts/tb-accounts),
+inkl. app-spezifischem Passwort – direkt oder "thunderbird" (dann aus Thunderbird, scripts/tb-accounts). Das Passwort bleibt im Speicher, nie in argv, Log oder Ausgabe.
 
 Pro Konto: STATUS UNSEEN der INBOX + Absender/Betreff/Datum der letzten 5 ungelesenen.
 Ordner wird nur per EXAMINE (readonly) geöffnet, Header per BODY.PEEK -> nichts wird als gelesen markiert.
@@ -10,7 +10,7 @@ Ordner wird nur per EXAMINE (readonly) geöffnet, Header per BODY.PEEK -> nichts
 Ausgabe:
 { "updated": ms, "status": "ok" | "no-config" | "config-error",
   "total": n,
-  "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "auth" | "error",
+  "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "tb-missing" | "tb-locked" | "tb-oauth" | "tb-unsupported" | "auth" | "error",
                  "error", "unread", "messages": [{ "from", "subject", "date" (ms), "mid" (Message-ID ohne <>), "uid" }] }] }
 "uid" (IMAP-UID im Ordner) braucht scripts/mail-action (öffnen / als gelesen markieren).
 """
@@ -18,6 +18,8 @@ import email
 import email.policy
 import email.utils
 import imaplib
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -33,24 +35,51 @@ LATEST = 5
 TIMEOUT = 20
 
 
+def _tb_accounts():
+    """Konten und Passwörter aus Thunderbird (scripts/tb-accounts)."""
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "tb-accounts")
+    loader = importlib.machinery.SourceFileLoader("tb_accounts", path)
+    spec = importlib.util.spec_from_loader("tb_accounts", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+TB = _tb_accounts()
+
+
 def load_accounts():
     """(status, accounts) – fehlende/kaputte Konfig ist ein Zustand, kein Absturz."""
     try:
         with open(CONFIG, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        return "no-config", []
+        data = {}          # ohne secrets.json reichen die Konten aus Thunderbird
     except (OSError, ValueError):
         return "config-error", []
     accounts = data.get("accounts") if isinstance(data, dict) else None
     accounts = [a for a in accounts if isinstance(a, dict) and a.get("name")] if isinstance(accounts, list) else []
+    # Konten aus Thunderbird dazu (gleiches Konto in secrets.json gewinnt); "thunderbirdAccounts": false = aus
+    if not (isinstance(data, dict) and data.get("thunderbirdAccounts") is False):
+        accounts = TB.merge(accounts, TB.accounts())
     return ("ok" if accounts else "no-config"), accounts
 
 
-def password(acc):
-    """App-spezifisches Passwort aus dem Konto-Eintrag oder None."""
+def password_status(acc):
+    """(Passwort, None) oder (None, Status): no-password, tb-missing (nicht in TB), tb-locked (TB-Hauptpasswort),
+    tb-oauth / tb-unsupported (TB-Konto, das die Shell nicht abrufen kann)."""
+    if acc.get("skip"):
+        return None, "tb-" + str(acc["skip"])
+    if TB.wanted(acc):
+        pw, why = TB.lookup(acc)
+        return (pw, None) if pw else (None, "tb-locked" if why == "locked" else "tb-missing")
     pw = acc.get("password")
-    return pw if isinstance(pw, str) and pw else None
+    return (pw, None) if isinstance(pw, str) and pw else (None, "no-password")
+
+
+def password(acc):
+    """App-spezifisches Passwort (Konto-Eintrag oder Thunderbird) oder None."""
+    return password_status(acc)[0]
 
 
 def quote(folder):
@@ -142,9 +171,9 @@ def check(acc):
     if not user:
         out["status"] = "no-user"
         return out
-    pw = password(acc)
+    pw, why = password_status(acc)
     if pw is None:
-        out["status"] = "no-password"
+        out["status"] = why
         return out
 
     folder = cfg.get("folder") or "INBOX"

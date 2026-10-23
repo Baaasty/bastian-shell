@@ -20,7 +20,7 @@ Singleton {
     readonly property var latest: accounts.reduce((l, a) => l.concat((a.messages || []).map(m => Object.assign({ account: a.label, accountName: a.name }, m))), [])
         .sort((x, y) => y.date - x.date)
 
-    // Konten + app-spezifische Passwörter stehen in secrets.json ("accounts"), Anleitung im Repo
+    // Konten kommen aus Thunderbird und secrets.json ("accounts"), Passwort aus TB oder dort; Anleitung im Repo
     readonly property string configPath: "secrets.json"
     readonly property string guidePath: "docs/setup/mail-calendar.md"
 
@@ -31,6 +31,14 @@ Singleton {
             return a.label + ": add your user name in " + configPath + " (accounts)";
         case "no-password":
             return a.label + ": add your app-specific password in " + configPath + " (accounts)";
+        case "tb-missing":
+            return a.label + ": no saved login in Thunderbird, sign in there once";
+        case "tb-locked":
+            return a.label + ": Thunderbird has a primary password, put the password in " + configPath;
+        case "tb-oauth":
+            return a.label + ": signs in via Google/Microsoft (OAuth), the dashboard can’t read it";
+        case "tb-unsupported":
+            return a.label + ": only IMAP over SSL works here (POP or no SSL in Thunderbird)";
         case "auth":
             return a.label + ": login failed, check the app-specific password";
         default:

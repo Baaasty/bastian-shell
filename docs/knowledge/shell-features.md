@@ -142,6 +142,13 @@ Code: `shell/modules/bar/TodoPopout.qml`, `TodoChip.qml`, `shell/services/Notes.
 - „Ins Backlog“ (Glühbirne) nur bei Repo-Projekt: Projekt des Desktops, sonst das VS-Code-Projekt (`Context`); abgehakt erst nach Erfolg von `scripts/backlog add`.
 - Per Super+T ohne Fokus-Griff reicht die Bar die Tasten weiter: Tippen/Rücktaste/Enter landen trotzdem im Feld (`KeyNav.preKey`).
 
+## Mail-/Kalender-Konten und Login aus Thunderbird
+Code: `scripts/tb-accounts` (`accounts`, `merge`, `lookup`, Test `python3 scripts/tests/tb-accounts-test.py`), eingebunden in `load_accounts`/`password_status` von `scripts/mail-status`
+- Konten aus `prefs.js`, Kalender hängen am Mail-Konto mit gleichem Login (iCloud: Mail me.com, Kalender icloud.com). Agenda erkennt TB-Kalender am **Pfad** (`cal_key`), weil TB sich einen festen `pNN-caldav`-Host merkt. `mail-watch` startet neu, wenn sich die Kontenliste ändert – nicht bei `prefs.js`-mtime (TB schreibt ständig).
+- Gilt bei `"password": "thunderbird"`. Gewählt wird das **neueste** gespeicherte Passwort desselben Users unter IMAP- oder CalDAV-Domain: ein App-Passwort gilt für beides, TB speichert es aber je Server (`imap://…me.com`, `https://pNN-caldav.icloud.com`) und aktualisiert oft nur einen.
+- Profil wie `mail-action` (Install-Default aus `profiles.ini`). NSS wird read-only geöffnet und je Abruf wieder geschlossen; in `mail-watch` hinter einer Sperre, weil NSS pro Prozess nur einen Zustand kennt.
+- Mit TB-Hauptpasswort → `tb-locked`, kein Umweg (würde eine Abfrage brauchen).
+
 ## Mail öffnen, als gelesen markieren, löschen
 Code: `shell/services/Mail.qml` (`openMessage`, `markRead`, `trash`), `MailTile.qml` · `scripts/mail-action open|seen|trash [--dry-run]` (Test `python3 scripts/tests/mail-action-test.py`), Abruf `scripts/mail-status` (liefert `uid`), Meldungen `scripts/mail-watch`
 - Nur Kachel und Meldung (der Launcher-Modus `m ` ist seit 2026-10-20 weg).

@@ -5,7 +5,7 @@ die Shell schneidet sich "heute + 7 Tage" selbst heraus.
 
 Ohne Zusatzpakete (urllib + eigener kleiner iCalendar-Leser). Konten wie bei mail-status:
 secrets.json im Repo-Root, Abschnitt "accounts", inkl. app-spezifischem Passwort
-(bleibt im Speicher, nie in argv, Log oder Ausgabe).
+(direkt oder aus Thunderbird, siehe mail-status; bleibt im Speicher, nie in argv, Log oder Ausgabe).
 
 Ablauf pro Konto: current-user-principal -> calendar-home-set -> Kalender (Depth 1),
 dann je Kalender ein calendar-query-REPORT: VEVENT mit time-range (Server soll expandieren,
@@ -14,12 +14,14 @@ Apple-Erinnerungen (neue Reminders) sind per CalDAV nicht erreichbar – nur ech
 
 Ausgabe:
 { "updated": ms, "status": "ok" | "no-config" | "config-error", "range": { "from", "to" (ms, to exklusiv) },
-  "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "auth" | "error", "error" }],
+  "accounts": [{ "name", "label", "status": "ok" | "no-user" | "no-password" | "tb-missing" | "tb-locked" | "tb-oauth" | "tb-unsupported" | "auth" | "error", "error" }],
   "events": [{ "title", "start", "end" (ms), "allDay", "location", "calendar", "color", "account" }],
   "todos":  [{ "title", "due" (ms, 0 = ohne), "allDay", "priority", "calendar", "account" }] }
 """
 import base64
 import datetime as dt
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -33,7 +35,6 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import zoneinfo
 
-CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "secrets.json")
 CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "desktop")
 OUT = os.path.join(CACHE_DIR, "agenda.json")
 MONTHS_BACK = 1     # Zeitraum: ab dem 1. des Vormonats …
@@ -46,23 +47,18 @@ UTC = dt.timezone.utc
 
 # ---------------------------------------------------------------- Konten
 
-def load_accounts():
-    try:
-        with open(CONFIG, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return "no-config", []
-    except (OSError, ValueError):
-        return "config-error", []
-    accounts = data.get("accounts") if isinstance(data, dict) else None
-    accounts = [a for a in accounts if isinstance(a, dict) and a.get("name")] if isinstance(accounts, list) else []
-    return ("ok" if accounts else "no-config"), accounts
+def _mail_status():
+    """Konten + Passwort aus scripts/mail-status (secrets.json und Thunderbird, gleiche Logik wie Mail)."""
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "mail-status")
+    loader = importlib.machinery.SourceFileLoader("mail_status", path)
+    spec = importlib.util.spec_from_loader("mail_status", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
 
 
-def password(acc):
-    """App-spezifisches Passwort aus dem Konto-Eintrag oder None."""
-    pw = acc.get("password")
-    return pw if isinstance(pw, str) and pw else None
+MS = _mail_status()
+load_accounts = MS.load_accounts
 
 
 # ---------------------------------------------------------------- HTTP / WebDAV
@@ -129,6 +125,11 @@ def href_of(root, path):
     return el.text.strip() if el is not None and el.text else None
 
 
+def cal_key(url):
+    """Kalender gleich, wenn der Pfad gleich ist (TB merkt sich pNN-caldav.icloud.com, der Server nennt evtl. einen anderen Host)."""
+    return urllib.parse.urlsplit(url).path.rstrip("/").lower()
+
+
 def calendars(dav, acc_cfg):
     """[(url, name, color, comps)] – comps: Menge aus VEVENT/VTODO."""
     start = acc_cfg.get("url", "")
@@ -148,6 +149,8 @@ def calendars(dav, acc_cfg):
     final, root = dav.propfind(home, "<d:resourcetype/><d:displayname/><a:calendar-color/>"
                                      "<c:supported-calendar-component-set/>", depth=1)
     wanted = set(acc_cfg.get("calendars") or [])
+    # Konto aus Thunderbird: genau dessen (aktive) Kalender, mit Name und Farbe wie in TB
+    tb = {cal_key(h): h for h in acc_cfg.get("hrefs") or []}
     out = []
     for resp in root.findall("d:response", NS):
         href = resp.findtext("d:href", default="", namespaces=NS).strip()
@@ -158,12 +161,19 @@ def calendars(dav, acc_cfg):
         if prop is None or prop.find("d:resourcetype/c:calendar", NS) is None:
             continue
         name = (prop.findtext("d:displayname", default="", namespaces=NS) or "").strip()
-        if wanted and name not in wanted:
+        url = urllib.parse.urljoin(final, href)
+        color = (prop.findtext("a:calendar-color", default="", namespaces=NS) or "").strip()
+        color = color[:7] if color.startswith("#") else ""
+        if tb:
+            own = tb.get(cal_key(url))
+            if own is None:
+                continue
+            name = (acc_cfg.get("names") or {}).get(own) or name
+            color = (acc_cfg.get("colors") or {}).get(own) or color
+        elif wanted and name not in wanted:
             continue
         comps = {c.get("name") for c in prop.findall("c:supported-calendar-component-set/c:comp", NS)}
-        color = (prop.findtext("a:calendar-color", default="", namespaces=NS) or "").strip()
-        out.append((urllib.parse.urljoin(final, href), name, color[:7] if color.startswith("#") else "",
-                    comps or {"VEVENT", "VTODO"}))
+        out.append((url, name, color, comps or {"VEVENT", "VTODO"}))
     return out
 
 
@@ -450,9 +460,9 @@ def check(acc, lo_dt, hi_dt):
     if not user:
         info["status"] = "no-user"
         return info, [], []
-    pw = password(acc)
+    pw, why = MS.password_status(acc)
     if pw is None:
-        info["status"] = "no-password"
+        info["status"] = why
         return info, [], []
     dav = Dav(cfg.get("url", ""), user, pw)
     pw = None

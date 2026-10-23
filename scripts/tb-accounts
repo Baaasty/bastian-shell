@@ -1,0 +1,356 @@
+#!/usr/bin/python3 -I
+"""Mail-/Kalender-Konten und ihre Passwörter aus Thunderbird (nur lesen).
+
+Damit Konten und App-Passwörter nur an einer Stelle gepflegt werden: accounts() liest die Konten (IMAP) und
+CalDAV-Kalender aus prefs.js des Standardprofils; mail-status hängt sie an die Konten aus secrets.json an
+(gleiches Konto dort gewinnt). Passwort: bei "password": "thunderbird" holen mail-status, mail-watch, mail-action
+und agenda-status es von hier. Weg: logins.json des Standardprofils, entschlüsselt mit Thunderbirds eigener NSS (libnss3 per ctypes,
+read-only geöffnet – logins.json und key4.db werden nie geschrieben). Mit Hauptpasswort geht es nicht
+(Grund "locked"), dann bleibt nur ein Passwort direkt in secrets.json.
+
+Das Passwort bleibt im Speicher, nie in argv, Log oder Ausgabe. --check zeigt pro Konto nur "found" oder den Grund.
+"""
+import base64
+import configparser
+import ctypes
+import json
+import os
+import re
+import sys
+import threading
+
+KEYWORD = "thunderbird"
+# Profil-Wurzeln in der Reihenfolge von scripts/app-run (RPM zuerst, altes Flatpak zuletzt)
+PROFILE_ROOTS = [os.path.join(os.path.expanduser("~"), p) for p in
+                 (".thunderbird", ".config/mozilla/thunderbird", ".var/app/org.mozilla.thunderbird_esr/.thunderbird")]
+# TB-Kontoname je Domain, wo der Slug aus dem Host nichtssagend wäre (imap.mail.me.com -> "me")
+NAMES = {"me.com": "icloud", "icloud.com": "icloud", "mac.com": "icloud"}
+# Hosts, die nur mit OAuth gehen (TB speichert dort kein Passwort)
+OAUTH_DOMAINS = ("gmail.com", "googlemail.com", "google.com", "googleusercontent.com",
+                 "outlook.com", "office365.com", "hotmail.com", "live.com")
+AUTH_OAUTH = 10
+SOCKET_SSL = 3
+# NSS kennt nur einen Zustand pro Prozess; mail-watch fragt aus mehreren Threads
+_LOCK = threading.Lock()
+
+
+def profile_dir(roots=None):
+    """Standardprofil der ersten Wurzel mit profiles.ini (Install-Default vor Default=1 vor erstem Profil)."""
+    for root in PROFILE_ROOTS if roots is None else roots:
+        ini = os.path.join(root, "profiles.ini")
+        if not os.path.isfile(ini):
+            continue
+        cp = configparser.ConfigParser(interpolation=None)
+        try:
+            cp.read(ini, encoding="utf-8")
+        except (OSError, configparser.Error):
+            continue
+        profiles = {s: cp[s] for s in cp.sections() if s.startswith("Profile") and cp[s].get("Path")}
+
+        def resolve(sec):
+            path = sec.get("Path")
+            return os.path.join(root, path) if sec.get("IsRelative", "1") == "1" else path
+        for s in cp.sections():
+            if s.startswith("Install") and cp[s].get("Default"):
+                d = cp[s]["Default"]
+                return os.path.join(root, d) if not os.path.isabs(d) else d
+        for sec in profiles.values():
+            if sec.get("Default") == "1":
+                return resolve(sec)
+        if profiles:
+            return resolve(next(iter(profiles.values())))
+    return None
+
+
+def logins_path():
+    prof = profile_dir()
+    return os.path.join(prof, "logins.json") if prof else None
+
+
+USER_PREF = re.compile(r'^user_pref\("([^"]+)",\s*(.*)\);\s*$')
+
+
+def read_prefs(profile):
+    """prefs.js -> {schlüssel: wert}; Werte sind JS-Literale (Strings JSON-kompatibel, Zahlen, true/false)."""
+    prefs = {}
+    try:
+        with open(os.path.join(profile, "prefs.js"), encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except (OSError, TypeError):
+        return prefs
+    for line in lines:
+        m = USER_PREF.match(line.strip())
+        if not m:
+            continue
+        try:
+            prefs[m.group(1)] = json.loads(m.group(2))
+        except ValueError:
+            continue
+    return prefs
+
+
+def _domain(host):
+    labels = (host or "").lower().strip(".").split(".")
+    return ".".join(labels[-2:]) if len(labels) >= 2 else ""
+
+
+def _oauth_host(host):
+    d = _domain(host)
+    return d in OAUTH_DOMAINS
+
+
+def accounts(prefs=None):
+    """Konten aus Thunderbird im secrets.json-Format (password "thunderbird", source "thunderbird").
+    Nicht unterstützte (OAuth, POP, ohne SSL) kommen mit "skip": "oauth" | "unsupported" mit,
+    damit das Dashboard sagt, warum sie fehlen."""
+    if prefs is None:
+        prefs = read_prefs(profile_dir())
+    out = []
+    for acct in str(prefs.get("mail.accountmanager.accounts") or "").split(","):
+        srv = prefs.get("mail.account.%s.server" % acct.strip())
+        if not srv:
+            continue
+
+        def p(key, default=None, srv=srv):
+            return prefs.get("mail.server.%s.%s" % (srv, key), default)
+        typ, host, user = p("type"), p("hostname") or "", p("userName") or ""
+        if typ not in ("imap", "pop3") or not host or not user:
+            continue       # Lokale Ordner, Feeds, News
+        acc = {"name": "", "label": p("name") or user, "user": user, "password": KEYWORD, "source": KEYWORD,
+               "mail": {"host": host, "port": int(p("port") or 993), "folder": "INBOX"}}
+        ssl_on = p("socketType") == SOCKET_SSL or (p("socketType") is None and acc["mail"]["port"] == 993)
+        if p("authMethod") == AUTH_OAUTH or _oauth_host(host):
+            acc["skip"] = "oauth"
+        elif typ != "imap" or not ssl_on:
+            acc["skip"] = "unsupported"   # mail-status spricht nur IMAP über SSL
+        out.append(acc)
+
+    cals = {}
+    for key, val in prefs.items():
+        m = re.match(r"calendar\.registry\.([^.]+)\.(type|uri|username|name|color|disabled)$", key)
+        if m:
+            cals.setdefault(m.group(1), {})[m.group(2)] = val
+    for cid in sorted(cals):
+        c = cals[cid]
+        uri, user = c.get("uri") or "", c.get("username") or ""
+        if c.get("type") != "caldav" or c.get("disabled") is True or not uri.startswith("https://") or not user:
+            continue
+        # Kalender gehört zum Mail-Konto mit gleichem Login (iCloud: Mail auf me.com, Kalender auf icloud.com)
+        acc = next((a for a in out if same_user(a["user"], user) or same_user(user, a["user"])), None)
+        if acc is None:
+            acc = {"name": "", "label": c.get("name") or user, "user": user, "password": KEYWORD, "source": KEYWORD}
+            if _oauth_host(host_of(uri)):
+                acc["skip"] = "oauth"
+            out.append(acc)
+        dav = acc.setdefault("caldav", {"url": uri, "hrefs": [], "names": {}, "colors": {}})
+        dav["hrefs"].append(uri)
+        dav["names"][uri] = c.get("name") or ""
+        if isinstance(c.get("color"), str) and c["color"].startswith("#"):
+            dav["colors"][uri] = c["color"][:7]
+
+    taken = set()
+    for acc in out:
+        host = (acc.get("mail") or {}).get("host") or host_of((acc.get("caldav") or {}).get("url") or "")
+        d = _domain(host)
+        base = NAMES.get(d) or (d.split(".")[0] if d else "thunderbird")
+        name = base if base not in taken else base + "-" + re.sub(r"[^a-z0-9]+", "-", acc["user"].lower().split("@")[0]).strip("-")
+        while name in taken:
+            name += "-2"
+        taken.add(name)
+        acc["name"] = name
+    return out
+
+
+def same_account(a, b):
+    """Gleiches Konto: gleicher Login und mindestens eine gemeinsame Domain (IMAP oder CalDAV)."""
+    ua = (a.get("mail") or {}).get("user") or a.get("user") or ""
+    ub = (b.get("mail") or {}).get("user") or b.get("user") or ""
+    if not (same_user(ua, ub) or same_user(ub, ua)):
+        return False
+    return bool(set(domains(a)) & set(domains(b)))
+
+
+def merge(own, found):
+    """Konten aus secrets.json zuerst; TB-Konten nur, wenn es dasselbe Konto dort noch nicht gibt
+    (eigener Eintrag = eigene Einstellungen, Abschalten durch Weglassen von mail/caldav)."""
+    out = list(own)
+    names = {a.get("name") for a in own}
+    for acc in found:
+        if any(same_account(o, acc) for o in own):
+            continue
+        name = acc["name"]
+        while name in names:
+            name += "-tb"
+        names.add(name)
+        out.append(dict(acc, name=name))
+    return out
+
+
+def fingerprint(accs):
+    """Was sich ändern muss, damit mail-watch neu startet (Konto dazu/weg, Host, User)."""
+    return sorted((a.get("name") or "", (a.get("mail") or {}).get("host") or "", a.get("user") or "",
+                   a.get("skip") or "") for a in accs)
+
+
+def wanted(acc):
+    """Gehört das Konto nach Thunderbird? Nur bei "password": "thunderbird"."""
+    pw = acc.get("password")
+    return isinstance(pw, str) and pw.strip().lower() == KEYWORD
+
+
+def domains(acc):
+    """Domains, unter denen Thunderbird das Konto speichert: letzte zwei Labels von IMAP- und CalDAV-Host
+    (iCloud: me.com + icloud.com – TB legt imap://imap.mail.me.com und https://pNN-caldav.icloud.com an)."""
+    hosts = [(acc.get("mail") or {}).get("host") or ""]
+    url = (acc.get("caldav") or {}).get("url") or ""
+    if "://" in url:
+        hosts.append(url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0])
+    out = []
+    for h in hosts:
+        labels = h.lower().strip(".").split(".")
+        if len(labels) >= 2 and ".".join(labels[-2:]) not in out:
+            out.append(".".join(labels[-2:]))
+    return out
+
+
+def host_of(origin):
+    """imap://imap.mail.me.com / https://p39-caldav.icloud.com:443 -> Hostname."""
+    rest = origin.split("://", 1)[1] if "://" in origin else origin
+    return rest.split("/", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0].lower()
+
+
+def same_user(stored, user):
+    """TB speichert die Apple-ID mal voll, mal ohne Domain."""
+    s, u = (stored or "").strip().lower(), (user or "").strip().lower()
+    return bool(s) and (s == u or s == u.split("@", 1)[0])
+
+
+def pick(entries, user, doms, decrypt):
+    """Neuestes passendes Passwort (ein App-Passwort gilt für IMAP und CalDAV – das zuletzt
+    in TB eingegebene ist das gültige). entries = logins.json["logins"]."""
+    best, best_t = None, -1
+    for e in entries:
+        host = host_of(e.get("hostname") or "")
+        if not any(host == d or host.endswith("." + d) for d in doms):
+            continue
+        if not same_user(decrypt(e.get("encryptedUsername")), user):
+            continue
+        t = e.get("timePasswordChanged") or 0
+        if t > best_t:
+            best, best_t = e, t
+    return decrypt(best.get("encryptedPassword")) if best else None
+
+
+# ---------------------------------------------------------------- NSS
+
+class SECItem(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_uint), ("data", ctypes.c_void_p), ("len", ctypes.c_uint)]
+
+
+class Nss:
+    """Read-only-Sitzung auf die Schlüsseldatenbank eines Profils (with-Block)."""
+
+    def __init__(self, profile):
+        self.profile = profile
+        self.lib = None
+
+    def __enter__(self):
+        lib = ctypes.CDLL("libnss3.so")
+        lib.NSS_Init.argtypes = [ctypes.c_char_p]
+        lib.PK11_GetInternalKeySlot.restype = ctypes.c_void_p
+        lib.PK11_NeedLogin.argtypes = [ctypes.c_void_p]
+        lib.PK11_CheckUserPassword.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.PK11_FreeSlot.argtypes = [ctypes.c_void_p]
+        lib.PK11SDR_Decrypt.argtypes = [ctypes.POINTER(SECItem), ctypes.POINTER(SECItem), ctypes.c_void_p]
+        lib.SECITEM_ZfreeItem.argtypes = [ctypes.POINTER(SECItem), ctypes.c_int]
+        # NSS_Init öffnet read-only (anders als NSS_InitReadWrite)
+        if lib.NSS_Init(("sql:" + self.profile).encode()) != 0:
+            raise OSError("nss-init")
+        self.lib = lib
+        slot = lib.PK11_GetInternalKeySlot()
+        try:
+            if slot and lib.PK11_NeedLogin(slot) and lib.PK11_CheckUserPassword(slot, b"") != 0:
+                raise PermissionError("locked")
+        finally:
+            if slot:
+                lib.PK11_FreeSlot(slot)
+        return self
+
+    def __exit__(self, *exc):
+        if self.lib:
+            self.lib.NSS_Shutdown()
+        return False
+
+    def decrypt(self, b64):
+        if not b64:
+            return None
+        try:
+            raw = base64.b64decode(b64)
+        except ValueError:
+            return None
+        buf = ctypes.create_string_buffer(raw, len(raw))
+        inp = SECItem(0, ctypes.cast(buf, ctypes.c_void_p), len(raw))
+        out = SECItem(0, None, 0)
+        if self.lib.PK11SDR_Decrypt(ctypes.byref(inp), ctypes.byref(out), None) != 0:
+            return None
+        try:
+            return ctypes.string_at(out.data, out.len).decode("utf-8", "replace")
+        finally:
+            self.lib.SECITEM_ZfreeItem(ctypes.byref(out), 0)
+
+
+def lookup(acc):
+    """(passwort, "ok") oder (None, Grund): no-profile, not-found, locked, nss-error."""
+    user = (acc.get("mail") or {}).get("user") or (acc.get("caldav") or {}).get("user") or acc.get("user") or ""
+    path = logins_path()
+    if not path or not os.path.isfile(path):
+        return None, "no-profile"
+    try:
+        with open(path, encoding="utf-8") as f:
+            entries = json.load(f).get("logins") or []
+    except (OSError, ValueError, AttributeError):
+        return None, "no-profile"
+    with _LOCK:
+        try:
+            with Nss(os.path.dirname(path)) as nss:
+                pw = pick(entries, user, domains(acc), nss.decrypt)
+        except PermissionError:
+            return None, "locked"
+        except OSError:
+            return None, "nss-error"
+    return (pw, "ok") if pw else (None, "not-found")
+
+
+def check():
+    """Konten aus Thunderbird und Passwort je Konto: nur found/Grund – nie User oder Passwort."""
+    root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    try:
+        with open(os.path.join(root, "secrets.json"), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    own = [a for a in (data.get("accounts") or []) if isinstance(a, dict) and a.get("name")] if isinstance(data, dict) else []
+    print("profile: %s" % (profile_dir() or "-"))
+    found = accounts()
+    off = isinstance(data, dict) and data.get("thunderbirdAccounts") is False
+    for acc in found:
+        mine = next((o.get("name") for o in own if same_account(o, acc)), None)
+        print("thunderbird %s: mail %s · %d calendar(s)%s%s" % (
+            acc["name"], "-" if not acc.get("mail") else acc.get("skip") or "ok",
+            len((acc.get("caldav") or {}).get("hrefs") or []),
+            " · from secrets.json (%s)" % mine if mine else "", " · off (thunderbirdAccounts)" if off else ""))
+    rc = 0
+    for acc in [a for a in own if wanted(a)] + ([] if off else [a for a in found if not a.get("skip")
+                                                                  and not any(same_account(o, a) for o in own)]):
+        pw, why = lookup(acc)
+        pw = None
+        print("password %s: %s" % (acc.get("name"), "found" if why == "ok" else why))
+        rc |= why != "ok"
+    return rc
+
+
+if __name__ == "__main__":
+    if "--check" not in sys.argv:
+        print(__doc__.strip().splitlines()[0] + "\nusage: tb-accounts --check")
+        sys.exit(2)
+    sys.exit(check())

@@ -19,7 +19,6 @@ Konto + Passwort: secrets.json ("accounts", wie scripts/mail-status). Nie Benutz
 Mit --mid wird vor dem Markieren/Verschieben geprüft, dass die UID noch genau diese Mail ist (sonst nichts markieren, Exit 3).
 """
 import argparse
-import configparser
 import glob
 import imaplib
 import importlib.machinery
@@ -38,9 +37,6 @@ import time
 HERE = os.path.dirname(os.path.realpath(__file__))
 APP_RUN = os.path.join(HERE, "app-run")
 CACHE = os.path.join(os.path.expanduser("~"), ".cache", "desktop", "mail.json")
-# Profil-Wurzeln in der Reihenfolge von scripts/app-run (RPM zuerst, altes Flatpak zuletzt)
-PROFILE_ROOTS = [os.path.join(os.path.expanduser("~"), p) for p in
-                 (".thunderbird", ".config/mozilla/thunderbird", ".var/app/org.mozilla.thunderbird_esr/.thunderbird")]
 WAIT_SECS = 60      # so lange auf den ersten Abgleich nach dem Start warten
 POLL_SECS = 0.5
 TIMEOUT = 20
@@ -56,6 +52,7 @@ def _mail_status():
 
 
 MS = _mail_status()
+PROFILE_ROOTS = MS.TB.PROFILE_ROOTS
 
 
 def say(msg):
@@ -82,31 +79,8 @@ def account_user(acc):
 # Thunderbird-Profil: wo liegt der Index (.msf) des Ordners?
 
 def profile_dir():
-    """Standardprofil der ersten Wurzel mit profiles.ini (Install-Default vor Default=1 vor erstem Profil)."""
-    for root in PROFILE_ROOTS:
-        ini = os.path.join(root, "profiles.ini")
-        if not os.path.isfile(ini):
-            continue
-        cp = configparser.ConfigParser(interpolation=None)
-        try:
-            cp.read(ini, encoding="utf-8")
-        except (OSError, configparser.Error):
-            continue
-        profiles = {s: cp[s] for s in cp.sections() if s.startswith("Profile") and cp[s].get("Path")}
-
-        def resolve(sec):
-            path = sec.get("Path")
-            return os.path.join(root, path) if sec.get("IsRelative", "1") == "1" else path
-        for s in cp.sections():
-            if s.startswith("Install") and cp[s].get("Default"):
-                d = cp[s]["Default"]
-                return os.path.join(root, d) if not os.path.isabs(d) else d
-        for sec in profiles.values():
-            if sec.get("Default") == "1":
-                return resolve(sec)
-        if profiles:
-            return resolve(next(iter(profiles.values())))
-    return None
+    """Standardprofil (gleiche Suche wie scripts/tb-accounts)."""
+    return MS.TB.profile_dir(PROFILE_ROOTS)
 
 
 PREF = re.compile(r'user_pref\("mail\.server\.(server\d+)\.([A-Za-z.-]+)",\s*"?(.*?)"?\);')

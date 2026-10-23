@@ -19,7 +19,7 @@ Column {
             id: ico
             readonly property string why: hint.problems.length ? hint.problems[0].status : ""
             name: hint.status === "loading" ? "hourglass_empty"
-                : why === "no-password" || why === "auth" ? "key"
+                : why === "no-password" || why.startsWith("tb-") || why === "auth" ? "key"
                 : why === "error" ? "cloud_off" : "person_add"
             size: 18
             color: Theme.textFaint
@@ -38,7 +38,7 @@ Column {
     MonoTxt {
         // Anleitung nur, solange Benutzer/Passwort/Konto fehlen (nicht bei Offline o. Ä.)
         readonly property string why: hint.problems.length ? hint.problems[0].status : ""
-        visible: hint.status !== "loading" && (hint.status !== "ok" || why === "no-user" || why === "no-password" || why === "auth")
+        visible: hint.status !== "loading" && (hint.status !== "ok" || why === "no-user" || why === "no-password" || why.startsWith("tb-") || why === "auth")
         width: parent.width
         leftPadding: 28
         wrapMode: Text.Wrap

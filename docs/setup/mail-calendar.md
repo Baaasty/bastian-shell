@@ -1,19 +1,29 @@
 # Mail + Kalender (iCloud, später Stalwart)
 
 Das Dashboard zeigt ungelesene Mails (IMAP, nur lesen) und Termine/Todos (CalDAV).
-Alles steht in `secrets.json` (Repo-Root, gitignored) im Abschnitt `"accounts"`.
+Konten kommen **aus Thunderbird**: Konto (und Kalender) dort anlegen reicht – Mail-Kachel, Meldungen, Codes und
+Agenda nehmen es beim nächsten Abruf mit, mit den Kalendern, Namen und Farben wie in Thunderbird.
+Ein Eintrag in `secrets.json` (Repo-Root, gitignored, Abschnitt `"accounts"`) ist nur nötig für eigene Einstellungen
+(siehe unten) oder Konten ohne Thunderbird.
+
+**Geht nicht:** Gmail/Outlook (Thunderbird meldet sich per OAuth an, es gibt kein Passwort zum Mitlesen), POP-Konten
+und IMAP ohne SSL – das Dashboard zeigt dafür einen Hinweis.
 
 ## 1. App-spezifisches Passwort holen (iCloud)
 
 1. [account.apple.com](https://account.apple.com) → **Anmelden & Sicherheit** → **App-spezifische Passwörter**
-2. Neues Passwort, Name z. B. `desktop`
+2. Neues Passwort, Name z. B. `thunderbird`
 3. Passwort kopieren (Format `xxxx-xxxx-xxxx-xxxx`)
 
-Nie das normale Apple-ID-Passwort nehmen.
+Nie das normale Apple-ID-Passwort nehmen. Apple löscht alle App-Passwörter, wenn sich das Apple-ID-Passwort
+ändert – dann meldet das Dashboard „login failed“ und es braucht ein neues.
 
-## 2. In `secrets.json` eintragen
+## 2. In Thunderbird eintragen
 
-Nur diese zwei Felder im iCloud-Eintrag ausfüllen:
+Das Passwort steht **nur in Thunderbird** (er fragt beim nächsten Abruf danach, „Passwort speichern“ anhaken).
+Die Shell holt es sich dort (`scripts/tb-accounts`), damit es nicht an zwei Stellen gepflegt werden muss.
+Eigener Eintrag in `secrets.json` (z. B. für `codes`, `notify`, `magicLinks`) – er **ersetzt** das gleiche
+Thunderbird-Konto (gleicher User, gleiche Domain); Passwort trotzdem aus Thunderbird:
 
 ```json
 "accounts": [
@@ -21,17 +31,20 @@ Nur diese zwei Felder im iCloud-Eintrag ausfüllen:
     "name": "icloud",
     "label": "iCloud",
     "user": "deine-apple-id@icloud.com",
-    "password": "xxxx-xxxx-xxxx-xxxx",
+    "password": "thunderbird",
     ...
   }
 ]
 ```
 
-- `user` = Apple-ID-Mail
-- `password` = app-spezifisches Passwort
-- Rest (`mail`, `caldav`) bleibt wie er ist.
-- Optional: `caldav.calendars` = Liste von Kalendernamen (leer = alle).
-- `mail` oder `caldav` weglassen = dieser Dienst aus.
+- `user` = Apple-ID-Mail (wie in Thunderbird).
+- Neues Passwort in Thunderbird gespeichert → `mail-watch` merkt es selbst (≤ 30 s), Dashboard beim nächsten Abruf.
+- Prüfen: `scripts/tb-accounts --check` (gefundene Konten, Kalender, Passwort „found“ oder Grund – nie das Passwort).
+- Geht nicht mit **Hauptpasswort** in Thunderbird (Dashboard: „primary password“) – dann das App-Passwort
+  direkt bei `password` eintragen statt `"thunderbird"`.
+- Mit eigenem Eintrag gelten dessen Kalender (`caldav.url`, `calendars` = Namen, leer = alle), nicht die Auswahl in Thunderbird.
+- `mail` oder `caldav` weglassen = dieser Dienst aus (so lässt sich ein Thunderbird-Konto auch ausblenden).
+- Gar keine Konten aus Thunderbird: `"thunderbirdAccounts": false` (oberste Ebene in `secrets.json`).
 
 ## 3. Abrufen
 
@@ -39,7 +52,8 @@ Nur diese zwei Felder im iCloud-Eintrag ausfüllen:
 scripts/rice feeds
 ```
 
-Zeigt pro Dienst den Status (`ok`, `no-user`, `no-password`, `auth` = Login falsch).
+Zeigt pro Dienst den Status (`ok`, `no-user`, `no-password`, `tb-missing` = nicht in Thunderbird gespeichert,
+`tb-locked` = Hauptpasswort, `tb-oauth`/`tb-unsupported` = geht nicht, siehe oben, `auth` = Login falsch).
 Danach läuft es automatisch per Timer.
 
 ## Stalwart (später)

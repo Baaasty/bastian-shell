@@ -1508,7 +1508,7 @@ def check():
     """Nur lesen: Login, Fähigkeiten, Papierkorb, 3 s IDLE."""
     accs = mail_accounts()
     if not accs:
-        print("no mail account with user + password in secrets.json")
+        print("no mail account with user + password in secrets.json (or Thunderbird: scripts/tb-accounts --check)")
         return 1
     rc = 0
     for acc in accs:
@@ -1550,6 +1550,19 @@ def check():
     return rc
 
 
+def config_stamp():
+    """mtimes von secrets.json und Thunderbirds logins.json (neues App-Passwort in TB wirkt ohne Neustart)
+    + Kontenliste (Konto in TB dazu/weg; nicht die mtime von prefs.js – TB schreibt sie ständig)."""
+    stamp = []
+    for path in (CONFIG, MS.TB.logins_path()):
+        try:
+            stamp.append(os.stat(path).st_mtime if path else 0)
+        except OSError:
+            stamp.append(0)
+    stamp.append(MS.TB.fingerprint(MS.load_accounts()[1]))
+    return stamp
+
+
 def main():
     if "--selftest" in sys.argv:
         rc = selftest()
@@ -1559,21 +1572,15 @@ def main():
         sys.exit(check())
     socket.setdefaulttimeout(TIMEOUT)
     accs = mail_accounts()
-    try:
-        mtime = os.stat(CONFIG).st_mtime
-    except OSError:
-        mtime = 0
+    mtime = config_stamp()
     state = State()
     for acc in accs:
         threading.Thread(target=Watcher(acc, state).run, name=acc["name"], daemon=True).start()
     log("watching %d account(s)" % len(accs))
-    # secrets.json geändert (Konto/Passwort/Einstellungen) -> neu starten
+    # secrets.json oder TB-Passwörter geändert (Konto/Passwort/Einstellungen) -> neu starten
     while True:
         time.sleep(30)
-        try:
-            now = os.stat(CONFIG).st_mtime
-        except OSError:
-            now = 0
+        now = config_stamp()
         if now != mtime:
             log("config changed, restarting")
             os.execv(sys.executable, [sys.executable, "-I", os.path.realpath(__file__)])
