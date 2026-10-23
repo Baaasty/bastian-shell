@@ -9,8 +9,8 @@ import qs.components
 // Reiter: Services (pro Projekt: Dev-Server + Container, unbekannte unter „Other“, darunter „Not running“ mit Start),
 // Containers (alle podman/docker-Container außer Distrobox/Toolbox), Ports (alle eigenen lauschenden Ports, auch Apps),
 // Server (Web-Konsolen aus config/consoles.json + Server aus scripts/sshs mit Upload / Files / Terminal; früher eigener Chip).
-//   Pro sshs-Server: Benutzer-Pille (Anmelde-Benutzer ↔ root per su, Root-Login per SSH bleibt aus) und Container-Knopf,
-//   der die Container des Servers darunter aufklappt – nach Projekt (Compose-/Stack-Name), laufend/gestoppt, Ports.
+//   Pro sshs-Server ein Container-Knopf, der die Container des Servers darunter aufklappt – nach Projekt
+//   (Compose-/Stack-Name), laufend/gestoppt, Ports.
 // Zeile anklicken = im Browser öffnen (Helium). Stoppen immer mit schlanker Rückfrage in der Zeile.
 // Daten + Aktionen: DevServices.qml → scripts/devservices, Servers.qml → scripts/sshs.
 // Doku: docs/knowledge/shell-features.md, docs/knowledge/shell-features.md
@@ -422,44 +422,6 @@ PopupWindow {
         }
     }
 
-    // Benutzer-Pille in der sshs-Zeile: Klick schaltet Anmelde-Benutzer ↔ root (sshs tippt nach der Anmeldung su)
-    component UserPill: Rectangle {
-        id: up
-        property string name
-        property string login
-        readonly property bool on: Servers.isRoot(name)
-        width: upRow.implicitWidth + 14
-        height: 20
-        radius: 10
-        color: on ? Theme.accentFill : upArea.containsMouse ? Theme.surfaceRaised : Theme.surface
-        Behavior on color { ColorAnimation { duration: pop.quick } }
-        Row {
-            id: upRow
-            anchors.centerIn: parent
-            spacing: 3
-            Icon {
-                anchors.verticalCenter: parent.verticalCenter
-                name: up.on ? "shield_person" : "person"
-                size: 13
-                color: up.on ? Theme.accentText : Theme.textFaint
-            }
-            Txt {
-                anchors.verticalCenter: parent.verticalCenter
-                text: up.on ? "root" : (up.login || "user")
-                font.pixelSize: Theme.fontXs
-                font.weight: Font.Normal
-                color: up.on ? Theme.accentText : Theme.textMuted
-            }
-        }
-        MouseArea {
-            id: upArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: Servers.setRoot(up.name, !up.on)
-        }
-    }
-
     // Container eines sshs-Servers (aufgeklappt unter der Zeile): Projekt-Gruppen aus `sshs ps --json`
     component ServerContainers: Column {
         id: sc
@@ -492,15 +454,6 @@ PopupWindow {
                 anchors.rightMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
-                // ohne Docker-Rechte des Anmelde-Benutzers: Terminal, su, docker ps
-                Btn {
-                    visible: !!sc.d && !sc.d.ok && (sc.d.denied || []).length > 0
-                    small: true
-                    icon: "shield_person"
-                    text: "As root in terminal"
-                    onClicked: pop.run(() => Servers.rootRun(sc.name, (sc.d.denied[0] || "docker")
-                        + " ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"))
-                }
                 IconBtn {
                     icon: "refresh"
                     enabled: !Servers.psLoading
@@ -1439,14 +1392,8 @@ PopupWindow {
                                                 spacing: 8
                                                 Txt {
                                                     id: shName
-                                                    width: Math.min(implicitWidth, parent.width - shUser.width - 8 - (shAgo.visible ? shAgo.implicitWidth + 8 : 0))
+                                                    width: Math.min(implicitWidth, parent.width - (shAgo.visible ? shAgo.implicitWidth + 8 : 0))
                                                     text: sh.s.name
-                                                }
-                                                UserPill {
-                                                    id: shUser
-                                                    anchors.verticalCenter: shName.verticalCenter
-                                                    name: sh.s.name
-                                                    login: sh.s.user
                                                 }
                                                 Txt {
                                                     id: shAgo
@@ -1461,7 +1408,7 @@ PopupWindow {
                                             MonoTxt {
                                                 width: parent.width
                                                 text: sh.busy ? "Uploading " + Servers.upCount + (Servers.upCount === 1 ? " item…" : " items…")
-                                                    : Servers.where(sh.s) + (shUser.on ? " · then su" : "")
+                                                    : Servers.where(sh.s)
                                                 elide: Text.ElideMiddle
                                                 color: sh.busy ? Theme.accentText : Theme.textFaint
                                                 font.pixelSize: Theme.fontXs

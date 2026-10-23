@@ -142,9 +142,8 @@ Server aus dem Terminal (`scripts/sshs`, Befehle: `sshs --help`; Reiter in der B
 - Ein Server = ein Kitty-Fenster (Klasse `sshs`, `config/sshs/kitty.conf`); pro Tab `kitten ssh` und yazi über
   `sftp://<server>` übereinander, Strg+Leertaste schaltet um, der Ordner wandert mit (`config/sshs/sshs_kitten.py`,
   `config/yazi/init.lua`).
-- Auf dem Server legt jede Verbindung nur `~/.local/share/sshs` an (Bash-Start, statisches eza/yazi von GitHub);
-  sonst bleibt der Server unverändert. Ein eigenes `su` startet die neue Shell wieder darüber, damit Kitty Ordner und Prompt
-  kennt; nach `su` läuft yazi in der su-Shell, Up-/Downloads gehen über Zwischenordner des Anmelde-Benutzers.
+- Auf dem Server nur normales `kitten ssh` (Terminalbeschreibung + Kittys Shell-Integration für den Ordner), sonst nichts.
+  TERM ist `xterm-256color`: `xterm-kitty` kennt dort nur der Anmelde-Benutzer, nach `sudo -i`/`su` gab es sonst Fehler.
 - Server in `~/.ssh/config.d/sshs.conf` (lokal, nicht im Repo). Anmeldung über den SSH-Agenten; Passwörter speichert sshs nie.
 
 ## Sonstiges

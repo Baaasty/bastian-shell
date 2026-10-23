@@ -203,11 +203,12 @@ Code: `scripts/devservices` (`show` = Test ohne Shell), `shell/services/DevServi
 - Chip-Klick öffnet immer den Reiter Services; Server nur per Super+Alt+H / Bar-Modus `H`.
 
 ## Server (sshs)
-Code: `shell/services/Servers.qml`, Reiter in `DevPopout.qml`, `scripts/sshs`, `config/sshs/sshs_watcher.py`, `config/sshs/remote/` · Konfig: `config/consoles.json`, private Adressen in `~/.config/desktop/consoles.json` (gleiche `id` ersetzt Felder) · Terminal-Seite: [theming.md → sshs](theming.md#sshs)
+Code: `shell/services/Servers.qml`, Reiter in `DevPopout.qml`, `scripts/sshs`, `config/sshs/sshs_watcher.py` · Konfig: `config/consoles.json`, private Adressen in `~/.config/desktop/consoles.json` (gleiche `id` ersetzt Felder) · Terminal-Seite: [theming.md → sshs](theming.md#sshs)
 - Private URLs nie ins öffentliche Repo; ohne Dokploy-URL ist die Zeile ausgegraut. Bewusst keine Konsolen-Links pro Projekt.
-- Root-Login per SSH bleibt aus: „root“ = Anmelde-Benutzer + `su` (Passwort tippst du). Upload geht immer als Anmelde-Benutzer nach `~`.
+- Alles läuft als Anmelde-Benutzer (Root-Login per SSH ist auf den Servern aus); root nur im Terminal per `sudo -i`/`su -`.
+  Dateien, Up- und Downloads sehen dann weiter nur, was der Anmelde-Benutzer darf. Upload aus der Bar geht nach `~`.
 - Upload fragt nie: Schlüssel nicht im Agenten → „Login failed“ → einmal per Terminal verbinden, dann neu. Nur ein Upload gleichzeitig.
-- Der Watcher gibt nach 3 min ohne Prompt auf.
+- „Files“ wartet auf die erste Prompt, gibt nach 3 min auf (dann bleibt das Terminal).
 
 ## Workspace-Leiste: Fenster ziehen
 Code: `shell/modules/workbar/WorkBar.qml` (`wdMon`, `monAt`), `shell/services/Hypr.qml` (`moveToSlot`)

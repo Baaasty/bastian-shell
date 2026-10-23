@@ -4,7 +4,6 @@
   sshs                Liste aller Server (fzf): Enter verbindet · Strg+N neuer Server · Strg+E Liste bearbeiten
   sshs <name>         direkt verbinden
   sshs <name> --files verbinden und gleich die Dateien (yazi) zeigen, sobald die Anmeldung steht
-  sshs <name> --su [--files | --run <befehl>]   verbinden, gleich su (root-Passwort), danach Dateien bzw. Befehl
   sshs add          neuen Server anlegen (Name, Adresse, Benutzer, Port, Schlüssel; optional Schlüssel hochladen)
   sshs edit [name]    Server bearbeiten (Formular, prüft danach den Schlüssel) · Strg+D löschen · Strg+O Datei öffnen
   sshs rm <name>      Server entfernen
@@ -17,8 +16,7 @@
   sshs install|off|status
 
 Ein Server = ein eigenes Kitty-Fenster (Klasse "sshs", config/sshs/kitty.conf):
-  Strg+Leertaste   Terminal <-> Dateien (yazi per SFTP), der Ordner wandert jeweils mit;
-                   nach su (z. B. root) läuft yazi stattdessen direkt in der su-Shell auf dem Server
+  Strg+Leertaste   Terminal <-> Dateien (yazi per SFTP), der Ordner wandert jeweils mit
   Strg+Shift+T     neuer Tab zum selben Server, im aktuellen Ordner
   Strg+Shift+U     Dateien hochladen in den Ordner, der gerade offen ist (Terminal oder Dateien)
   Strg+Shift+D     Dateien aus diesem Ordner herunterladen (→ ~/Downloads)
@@ -29,10 +27,8 @@ Server stehen in ~/.ssh/config.d/sshs.conf (nicht im Repo; eingebunden per "Incl
 Dateien (yazi) melden sich über den SSH-Agenten an (ssh-agent.socket, AddKeysToAgent): Die Terminal-Verbindung
 legt den Schlüssel dort ab, Passwörter speichert sshs nie.
 
-Auf dem Server: Jede Verbindung kopiert config/sshs/remote (+ eza) nach ~/.local/share/sshs und startet die Bash
-darüber – normale Startdateien, dazu ls/ll/la/lt mit eza, su behält die Shell-Integration. Für Dateien nach su
-kopiert sshs nach der Anmeldung einmalig ein statisches yazi dorthin (Hintergrund, ~40 MB). Up-/Downloads als root
-laufen über ~/.local/share/sshs/in|out des Anmelde-Benutzers. Sonst bleibt der Server unverändert.
+Auf dem Server: normales kitten ssh (Terminalbeschreibung + Shell-Integration für den Ordner), sonst nichts.
+Dateien, Up- und Downloads laufen immer als Anmelde-Benutzer; root wird man im Terminal selbst (sudo -i, su -).
 """
 import glob
 import json
@@ -62,13 +58,7 @@ LINKS = {
     HOME / ".local/bin/sshs": ROOT / "scripts/sshs",
 }
 GIT_HOSTS = {"github.com", "gitlab.com", "codeberg.org", "bitbucket.org", "ssh.dev.azure.com"}
-EZA_VERSION = "v0.23.5"
-EZA = HOME / ".cache/sshs/eza"      # statisch (musl), läuft auf jedem x86_64-Server
-YAZI_VERSION = "v26.9.1"
-YAZI_BIN = HOME / f".cache/sshs/yazi-{YAZI_VERSION}"   # statisch (musl), für Dateien nach su
-REMOTE_DIR = ".local/share/sshs"
 WATCHER = ROOT / "config/sshs/sshs_watcher.py"
-RUNTIME = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "sshs")
 AGENT_SOCK = os.path.join(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"), "ssh-agent.socket")
 
 
@@ -154,110 +144,24 @@ def _agent_env() -> dict:
     return env
 
 
-def _ensure_eza(quiet=True) -> bool:
-    if EZA.exists():
-        return True
-    import io, tarfile, urllib.request
-    url = (f"https://github.com/eza-community/eza/releases/download/{EZA_VERSION}/"
-           "eza_x86_64-unknown-linux-musl.tar.gz")
-    try:
-        data = urllib.request.urlopen(url, timeout=20).read()
-        with tarfile.open(fileobj=io.BytesIO(data)) as t:
-            member = next(m for m in t.getmembers() if os.path.basename(m.name) == "eza" and m.isfile())
-            blob = t.extractfile(member).read()
-    except Exception as e:
-        if not quiet:
-            print(f"  eza nicht geladen ({e}) – auf dem Server bleibt das normale ls")
-        return False
-    EZA.parent.mkdir(parents=True, exist_ok=True)
-    tmp = EZA.with_suffix(".part")
-    tmp.write_bytes(blob)
-    tmp.chmod(0o755)
-    tmp.rename(EZA)
-    if not quiet:
-        print(f"  eza {EZA_VERSION} → {EZA}")
-    return True
-
-
-def _ensure_yazi() -> bool:
-    """yazi (musl) einmal laden; landet nach su auf dem Server (_remote_setup)."""
-    if YAZI_BIN.exists():
-        return True
-    import io, urllib.request, zipfile
-    url = (f"https://github.com/sxyazi/yazi/releases/download/{YAZI_VERSION}/"
-           "yazi-x86_64-unknown-linux-musl.zip")
-    try:
-        data = urllib.request.urlopen(url, timeout=60).read()
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            blob = z.read(next(n for n in z.namelist() if n.endswith("/yazi")))
-    except Exception:
-        return False
-    YAZI_BIN.parent.mkdir(parents=True, exist_ok=True)
-    tmp = YAZI_BIN.with_suffix(".part")
-    tmp.write_bytes(blob)
-    tmp.chmod(0o755)
-    tmp.rename(YAZI_BIN)
-    return True
-
-
-def _remote_setup(host: str):
-    """Nach dem Verbinden im Hintergrund (sshs _setup): Ordner für Up-/Downloads als root anlegen und yazi auf den
-    Server kopieren, falls es dort fehlt oder veraltet ist. Wartet, bis die Terminal-Anmeldung den Schlüssel in den
-    Agenten gelegt hat (BatchMode, fragt nie), höchstens 3 min."""
-    import time
-    env, mux = _agent_env(), _mux()
-    probe = (f"mkdir -p {REMOTE_DIR}/in {REMOTE_DIR}/out {REMOTE_DIR}/bin && uname -m && "
-             f"cat {REMOTE_DIR}/bin/.yazi 2>/dev/null; true")
-    for _ in range(36):
-        r = subprocess.run(["ssh", *mux, "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", host, probe],
-                           capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)
-        if r.returncode == 0:
-            break
-        time.sleep(5)
-    else:
-        return
-    lines = r.stdout.split()
-    if not lines or lines[0] != "x86_64" or (len(lines) > 1 and lines[1] == YAZI_VERSION):
-        return
-    if not _ensure_yazi():
-        return
-    part = f"{REMOTE_DIR}/bin/yazi.part"
-    if subprocess.run(["scp", *mux, "-C", "-q", "-o", "BatchMode=yes", str(YAZI_BIN), f"{host}:{part}"],
-                      env=env, stdin=subprocess.DEVNULL, capture_output=True).returncode != 0:
-        return
-    subprocess.run(["ssh", *mux, "-o", "BatchMode=yes", host,
-                    f"chmod 755 {part} && mv -f {part} {REMOTE_DIR}/bin/yazi && echo {YAZI_VERSION} > {REMOTE_DIR}/bin/.yazi"],
-                   env=env, stdin=subprocess.DEVNULL, capture_output=True)
-
-
 def ssh_exec(host: str, cwd: str = ""):
-    """kitten ssh mit sshs-Shell auf dem Server (eigene bashrc, eza). Läuft im Kitty-Fenster, auch für neue Tabs."""
-    argv = ["kitten", "ssh",
-            "--kitten", f"copy=--dest {REMOTE_DIR} {ROOT / 'config/sshs/remote'}",
-            "--kitten", f"login_shell=${{HOME}}/{REMOTE_DIR}/bin/bash"]
-    if _ensure_eza():
-        argv += ["--kitten", f"copy=--dest {REMOTE_DIR}/bin/eza {EZA}"]
-    if (theme := HOME / ".config/yazi/theme.toml").exists():      # yazi nach su sieht aus wie lokal
-        argv += ["--kitten", f"copy=--dest {REMOTE_DIR}/yazi/theme.toml {theme}"]
+    """kitten ssh im Kitty-Fenster, auch für neue Tabs. Kittys Shell-Integration meldet den Ordner (OSC 7)."""
+    argv = ["kitten", "ssh"]
     if cwd:
         argv += ["--kitten", f"cwd={cwd}"]
     os.execvp("kitten", argv + [host])
 
 
-def connect(host: str, files: bool = False, su: bool = False, run: str = ""):
+def connect(host: str, files: bool = False):
     if host not in hosts():
         sys.exit(f"Unbekannter Server: {host}  (sshs add · sshs list)")
     _touch(host)
     sync(quiet=True)
-    _ensure_eza()
     session = tempfile.NamedTemporaryFile("w", prefix="sshs-", suffix=".session", delete=False)
     v = vfs_name(host)
-    # Watcher hängt an jedem Terminal (Downloads als root); sshs_then = was er nach der ersten Prompt erledigt:
-    # su tippen (Passwort gibst du selbst ein), dann auf Dateien umschalten bzw. sshs_run ausführen
-    then = ",".join(x for x, on in (("su", su), ("files", files), ("run", bool(run))) if on)
-    extra = (f"--var sshs_then={then} " if then else "") + (f"--var sshs_run={shlex.quote(run)} " if run else "")
+    # --files: der Watcher schaltet nach der ersten Prompt einmal auf Dateien (dann liegt der Schlüssel im Agenten)
+    extra = f"--var sshs_then=files --watcher {shlex.quote(str(WATCHER))} " if files else ""
     session.write(f"launch --var sshs=shell --var sshs_host={shlex.quote(host)} --var sshs_vfs={v} {extra}"
-                  f"--watcher {shlex.quote(str(WATCHER))} "
                   f"{shlex.quote(str(HOME / '.local/bin/sshs'))} _ssh {shlex.quote(host)}\n")
     session.close()
     cmd = ["kitty", "--config", str(KITTY / "sshs.conf"), "--class", "sshs", "--session", session.name]
@@ -265,8 +169,6 @@ def connect(host: str, files: bool = False, su: bool = False, run: str = ""):
         cmd = ["uwsm", "app", "--", *cmd]
     subprocess.Popen(cmd, env=_agent_env(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, start_new_session=True)
-    subprocess.Popen([str(HOME / ".local/bin/sshs"), "_setup", host], env=_agent_env(), stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 def _row(h: str) -> str:
@@ -560,16 +462,14 @@ def _pick_server() -> str:
     return r.stdout.split("\t")[0].strip()
 
 
-def upload(host: str = "", remote: str = "", stage: str = ""):
-    """stage = Kennung beim Upload als root (Kitten): erst nach ~/.local/share/sshs/in/<stage> des Anmelde-Benutzers,
-    die su-Shell holt es danach in `remote` (_sshs_take, ausgelöst vom Watcher über die Marke in RUNTIME)."""
+def upload(host: str = "", remote: str = ""):
     host = host or _pick_server()
     if not host:
         return
     if host not in hosts():
         sys.exit(f"Unbekannter Server: {host}")
     _touch(host)
-    where = (remote or "~") + (" (als root)" if stage else "")
+    where = remote or "~"
     r = subprocess.run(
         f"{LOCAL_LIST} | fzf --multi --scheme=path --prompt='hochladen ❯ ' "
         f"--header={shlex.quote(f'→ {host}:{where}   Tab = mehrere · Enter = hochladen · Esc = abbrechen')} "
@@ -580,36 +480,9 @@ def upload(host: str = "", remote: str = "", stage: str = ""):
     if not files:
         return
     target = f"{host}:{remote.rstrip('/') + '/' if remote else ''}"
-    mux = []
-    if stage:
-        mux, box = _mux(), f"{REMOTE_DIR}/in/{stage}"
-        if subprocess.run(["ssh", *mux, host, f"mkdir -p {shlex.quote(box)}"], env=_agent_env()).returncode != 0:
-            print("\n  Zwischenablage auf dem Server nicht anlegbar.")
-            return _hold()
-        target = f"{host}:{box}/"
     print(f"\n  {len(files)} Datei(en) → {host}:{where}\n")
-    ok = subprocess.run(["scp", *mux, "-r", "-p", "--", *files, target], env=_agent_env()).returncode == 0
-    if ok and stage:
-        os.makedirs(RUNTIME, mode=0o700, exist_ok=True)
-        pathlib.Path(RUNTIME, f"take-{stage}").touch()
-        print("\n  hochgeladen – die root-Shell verschiebt es gleich in den Ordner.")
-    else:
-        print("\n  fertig." if ok else "\n  Hochladen fehlgeschlagen (siehe oben).")
-    _hold()
-
-
-def fetch(host: str, tok: str):
-    """Download als root, zweiter Teil: Die su-Shell hat die Auswahl nach ~/.local/share/sshs/out/<tok> kopiert
-    (_sshs_give), hier geht sie per scp nach ~/Downloads, danach wird aufgeräumt. Vom Watcher als Overlay gestartet."""
-    if not re.fullmatch(r"[0-9]+", tok):
-        sys.exit("ungültige Kennung")
-    mux, env, box = _mux(), _agent_env(), f"{REMOTE_DIR}/out/{tok}"
-    target = _downloads()
-    target.mkdir(parents=True, exist_ok=True)
-    print(f"\n  ← {host} (als root)  →  {_tilde(str(target))}\n")
-    ok = subprocess.run(["scp", *mux, "-r", "-p", f"{host}:{box}/*", str(target)], env=env).returncode == 0
-    subprocess.run(["ssh", *mux, host, f"rm -rf -- {shlex.quote(box)}"], env=env, stdin=subprocess.DEVNULL)
-    print(f"\n  {OK}✓{R} fertig: {_tilde(str(target))}" if ok else "\n  Herunterladen fehlgeschlagen (siehe oben).")
+    ok = subprocess.run(["scp", "-r", "-p", "--", *files, target], env=_agent_env()).returncode == 0
+    print("\n  fertig." if ok else "\n  Hochladen fehlgeschlagen (siehe oben).")
     _hold()
 
 
@@ -640,7 +513,7 @@ def download(host: str = "", remote: str = ""):
         where = where[2:]
     cd = "cd" if where == "~" else f"cd -- {shlex.quote(where)}"
     mux, env = _mux(), _agent_env()
-    skip = "-name .git -o -name node_modules -o -name .cache -o -name kitty-ssh-kitten -o -path ./.local/share/sshs"
+    skip = "-name .git -o -name node_modules -o -name .cache -o -name kitty-ssh-kitten"
     ls = f"{cd} && find . -mindepth 1 -maxdepth 4 \\( {skip} \\) -prune -o -printf '%y %P\\n' 2>/dev/null | head -20000"
     r = subprocess.run(["ssh", *mux, host, ls], capture_output=True, text=True, env=env)
     if r.returncode not in (0, 141) and not r.stdout:
@@ -891,7 +764,6 @@ def install():
         link.symlink_to(target)
         print(f"  {link} -> {target}")
     _ensure_include()
-    _ensure_eza(quiet=False)
     subprocess.run(["systemctl", "--user", "enable", "--now", "ssh-agent.socket"], check=False)
     subprocess.run(["systemctl", "--user", "set-environment", f"SSH_AUTH_SOCK={AGENT_SOCK}"], check=False)
     print("  SSH-Agent: ssh-agent.socket an")
@@ -936,9 +808,7 @@ def main():
     elif cmd == "rm" and len(a) > 1:
         rm(a[1])
     elif cmd in ("up", "upload"):
-        rest = [x for x in a[1:] if not x.startswith("--stage=")]
-        stage = next((x.split("=", 1)[1] for x in a[1:] if x.startswith("--stage=")), "")
-        upload(*rest[:2], stage=stage)
+        upload(*a[1:3])
     elif cmd in ("down", "download"):
         download(*a[1:3])
     elif cmd == "_peek" and len(a) > 3:
@@ -954,17 +824,12 @@ def main():
         put(a[1:])
     elif cmd == "ps" and len(a) > 1:
         ps(a[1], "--json" in a[2:])
-    elif cmd == "fetch" and len(a) > 2:
-        fetch(a[1], a[2])
-    elif cmd == "_setup" and len(a) > 1:
-        _remote_setup(a[1])
     elif cmd == "sync":
         sync()
     elif cmd in ("install", "off", "status"):
         {"install": install, "off": off, "status": status}[cmd]()
     else:
-        run = a[a.index("--run") + 1] if "--run" in a[1:-1] else ""
-        connect(cmd, files="--files" in a[1:], su="--su" in a[1:], run=run)
+        connect(cmd, files="--files" in a[1:])
 
 
 main()
