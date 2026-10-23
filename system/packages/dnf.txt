@@ -86,6 +86,7 @@ discord                        # RPM Fusion nonfree · Bar-Chip, discord-bridge 
 spotify-client                 # Repo negativo17 fedora-spotify (repos.txt) · Updates per dnf (bis 2026-10-20 lpf-spotify-client, dnf history 54/55)
 thunderbird                    # Fedora, Release statt ESR · Profil ~/.thunderbird, Theme aus theme/gen/thunderbird.py
 steam                          # RPM Fusion nonfree · Bibliothek ~/Data/Games/SteamLibrary (in Steam hinzufügen)
+prismlauncher                  # COPR g3tchoo/prismlauncher (repos.txt) · Minecraft; Modpack ~/Data/Games/Minecraft/*.mrpack importieren
 mpv                            # Standard-Videoplayer · system/copies/.config/mimeapps.list
 yt-dlp
 kde-connect                    # Handy-Kopplung (kdeconnectd)

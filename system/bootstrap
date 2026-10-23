@@ -53,7 +53,7 @@ backup_of() {
 }
 
 STEPS=(
-    "1|[sudo] Paketquellen (RPM Fusion, COPR Quickshell + Hyprland + Helium + lazygit + yazi, Spotify, VS Code)"
+    "1|[sudo] Paketquellen (RPM Fusion, COPR Quickshell + Hyprland + Helium + lazygit + yazi + Prism, Spotify, VS Code)"
     "2|[sudo] dnf-Pakete (+ ffmpeg-Swap, KDE-Gruppe auf Workstation, KDE-Apps entfernen, GoXLR-RPM)"
     "3|[sudo] System (kvm, vhost_vsock, nodocker, Anmeldung Plasma Login, Firewall, podman.socket)"
     "4|Flatpaks (System-Flatpaks fragen per polkit)"
@@ -185,7 +185,7 @@ if want 1; then
     coprs="$(dnf copr list 2>/dev/null)"
     # Quickshell 0.3.2 (Fedoras 0.2.1 kann keinen Blur) · Hyprland 0.56 + uwsm/hypridle/hyprlock · Helium (Browser)
     # · lazygit + yazi (Terminal, nicht in Fedora) – dieselbe Liste wie packages/repos.txt
-    for c in errornointernet/quickshell sdegler/hyprland imput/helium atim/lazygit lihaohong/yazi; do
+    for c in errornointernet/quickshell sdegler/hyprland imput/helium atim/lazygit lihaohong/yazi g3tchoo/prismlauncher; do
         if grep -qx "copr.fedorainfracloud.org/$c" <<<"$coprs"; then ok "COPR $c"
         else run "sudo dnf copr enable -y $c"; fi
     done

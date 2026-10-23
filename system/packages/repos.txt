@@ -2,7 +2,7 @@
 # Format: <id> | <wofür> | <Befehl>   – dieselben Befehle stehen (mit Prüfung) in system/bootstrap Schritt 1.
 # Jeder Befehl ist idempotent (prüft vorher, ob die Quelle schon da ist).
 # Basis-Repos (fedora, updates, fedora-cisco-openh264, flathub) bringen Fedora KDE und Workstation selbst mit.
-# Ist-Zustand geprüft mit `dnf copr list` und /etc/yum.repos.d/ (aktive COPRs: quickshell, hyprland, helium, lazygit, yazi; dazu negativo17 fedora-spotify).
+# Ist-Zustand geprüft mit `dnf copr list` und /etc/yum.repos.d/ (aktive COPRs: quickshell, hyprland, helium, lazygit, yazi, prismlauncher; dazu negativo17 fedora-spotify).
 
 rpmfusion | Free + Nonfree: ffmpeg (voll), NVIDIA-Treiber, Discord, Steam, unrar | rpm -q rpmfusion-free-release rpmfusion-nonfree-release >/dev/null 2>&1 || sudo dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 quickshell | COPR errornointernet/quickshell: Quickshell 0.3.2 (Fedoras 0.2.1 kann keinen Blur) | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/errornointernet/quickshell$' || sudo dnf copr enable -y errornointernet/quickshell
@@ -12,6 +12,7 @@ vscode | Visual Studio Code (natives RPM, nicht Flatpak – sonst kommen die Cla
 lazygit | COPR atim/lazygit: lazygit (Git im Terminal, `lg`) – nicht in Fedora | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/atim/lazygit$' || sudo dnf copr enable -y atim/lazygit
 spotify | negativo17 fedora-spotify: spotify-client (Spotifys Paket als RPM, Updates per dnf; ersetzt lpf seit 2026-10-20, dnf history 54/55) | test -f /etc/yum.repos.d/fedora-spotify.repo || sudo dnf config-manager addrepo --from-repofile=https://negativo17.org/repos/fedora-spotify.repo
 yazi | COPR lihaohong/yazi: yazi (Dateimanager im Terminal, `y`) – nicht in Fedora | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/lihaohong/yazi$' || sudo dnf copr enable -y lihaohong/yazi
+prismlauncher | COPR g3tchoo/prismlauncher: Prism Launcher (Minecraft) – nicht in Fedora, Modrinth-App-RPM ohne Update-Weg | dnf copr list 2>/dev/null | grep -q '^copr.fedorainfracloud.org/g3tchoo/prismlauncher$' || sudo dnf copr enable -y g3tchoo/prismlauncher
 
 # Vorhanden, aber AUS bzw. nicht (mehr) gebraucht – nur Gedächtnis, bootstrap fasst sie nicht an:
 #   COPR phracek/PyCharm (disabled)                            kommt mit fedora-workstation-repositories
