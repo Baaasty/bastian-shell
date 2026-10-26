@@ -27,6 +27,8 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [ ] Passwörter: neuen Login anlegen (Super+O → Ctrl+N, Passwort-Vorschlag Ctrl+G) → erscheint am iPhone
 - [ ] Passwörter: Browser fragt beim Registrieren/Anmelden „Speichern / Aktualisieren / Als weiteren Login“ (Shell-Meldung, sonst Leiste in der Seite)
 - [ ] KWallet ohne Abfrage beim Autologin: Wallet-Passwort leer (Bastian, `kwalletmanager5`) → nach dem nächsten Login keine Abfrage, Helium/Claude bleiben eingeloggt
+- [x] Workspace-Leiste: Tooltip nicht mehr abgeschnitten, entfernter Workspace taucht nicht wieder auf (2026-10-26)
+- [ ] Links/Aktivierungen auf dem aktuellen Desktop: Link aus VS Code mit Helium nur auf anderem Desktop → neues Fenster hier, zweiter Link → Tab dort; Ein-Fenster-App kommt her; Claude-Terminal nur markiert
 - [x] Bar-Tooltips: Maus auf einen Chip → „Name · Kürzel“, auch wenn daneben ein Popout offen ist (2026-10-20)
 - [x] Spotify aus dem Launcher holt das weggeräumte Fenster; Symbol im Chip, wenn Spotify aus ist (2026-10-20)
 - [x] Discord nach Selbst-Update: Popout zeigt „Restart Discord“ (spielt Equicord neu ein), direkt nach dem Start automatisch; Verlassen-Knopf zweistufig („Leave?“) – nach dem nächsten Call testen (2026-10-20)

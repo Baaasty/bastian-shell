@@ -98,13 +98,17 @@ Singleton {
     function adopt(): void {
         if (!_loaded)
             return;
-        const have = list.map(d => d.id);
         const want = [Hypr.currentDesk];
         for (const t of Hypr.toplevels.values) {
             const d = Hypr.deskOf(t);
             if (d > 0)
                 want.push(d);
         }
+        // gerade entfernte nicht zurückholen: bis Wechsel und Umzug bei Hyprland durch sind, meldet es sie noch
+        // (sonst tauchte der Workspace sofort als neuer am Ende wieder auf); weg = freigeben
+        if (_removing.some(d => !want.includes(d)))
+            _removing = _removing.filter(d => want.includes(d));
+        const have = list.map(d => d.id).concat(_removing);
         const add = [];
         for (const d of want)
             if (d > 0 && !have.includes(d) && !add.includes(d))
@@ -148,6 +152,16 @@ Singleton {
         });
     }
 
+    property var _removing: []
+    // Notbremse: bleibt Hyprland doch auf dem Workspace (Wechsel gescheitert), wird er wieder aufgenommen
+    Timer {
+        id: removingFallback
+        interval: 3000
+        onTriggered: {
+            root._removing = [];
+            root.adopt();
+        }
+    }
     // entfernen: Fenster wandern auf den Nachbar-Desktop (gleicher Monitor), wie bei KWin
     function remove(id: string): void {
         const d = Number(id);
@@ -167,8 +181,9 @@ Singleton {
         }
         const next = list.slice();
         next.splice(i, 1);
+        _removing = _removing.concat([d]);
         _set(next);
-        Hypr.batch(cmds, null);
+        Hypr.batch(cmds, () => removingFallback.restart());
     }
 
     function rename(id: string, name: string): void {

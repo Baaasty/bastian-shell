@@ -389,8 +389,9 @@ Scope {
                 }
                 // + Platz rechts für Tooltips der App-Icons (Klicks nimmt nur die Leiste an, siehe mask)
                 implicitWidth: Math.min(scr.modelData.width, bar.width + Theme.barMargin + 12 + 360)
-                // Platz über der Leiste für Tooltips (Eingaben gehen per Maske nur an die Leiste)
-                implicitHeight: bar.height + Theme.barMargin + 96
+                // Platz über der Leiste für Tooltips (Eingaben gehen per Maske nur an die Leiste) –
+                // der Workspace-Tooltip hat mit Git- und Projektzeit-Zeile bis zu fünf Zeilen
+                implicitHeight: bar.height + Theme.barMargin + 180
                 exclusionMode: ExclusionMode.Ignore
                 color: "transparent"
                 WlrLayershell.namespace: "dock"
