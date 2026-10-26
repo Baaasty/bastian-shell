@@ -67,6 +67,12 @@ Singleton {
         cmd([appRun, name].concat(args || []));
     }
 
+    // Link(s) im Browser: Tab im Helium-Fenster des aktuellen Desktops, sonst neues Fenster (scripts/open-url,
+    // derselbe Weg wie Links aus anderen Apps über helium.desktop)
+    function url(urls: var): void {
+        cmd([Quickshell.shellDir + "/../scripts/open-url"].concat(urls));
+    }
+
     // VS Code mit Argumenten starten, z. B. code(["--new-window", pfad])
     function code(args: var): void {
         cmd(["sh", "-c", "if [ -x /usr/bin/code ]; then exec /usr/bin/code \"$@\"; else exec flatpak run " + codeFlatpak + " \"$@\"; fi",

@@ -96,7 +96,7 @@ Singleton {
     }
     // auch für die Web-Konsolen im Reiter Server (Servers.consoles)
     function openUrl(url: string): void {
-        Launch.cmd(["helium", url]);
+        Launch.url([url]);
     }
     // Log einer eigenen Unit im Terminal (journalctl folgt)
     function logs(unit: string): void {

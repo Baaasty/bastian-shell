@@ -1,0 +1,67 @@
+#!/usr/bin/env -S python3 -I
+"""Links im Browserfenster des aktuellen Desktops öffnen (Standardbrowser = helium.desktop, Exec zeigt hierher –
+erzeugt von scripts/hypr install). Auch die Shell öffnet Links hierüber (Launch.url).
+
+  open-url URL…     Tab im Helium-Fenster des aktuellen Desktops; liegt dort keins, ein neues Fenster
+  open-url          ohne URL (oder ohne Hyprland, z. B. unter Plasma): einfach helium mit denselben Argumenten
+
+Warum: Chromium öffnet Links im zuletzt aktiven Fenster – lag das auf einem anderen Desktop, sprang der rechte
+Monitor dorthin. Darum erst das Fenster hier fokussieren (dann ist es das „zuletzt aktive“) oder ein neues aufmachen
+(Regel monitor DP-1 in hypr/rules.conf legt es auf den aktiven Workspace rechts = aktueller Desktop).
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+BROWSER = "helium"
+CLASSES = ("helium", "google-chrome")
+MAIN = "DP-2"   # wie Config.preferredScreen; fehlt er, gilt der erste Monitor
+
+
+def hc(*args):
+    try:
+        out = subprocess.run(["hyprctl", "-j", *args], capture_output=True, text=True, timeout=2).stdout
+        return json.loads(out)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def current_desk(monitors):
+    """Desktop = Workspace des Hauptmonitors % 100 (Schema der Shell, shell/services/Hypr.qml)."""
+    if not monitors:
+        return 0
+    m = next((m for m in monitors if m.get("name") == MAIN), monitors[0])
+    ws = (m.get("activeWorkspace") or {}).get("id", 0)
+    return ws % 100 if ws > 0 else 0
+
+
+def pick(clients, desk):
+    """Browserfenster auf Desktop desk (beliebiger Monitor, nur sichtbare) – das zuletzt fokussierte, sonst None."""
+    if desk <= 0:
+        return None
+    hits = [c for c in clients or []
+            if str(c.get("class", "")).lower() in CLASSES
+            and (c.get("workspace") or {}).get("id", 0) > 0
+            and c["workspace"]["id"] % 100 == desk]
+    if not hits:
+        return None
+    return min(hits, key=lambda c: c.get("focusHistoryID", 1 << 30))
+
+
+def main(argv):
+    urls = argv[1:]
+    if not urls or not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        os.execvp(BROWSER, [BROWSER, *urls])
+    win = pick(hc("clients"), current_desk(hc("monitors")))
+    if win:
+        subprocess.run(["hyprctl", "dispatch", "focuswindow", "address:" + win["address"]], capture_output=True, timeout=2)
+        # Chromium muss den Fokus erst mitbekommen, sonst gilt noch das alte Fenster als „zuletzt aktiv“
+        time.sleep(0.15)
+        os.execvp(BROWSER, [BROWSER, *urls])
+    os.execvp(BROWSER, [BROWSER, "--new-window", *urls])
+
+
+if __name__ == "__main__":
+    main(sys.argv)

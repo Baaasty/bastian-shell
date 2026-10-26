@@ -44,7 +44,7 @@ Singleton {
         if (claudeHandler)
             Launch.cmd(["xdg-open", "claude://" + path]);
         else
-            Launch.cmd(["helium", "https://" + path]);
+            Launch.url(["https://" + path]);
     }
 
     Process {

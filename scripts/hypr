@@ -3,7 +3,8 @@
 # Anleitung, Pakete, Zurück zu Plasma: docs/knowledge/hyprland.md
 #
 #   hypr install     Konfiguration verlinken/anlegen (ohne sudo): ~/.config/hypr, uwsm-Umgebung, Portale,
-#                    Shell-Dienst desktop-shell-hyprland, .desktop-Overrides aus config/applications.
+#                    Shell-Dienst desktop-shell-hyprland, .desktop-Overrides aus config/applications,
+#                    Helium als Standardbrowser über scripts/open-url (Links im Fenster des aktuellen Desktops).
 #                    Vorhandene fremde Dateien werden gesichert.
 #   hypr uninstall   alles davon wieder entfernen, Sicherungen zurück
 #   hypr status      was installiert ist, welche Pakete fehlen
@@ -34,6 +35,10 @@ MARK="# ERZEUGT von scripts/hypr install"
 VIDEOBRIDGE_AUTOSTART="$CONF/autostart/org.kde.xwaylandvideobridge.desktop"
 # .desktop-Overrides (config/applications) – gleiche ID wie unter /usr/share/applications gewinnt, weil ~/.local/share zuerst kommt
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+# Kopie der System-helium.desktop, nur Exec mit URL zeigt auf scripts/open-url: gleiche ID, Standardbrowser bleibt
+# helium.desktop (nichts an xdg-settings), Plasma bekommt dasselbe (open-url reicht dort einfach durch)
+BROWSER_SYS=/usr/share/applications/helium.desktop
+BROWSER_DESKTOP="$APPS/helium.desktop"
 
 # Pakete, ohne die die Sitzung nicht läuft (Liste + Befehle: docs/knowledge/hyprland.md, system/packages)
 NEED=(Hyprland hyprctl hypridle hyprlock uwsm grim wf-recorder wpctl xdg-terminal-exec)
@@ -120,6 +125,10 @@ EOF
     for app in "$REPO"/config/applications/*.desktop; do
         link "$app" "$APPS/$(basename "$app")"
     done
+    if [ -f "$BROWSER_SYS" ]; then
+        { say "$MARK – aus $BROWSER_SYS, Links über scripts/open-url"
+          sed "s|^Exec=helium \(%[uU]\)\$|Exec=$REPO/scripts/open-url \1|" "$BROWSER_SYS"; } | write "$BROWSER_DESKTOP"
+    fi
     if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$APPS" 2>/dev/null || true; fi
 
     # Shell-Dienst für Hyprland
@@ -143,7 +152,7 @@ cmd_uninstall() {
     systemctl --user disable --quiet "$UNIT" >/dev/null 2>&1 || true
     local f
     for f in "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$VIDEOBRIDGE_AUTOSTART" "$ENVFILE" "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" \
-        "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" "$CONF/xdg-desktop-portal/hyprland-portals.conf"; do
+        "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$BROWSER_DESKTOP"; do
         if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
             rm -f "$f"
             say "  entfernt: $f"
@@ -185,7 +194,7 @@ missing_packages() {
 cmd_status() {
     local f
     for f in "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" \
-        "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DRKONQI_DROPIN" "$ENVFILE"; do
+        "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DRKONQI_DROPIN" "$ENVFILE" "$BROWSER_DESKTOP"; do
         if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
             say "ok      $f"
         elif [ -e "$f" ]; then

@@ -231,6 +231,12 @@ Code: `shell/services/Hypr.qml` (`follows`, `followCmds`, `switchCmds`), `shell/
 - Monitor, Kacheln/Schweben, Lage und Fokus bleiben. Weggeräumte (`special:parked…`), minimierte, angepinnte und Vollbild-Fenster kommen nicht mit.
 - Prüfen: `qs ipc … call hypr status` → `follow` zeigt die aktive Liste.
 
+## Links & Aktivierungen
+Code: `scripts/open-url` (Test `scripts/tests/open-url-test.py`), `shell/services/activation.js` (Regel, Test `activation-test.js`), `Hypr._onUrgent`, `Launch.url` · `helium.desktop`-Kopie von `scripts/hypr install`
+- Warum: Chromium öffnet Links im *zuletzt aktiven* Fenster, und mit `focus_on_activate` sprang Hyprland nur dessen Monitor um – die Monitore liefen auseinander. Darum fokussiert `open-url` erst das Helium-Fenster des Desktops (oder macht `--new-window` auf) und `focus_on_activate` ist aus.
+- Die `helium.desktop` ist eine Kopie der System-Datei (gleiche ID, Standardbrowser unverändert); nach Helium-Updates mit neuen Aktionen `scripts/hypr install` erneut.
+- Hyprland meldet Nach-vorn-Wünsche nur als `urgent` – dasselbe Event wie eine Dringend-Markierung (Terminal-Glocke, Steam). Deshalb die Nur-markieren-Liste in `activation.js`; neue Spiele-/Terminal-Klassen dort ergänzen.
+
 ## Quicklinks & Git/CI
 Code: `shell/modules/workbar/QuickLinksPopup.qml`, `QuickLinksDots.qml`, `QuickLinksTip.qml`, `QuickLinksStats.qml`, `shell/services/GitInfo.qml` (`projectFor`, `gitEvery`/`ciEvery`), `scripts/gitinfo` · Konfig: `projects/projects.json` (nur über `scripts/project link …`)
 - Projekt-Workspace = eigener Workspace-Name gleich Projekt-ID oder Anzeigename; „Workspace 2“ ohne Namen hat kein Projekt.

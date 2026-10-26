@@ -34,7 +34,7 @@ Singleton {
 
     function open(w: var, q: string): void {
         // nur http(s); als Argument-Liste, nie über eine Shell
-        Launch.cmd(["helium", urlFor(w, q)]);
+        Launch.url([urlFor(w, q)]);
     }
 
     function parse(txt: string): void {

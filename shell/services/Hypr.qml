@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
 import qs.config
+import "activation.js" as Act
 
 // Hyprland-Anbindung an einer Stelle: Fenster (Hyprland.toplevels), Monitore, Workspaces, Befehle.
 // Ersetzt unter Hyprland TasksModel/VirtualDesktopInfo (org.kde.taskmanager) und den KWin-D-Bus.
@@ -309,6 +310,25 @@ Singleton {
         cmds.push("dispatch focuswindow " + sel(t));
         batch(cmds, null);
     }
+    // Fenster will nach vorn (urgent, focus_on_activate ist aus): Regel in activation.js
+    property var _urgentAt: ({})   // Adresse → Zeitpunkt, gegen Schleifen höchstens alle 400 ms
+    function _onUrgent(addr: string): void {
+        const t = toplevels.values.find(x => String(x.address).replace(/^0x/, "") === addr.replace(/^0x/, ""));
+        if (!t || t === Hyprland.activeToplevel)
+            return;
+        const now = Date.now(), key = sel(t);
+        if (now - (_urgentAt[key] ?? 0) < 400)
+            return;
+        _urgentAt[key] = now;
+        const what = Act.decide({ cls: appId(t), desk: deskOf(t), current: currentDesk, fullscreen: isFullscreen(t),
+            minimized: isMinimized(t), follows: follows(t), stashed: isStashed(t), pinned: ipc(t).pinned === true });
+        if (what === "focus")
+            batch(["dispatch focuswindow " + key], null);
+        else if (what === "go")
+            activate(t);
+        else if (what === "pull")
+            batch(["dispatch movetoworkspacesilent " + wsFor(slotOf(t), currentDesk) + "," + key, "dispatch focuswindow " + key], null);
+    }
     function close(t): void {
         if (t)
             dispatch("closewindow " + sel(t));
@@ -410,6 +430,8 @@ Singleton {
                 if (m)
                     root.batch(["dispatch focusmonitor " + m[2], "dispatch togglespecialworkspace " + m[1]], null);
             }
+            if (n === "urgent")
+                root._onUrgent(event.data || "");
             if (n === "configreloaded") {
                 warpsProc.running = true;
                 refreshWs.restart();

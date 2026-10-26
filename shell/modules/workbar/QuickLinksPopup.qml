@@ -273,7 +273,7 @@ PopupWindow {
     }
     function openUrl(u: string): void {
         visible = false;
-        Launch.cmd(["helium", u]);
+        Launch.url([u]);
     }
 
     // „läuft“: lauschende TCP-Ports, nur solange das Popup offen ist
