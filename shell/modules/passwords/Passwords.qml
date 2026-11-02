@@ -73,7 +73,7 @@ Scope {
         if (!d)
             return "";
         if (d.needs_login)
-            return "iCloud login needed · run icp login";
+            return "iCloud login needed · see notification";
         if (d.failures > 0 && d.next_allowed)
             return "Update failed · next try " + Qt.formatTime(new Date(d.next_allowed * 1000), "HH:mm");
         if (!d.last_success)

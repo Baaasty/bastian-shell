@@ -261,6 +261,9 @@ Code: `shell/services/ProjectTime.qml`, Anzeige im Kachelkopf `shell/modules/wor
 - E-Mail-Felder: „Your email“ = nur Absender der in Thunderbird verknüpften Konten (bewusst nichts aus Logins geraten;
   neues Konto in Thunderbird → erscheint von selbst). Apples „Nie sichern“ ist ein Login mit Benutzer
   „Passwords not saved“ – wird nie vorgeschlagen. „Create new Hide My Email“ legt bei Apple echt eine Adresse an (Label = Host).
+- iCloud-Login abgelaufen: Sync und Speichern loggen sich bewusst nie selbst mit dem Passwort ein (2FA-Push, Kontosperre) –
+  stattdessen eine Meldung mit „Log in“ (Terminal). Ein gescheitertes Speichern wartet nur im Speicher des Workers auf den
+  Login (Passwort nie auf Platte) → überlebt Shell-Neustart, nicht Abmelden/Neustart.
 
 ## Externe Dienste: Drosselung
 Regel: nie im Sekunden-/Minutentakt gegen fremde APIs; bei Fehlern wachsender Abstand, `Retry-After` gilt.
