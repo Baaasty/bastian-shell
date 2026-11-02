@@ -58,6 +58,7 @@ sh_y, sh_range, sh_alpha = shadow(src.get("shadow", {}).get("tile", ""))
 fade = int(motion.get("fade", 150))
 slide = int(motion.get("slide", 200))
 state = int(motion.get("state", 200))
+move = int(motion.get("move", slide))
 
 INACTIVE = t["border"] if blur_on else over(t["borderStrong"], t.get("surfaceRaised", t["surface"]))
 
@@ -119,10 +120,12 @@ animations {{
     enabled = true
 }}
 bezier = desktopOut, 0.33, 1, 0.68, 1
+# Verschieben: OutExpo – fast der ganze Weg in den ersten Frames (fühlt sich direkt an), dann weich einrasten
+bezier = desktopSnap, 0.16, 1, 0.3, 1
 animation = global, 1, {speed(state)}, desktopOut
 animation = windowsIn, 1, {speed(slide)}, desktopOut, popin 96%
 animation = windowsOut, 1, {speed(fade)}, desktopOut, popin 96%
-animation = windowsMove, 1, {speed(slide)}, desktopOut
+animation = windowsMove, 1, {speed(move)}, desktopSnap
 animation = fade, 1, {speed(fade)}, desktopOut
 animation = border, 1, {speed(state)}, desktopOut
 animation = borderangle, 0

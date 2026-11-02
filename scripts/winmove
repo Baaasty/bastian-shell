@@ -79,17 +79,27 @@ def main():
     if not w or not w.get("address"):
         return 0
     addr, mon_before = w["address"], w.get("monitor")
-    hc("dispatch", "movewindow", arg if kind == "dir" else "mon:" + arg)
+    # Hintergrund-Apps (Spotify, Discord) haben no_anim (rules.conf), damit Wegräumen nicht sichtbar gleitet –
+    # beim bewussten Verschieben soll man aber sehen, wohin sie gehen: Sperre kurz aufheben, danach wieder Regel
+    sel = f"address:{addr}"
+    lifted = "true" in hc("getprop", sel, "no_anim")
+    start = time.monotonic()
+    hc("--batch", (f"dispatch setprop {sel} no_anim 0 ; " if lifted else "")
+       + "dispatch movewindow " + (arg if kind == "dir" else "mon:" + arg))
     for _ in range(10):
         time.sleep(0.05)
         now = next((c for c in (jq("clients") or []) if c.get("address") == addr), None)
         if now and now.get("monitor") != mon_before:
             cx = now["at"][0] + now["size"][0] // 2
             cy = now["at"][1] + now["size"][1] // 2
-            hc("--batch", f"dispatch focuswindow address:{addr} ; dispatch movecursor {cx} {cy}")
-            return 0
+            hc("--batch", f"dispatch focuswindow {sel} ; dispatch movecursor {cx} {cy}")
+            break
         if now and kind == "dir":
             break
+    if lifted:
+        # erst nach der Animation (motion.move in palette.json, mit Luft) – sonst springt das Fenster ans Ziel
+        time.sleep(max(0.0, 0.4 - (time.monotonic() - start)))
+        hc("dispatch", "setprop", sel, "no_anim", "unset")
     return 0
 
 

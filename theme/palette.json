@@ -470,6 +470,7 @@
     "easing": "OutCubic",
     "fade": 180,
     "slide": 240,
+    "move": 170,
     "state": 220,
     "ring": 300,
     "dashboardOpen": 180,
