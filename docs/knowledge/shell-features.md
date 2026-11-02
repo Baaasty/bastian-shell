@@ -179,6 +179,7 @@ Code: `shell/services/Breaks.qml`, `shell/modules/breaks/BreakCard.qml` · Konfi
 
 ## Leerlauf-Abdunkeln
 Code: `shell/modules/idle/Idle.qml` (IPC `dim`), `scripts/idle` · Konfig: `hypr/hypridle.conf` (Zeiten; Ablauf dort im Kopf)
+- **Seit 2026-11-02 aus:** hypridle ruft es nicht mehr auf (Nichtstun ≠ weg). Bleibt zum Testen und Wiedereinschalten.
 - Keine Sperre – die Lock-Kette (`scripts/lock`) liegt darüber. Inhibit (Video/Spiel/Call) hält hypridle an.
 - Monitore gehen **vor** der Sperre aus: die helle Sperre würde das Dunkel sonst kurz aufreißen.
 - Overlay ist klickdurchlässig (leere Maske); weg geht es über hypridle-Resume, Rückfall: eigener `IdleMonitor`.
