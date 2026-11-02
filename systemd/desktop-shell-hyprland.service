@@ -13,6 +13,9 @@ ExecCondition=/bin/sh -c 'case ":$${XDG_CURRENT_DESKTOP}:" in *:Hyprland:*) exit
 ExecStart=/usr/bin/qs -p ${DESKTOP}/shell
 Restart=on-failure
 RestartSec=3
+# Teil der Sitzung, keine App: außerhalb der RAM-Grenze von app.slice (app.slice.d/50-mem.conf), damit bei vollem
+# RAM die größte App beendet wird und nie die Shell
+Slice=session.slice
 
 [Install]
 WantedBy=graphical-session.target
