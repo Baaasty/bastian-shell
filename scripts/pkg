@@ -914,7 +914,9 @@ def plan(args):
         if act == "remove" and names:
             return [pkexec("dnf", "remove", "-y", *names)]
         if act == "update":
-            return [pkexec("dnf", "upgrade", "-y", *names)]
+            # ohne Namen nie COPR mit: dort kommen Bruch-Versionen (Hyprland 0.57) ungefragt – COPR nur einzeln
+            nocopr = [] if names else ["--disablerepo=copr:*"]
+            return [pkexec("dnf", "upgrade", "-y", *nocopr, *names)]
         if act in ("repo-enable", "repo-disable") and len(names) == 1 and not names[0].startswith(("copr:", "_copr")):
             return [pkexec("dnf", "config-manager", "setopt", f"{names[0]}.enabled={'1' if act == 'repo-enable' else '0'}")]
         if act == "repo-add" and len(rest) == 1 and rest[0].endswith(".repo") and " " not in rest[0] and (rest[0].startswith("https://") or (rest[0].startswith("/") and os.path.isfile(rest[0]))):

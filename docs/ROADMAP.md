@@ -23,6 +23,8 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] Discord ohne NVENC (`nvenc-block`, Renderer-Absturz in libnvcuvid): seit dem Start mit Sperre Stunden im Call mit Video (Software-Encoder) ohne Absturz (2026-10-22)
 - [x] Mail/Kalender: iCloud-Passwort nur noch in Thunderbird, Shell liest es dort (2026-10-23)
 - [x] Mail/Kalender: Konten und Kalender automatisch aus Thunderbird (ohne OAuth-Konten) (2026-10-23)
+- [x] Paket-Panel: „Update all“ (System) hebt keine COPR-Pakete mehr mit (so kam Hyprland 0.57 ungefragt), COPR nur einzeln (2026-11-02)
+- [ ] Hyprland 0.57 (nur noch Lua, alte `hyprctl dispatch`/`keyword` tot): Konfig `hypr/`, Shell (`Hypr.qml` u. a.), Skripte, hotkeys-md/Super+K umbauen, dann `dnf versionlock delete hyprland hyprland-uwsm` (bis dahin 0.56.2 aus COPR lionheartp, gesperrt) – Plan zuerst
 - [ ] Discord-Popout „Random call“ (Super+Alt+J): Plugin neu einspielen (Restart Discord), dann mehrmals drücken – landet jedes Mal in einem anderen Call mit Leuten, nie voll/AFK; allein gelandet → springt selbst weiter
 - [ ] Passwörter: neuen Login anlegen (Super+O → Ctrl+N, Passwort-Vorschlag Ctrl+G) → erscheint am iPhone
 - [ ] Passwörter: Browser fragt beim Registrieren/Anmelden „Speichern / Aktualisieren / Als weiteren Login“ (Shell-Meldung, sonst Leiste in der Seite)

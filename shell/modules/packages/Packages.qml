@@ -344,7 +344,8 @@ Scope {
                 const sel = items.filter(u => !toks.length || rank(u, toks) >= 0);
                 if (!sel.length)
                     return;
-                out.push({ kind: "header", key: "h:" + title, title: title, count: sel.length, updateAll: all });
+                // System: genau die gezeigten Pakete – ohne Namen hob dnf auch COPR mit (Hyprland 0.57 brach so die Konfig)
+                out.push({ kind: "header", key: "h:" + title, title: title, count: sel.length, updateAll: all && src === "system" ? all.concat(sel.map(u => u.id)) : all });
                 for (const u of sel)
                     out.push(Object.assign({}, u, { src: src, kind: "pkg", key: "u:" + src + ":" + u.id + ":" + (u.scope || ""), upgrade: u.version, installed: true, group: src === "flatpak" ? flatGroup(u.repo) : u.group }));
             };
