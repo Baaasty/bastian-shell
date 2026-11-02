@@ -181,3 +181,6 @@ command -v starship >/dev/null && eval "$(starship init zsh)"
 
 [[ -r /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
   source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# bun completions
+[ -s "/home/bastian/.bun/_bun" ] && source "/home/bastian/.bun/_bun"
