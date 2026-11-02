@@ -25,7 +25,9 @@ Singleton {
         const id = String(desktopId).replace(/\.desktop$/, "");
         if (bringParked(id))
             return;
-        if (uwsm) {
+        // Steam legt Spiele als „Counter-Strike 2.desktop“ an – Leerzeichen sind keine gültige Desktop-ID, uwsm lehnt
+        // sie ab („Invalid Desktop Entry ID“). Dann den Befehl aus der Datei starten (unten, mit uwsm-Präfix).
+        if (uwsm && /^[A-Za-z0-9_.-]+$/.test(id)) {
             Quickshell.execDetached(["uwsm", "app", "--", id + ".desktop"]);
         } else {
             const e = DesktopEntries.byId(id) ?? DesktopEntries.heuristicLookup(id);
@@ -33,11 +35,11 @@ Singleton {
                 console.warn("Launch.app: keine .desktop-Datei für " + id);
                 return;
             }
-            const cmdline = e.runInTerminal ? ["xdg-terminal-exec"].concat(e.command) : e.command;
+            const cmdline = (uwsm ? ["uwsm", "app", "--"] : scope).concat(e.runInTerminal ? ["xdg-terminal-exec"].concat(e.command) : e.command);
             if (e.workingDirectory)
-                Quickshell.execDetached({ command: scope.concat(cmdline), workingDirectory: e.workingDirectory });
+                Quickshell.execDetached({ command: cmdline, workingDirectory: e.workingDirectory });
             else
-                Quickshell.execDetached(scope.concat(cmdline));
+                Quickshell.execDetached(cmdline);
         }
         launched();
     }
