@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "hyprlua.js" as Lua
 
 // Hintergrund-Apps (Spotify, Chat-Client Discord, siehe Chat.qml): keine eigenen Fenster im Alltag, nur Einbettungen.
 // "Rausholen" holt das Fenster auf den aktuellen Desktop (Hyprland: ein Fenster liegt auf genau einem
@@ -118,7 +119,7 @@ Singleton {
         if (chatW < 300)
             return;
         _layoutSent = now;
-        Hypr.batch(["dispatch resizewindowpixel exact " + chatW + " " + Math.round(c.height) + "," + Hypr.sel(p.chat)], null);
+        Hypr.batch([Lua.dsp(Lua.resize(chatW, c.height, Hypr.sel(p.chat)))], null);
     }
     Timer {
         id: layoutTimer
@@ -154,7 +155,7 @@ Singleton {
             if (t && root.isParked(Hypr.appId(t)))
                 Hypr.stash(t);
             else
-                Hypr.batch(["dispatch killactive"], null);
+                Hypr.batch([Lua.dsp(Lua.close())], null);
         }
     }
 }

@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import qs.config
 import qs.services
 import qs.components
+import "../../services/hyprlua.js" as Lua
 
 // Power-Menü (Meta+Esc): fünf Kacheln mit Tastenbuchstaben, Fokus startet auf "Sperren"
 Scope {
@@ -19,7 +20,7 @@ Scope {
         // scripts/lock: Quickshell-Sperre unter Hyprland (ohne Shell hyprlock), unter KWin loginctl lock-session
         { key: "L", icon: "lock", label: "Lock", cmd: [Quickshell.shellDir + "/../scripts/lock", "now"] },
         // Hyprland: Abmelden über uwsm (falls die Sitzung damit läuft), sonst Hyprland direkt beenden
-        { key: "O", icon: "logout", label: "Log Out", cmd: ["sh", "-c", "if command -v uwsm >/dev/null && uwsm check is-active >/dev/null 2>&1; then exec uwsm stop; else exec hyprctl dispatch exit; fi"] },
+        { key: "O", icon: "logout", label: "Log Out", cmd: ["sh", "-c", "if command -v uwsm >/dev/null && uwsm check is-active >/dev/null 2>&1; then exec uwsm stop; else exec hyprctl dispatch '" + Lua.exit() + "'; fi"] },
         { key: "S", icon: "bedtime", label: "Sleep", cmd: ["systemctl", "suspend"] },
         { key: "R", icon: "restart_alt", label: "Restart", cmd: ["systemctl", "reboot"] },
         { key: "P", icon: "power_settings_new", label: "Power Off", cmd: ["systemctl", "poweroff"] }

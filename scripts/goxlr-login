@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Beim Login (hypr/autostart.conf, einmal pro Sitzung): GoXLR-Routing komplett aus, Standard-Ausgang auf 100 %.
+# Beim Login (hypr/autostart.lua, einmal pro Sitzung): GoXLR-Routing komplett aus, Standard-Ausgang auf 100 %.
 # Wartet auf den Daemon (goxlr.service startet evtl. später als die Sitzung). Schalter: ~/.config/desktop/goxlr.json
 # (resetRoutingOnLogin) und ~/.config/desktop/audio.json (lockVolume). Doku: docs/setup/goxlr.md
 set -u

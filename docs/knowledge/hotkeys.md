@@ -1,6 +1,6 @@
 # Tastenkürzel
 
-_Erzeugt aus `hypr/binds.conf` mit `scripts/hotkeys-md` – nicht von Hand ändern._
+_Erzeugt aus `hypr/binds.lua` mit `scripts/hotkeys-md` – nicht von Hand ändern._
 
 **Live ansehen: Super+K** (Keybind-Viewer, liest die Konfiguration bei jedem Öffnen; Suche tippt sofort).
 
@@ -164,7 +164,7 @@ Alt allein antippen (oder Alt+Esc) öffnet den Workspace-Modus der unteren Leist
 
 Super+K ist ein Nachschlagewerk für alles: oben die App, die beim Öffnen fokussiert war (*focused app*; Kitty mit yazi/lazygit
 zeigt beides), dann die Topbar (Super+Leertaste, Direktkürzel, Popouts, Benachrichtigungen, Tray), dann die übrige Shell
-(live aus `hypr/binds.conf` + Anleitungen zu Workspace-Modus und Launcher), darunter
+(live aus `hypr/binds.lua` + Anleitungen zu Workspace-Modus und Launcher), darunter
 alle Programme. Sofort tippen = Suche über App-Name, Tasten und Beschreibung (`upload`, `discord mute`, `ctrl+shift+u`).
 ↑/↓ und Bild↑/↓ scrollen, Tab/Shift+Tab springt zur nächsten/vorigen App, Esc schließt.
 
@@ -183,7 +183,7 @@ Eine Datei pro Programm in `config/appkeys/<app>.json`, von Hand pflegbar (nach 
 - Tasten: `Ctrl+Shift+M` · Alternativen als Liste `["Ctrl+Tab", "Ctrl+PgDn"]` · Leerzeichen = mehrere Tasten (`g g`, `Alt+↑ ↓`) ·
   `Ctrl+Plus` für + · `Alt (tap)` = Modifier allein antippen.
 - `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel; `"area": "topbar"` stellt einen Abschnitt in die
-  Gruppe „Topbar“ (zusammen mit dem binds.conf-Abschnitt `Topbar`). Abschnitte mit `"auto"` füllt
+  Gruppe „Topbar“ (zusammen mit dem binds.lua-Abschnitt `Topbar`). Abschnitte mit `"auto"` füllt
   `shell/modules/keys/appkeys.py` selbst: `barLetters` (`shell/services/BarKeys.qml`), `launcherPrefixes`
   (`shell/modules/launcher/Launcher.qml`), `webShortcuts` (`config/launcher/web.json`).
 - Kaputte Datei: nur sie fehlt, der Grund steht im Log (`qs log -p … | grep appkeys`).

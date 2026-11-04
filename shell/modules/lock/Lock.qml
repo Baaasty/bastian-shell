@@ -6,6 +6,7 @@ import Quickshell.Wayland
 import Quickshell.Services.Pam
 import qs.config
 import qs.services
+import "../../services/hyprlua.js" as Lua
 
 // Sperrbildschirm unter Hyprland (ext-session-lock). Ersetzt das Plasma-Paket plasma/shells/…/lockscreen (Git-Tag kwin-final),
 // sieht aus wie dieses (Ablauf und Maße aus LockScreenUi.qml/MainBlock.qml übernommen).
@@ -107,7 +108,7 @@ Scope {
                 if (!pam.active)
                     buffer = "";
             } else {
-                Quickshell.execDetached(["hyprctl", "dispatch", "dpms", "off"]);
+                Quickshell.execDetached(["hyprctl", "dispatch", Lua.dpms("off")]);
             }
             return;
         }

@@ -5,7 +5,7 @@ import Quickshell.Io
 
 // Tastenkürzel zur Laufzeit: live gebundene Kürzel aus `hyprctl binds -j` + Beschreibungen/Abschnitte aus den
 // #-Kommentaren der Hyprland-Konfiguration (modules/keys/keybinds.py liest beides, folgt den source-Zeilen).
-// Nichts ist hartcodiert: ein neuer Bind in hypr/binds.conf taucht nach refresh() von selbst auf.
+// Nichts ist hartcodiert: ein neuer Bind in hypr/binds.lua taucht nach refresh() von selbst auf.
 //
 // Ergebnis `cats`: [{ name, media, rows: [{ title, sub, chords: [{ mods, keys, tag }], search }] }]
 //  - Varianten desselben Kürzels (Super+1…9, Pfeile) und gleiche Aktion auf mehreren Tasten ("Print / Super+Shift+S")
@@ -14,7 +14,7 @@ import Quickshell.Io
 //  - XF86-Tasten bilden die Kategorie "Media keys" (media: true, in der Ansicht eingeklappt)
 //  - Titel: Inline-Kommentar am Bind ("bind = … # Next window") > kurzer Einzel-Kommentar darüber > aus Dispatcher/Arg abgeleitet
 //  - Beschreibung: Kommentar über den Binds, nur wenn er eindeutig zu genau einer Zeile gehört (sonst Notiz, wird ignoriert)
-//  - Kategorien: Abschnittsnamen "# ---------- Name ----------" in hypr/binds.conf
+//  - Kategorien: Abschnittsnamen "-- ---------- Name ----------" in hypr/binds.lua
 Singleton {
     id: root
 
@@ -304,7 +304,7 @@ Singleton {
             const e = {
                 mask: mask, key: key, rel: rel, mouse: mouse, disp: b.dispatcher, arg: b.arg || "",
                 section: c ? c.section : "", comment: c ? c.comment : "", block: c ? c.block : 0,
-                first: c ? c.first : false, trail: c ? c.trail : "", order: c ? c.order : 100000 + i
+                first: c ? c.first : false, trail: (c && c.trail) || b.description || "", order: c ? c.order : 100000 + i
             };
             e.cat = /^xf86/i.test(key) ? "Media keys" : (e.section || "Other");
             if (e.block)

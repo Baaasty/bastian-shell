@@ -7,7 +7,7 @@ import Quickshell.Io
 // Bastian nutzt das normale Discord (RPM von RPM Fusion, /usr/bin/discord, Klasse "discord") mit eigenem
 // Equicord-Build (Plugin desktopBridge); das Flatpak com.discordapp.Discord (Klasse "com.discordapp.Discord") ist
 // Rückfall, Equibop/Vesktop bleiben als alter Rückfall erkannt. Alles andere (Parked, Hypr.follows, Chip, Popout)
-// fragt hier – nur die Hyprland-Regeln (hypr/pins.conf, rules.conf) und die Liste in config/hyprflow brauchen die
+// fragt hier – nur die Hyprland-Regeln (hypr/pins.lua, rules.lua) und die Liste in config/hyprflow brauchen die
 // Klassen noch einmal als Text (Hyprland kennt kein QML).
 //
 // Wichtig: nur Discord-Fenster, die der Shell als „Hintergrund-App“ gelten, sind hier gelistet.

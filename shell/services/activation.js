@@ -1,6 +1,6 @@
 .pragma library
 
-// Was tun, wenn ein Fenster nach vorn will (Hyprland-Event „urgent“, focus_on_activate ist aus: hypr/general.conf)?
+// Was tun, wenn ein Fenster nach vorn will (Hyprland-Event „urgent“, focus_on_activate ist aus: hypr/general.lua)?
 // Eigene Datei, damit die Regel ohne Shell testbar ist: scripts/tests/activation-test.js (node). Ausgeführt in Hypr.qml.
 //   ignore  weggeräumt/mitkommend (Discord/Spotify: Holen macht nur die Bar)
 //   mark    nur markieren (Hyprland setzt urgent selbst): Spiele, Steam, Vollbild, Terminals (Claude „wartet“ per Glocke)

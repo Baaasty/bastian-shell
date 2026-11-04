@@ -6,6 +6,7 @@ import Quickshell.Wayland
 import qs.config
 import qs.services
 import qs.components
+import "../../services/hyprlua.js" as Lua
 
 // Ausschneiden (Druck / Super+Shift+S): Bildschirm einfrieren, Bereich ziehen, kopieren + speichern.
 // Einfrieren macht grim (wlr-screencopy unter Hyprland): ein Bild aller Monitore, Auswahl und Zuschnitt darauf.
@@ -123,7 +124,7 @@ Scope {
         kbAim = true;
         setAim(nx, ny);
         warps = warps.concat([[nx, ny]]).slice(-20);
-        Hypr.dispatch("movecursor " + Math.round(nx + originX) + " " + Math.round(ny + originY));
+        Hypr.dispatch(Lua.cursor(nx + originX, ny + originY));
     }
     // Bewegung, die nur unser movecursor ausgelöst hat? Dann verbrauchen statt den Zielpunkt zu versetzen.
     function takeWarp(gx: int, gy: int): bool {
@@ -1085,7 +1086,7 @@ Scope {
                     root.setAim(vx + win.ox, vy + win.oy);
                     applyDrag();
                     root.warps = root.warps.concat([[vx + win.ox, vy + win.oy]]).slice(-20);
-                    Hypr.dispatch("movecursor " + Math.round(vx + win.modelData.x) + " " + Math.round(vy + win.modelData.y));
+                    Hypr.dispatch(Lua.cursor(vx + win.modelData.x, vy + win.modelData.y));
                 }
                 // Zeiger beim Öffnen schon über diesem Monitor: Zielpunkt dort, bevor sich die Maus bewegt
                 onContainsMouseChanged: {

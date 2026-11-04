@@ -93,10 +93,6 @@ uwsm_env() {
 
 cmd_install() {
     say "Repo: $REPO"
-    if [ -e "$CONF/hypr/hyprland.lua" ]; then
-        say "WARNUNG: $CONF/hypr/hyprland.lua existiert – Hyprland lädt die statt hyprland.conf. Wird gesichert."
-        backup "$CONF/hypr/hyprland.lua"
-    fi
     # Look aus der Palette (nur neu erzeugen, nichts aktivieren)
     python3 -I "$REPO/theme/gen/hypr.py" >/dev/null || say "WARNUNG: theme/gen/hypr.py fehlgeschlagen"
     # Hyprland-eigene Dialoge („App reagiert nicht“ usw., hyprtoolkit) im Desktop-Look: ~/.config/hypr/hyprtoolkit.conf
@@ -106,11 +102,18 @@ cmd_install() {
 $MARK – Repo-Pfad für desktop-shell-hyprland.service
 DESKTOP=$REPO
 EOF
-    write "$CONF/hypr/hyprland.conf" <<EOF
-$MARK – nicht von Hand ändern, alles steht im Repo.
-\$DESKTOP = $REPO
-source = \$DESKTOP/hypr/hyprland.conf
+    # Lua-Konfiguration (ab 0.56; 0.57 kennt nur noch Lua). Hyprland nimmt hyprland.lua vor hyprland.conf.
+    write "$CONF/hypr/hyprland.lua" <<EOF
+-- $MARK – nicht von Hand ändern, alles steht im Repo.
+DESKTOP = "$REPO"
+require(DESKTOP .. "/hypr/hyprland.lua")
 EOF
+    # alter hyprlang-Stub (bis 2026-11): erst weg, wenn die Sitzung ihn nicht mehr beobachtet – sonst legt die laufende
+    # hyprlang-Sitzung in der Lücke eine Standard-Konfig an
+    if [ -f "$CONF/hypr/hyprland.conf" ] && head -n1 "$CONF/hypr/hyprland.conf" | grep -qF "$MARK" \
+        && ! hyprctl -j status 2>/dev/null | grep -q '"hyprlang"'; then
+        rm -f "$CONF/hypr/hyprland.conf"
+    fi
     write "$CONF/hypr/hypridle.conf" <<EOF
 $MARK – nicht von Hand ändern, alles steht im Repo.
 \$DESKTOP = $REPO
@@ -151,7 +154,7 @@ EOF
 cmd_uninstall() {
     systemctl --user disable --quiet "$UNIT" >/dev/null 2>&1 || true
     local f
-    for f in "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$VIDEOBRIDGE_AUTOSTART" "$ENVFILE" "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" \
+    for f in "$CONF/systemd/user/$UNIT.service" "$DROPIN" "$DRKONQI_DROPIN" "$VIDEOBRIDGE_AUTOSTART" "$ENVFILE" "$CONF/hypr/hyprland.lua" "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" \
         "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$BROWSER_DESKTOP"; do
         if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
             rm -f "$f"
@@ -193,7 +196,7 @@ missing_packages() {
 
 cmd_status() {
     local f
-    for f in "$CONF/hypr/hyprland.conf" "$CONF/hypr/hypridle.conf" "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" \
+    for f in "$CONF/hypr/hyprland.lua" "$CONF/hypr/hypridle.conf" "$CONF/hypr/hyprtoolkit.conf" "$CONF/uwsm/env-hyprland" \
         "$CONF/xdg-desktop-portal/hyprland-portals.conf" "$CONF/systemd/user/$UNIT.service" "$DRKONQI_DROPIN" "$ENVFILE" "$BROWSER_DESKTOP"; do
         if [ -L "$f" ] || { [ -f "$f" ] && head -n1 "$f" | grep -qF "$MARK"; }; then
             say "ok      $f"
@@ -216,21 +219,24 @@ cmd_status() {
 
 cmd_check() {
     local rc=0 f
-    # 1) alle source-Dateien da?
-    for f in $(sed -n 's/^source[[:space:]]*=[[:space:]]*\$DESKTOP\///p' "$REPO/hypr/hyprland.conf"); do
-        [ -f "$REPO/$f" ] || { say "FEHLT: $f"; rc=1; }
+    # 1) alle Teile aus der Liste in hypr/hyprland.lua da?
+    for f in $(sed -n 's/^for _, part in ipairs({\(.*\)}) do$/\1/p' "$REPO/hypr/hyprland.lua" | tr -d '",'); do
+        [ -f "$REPO/hypr/$f.lua" ] || { say "FEHLT: hypr/$f.lua"; rc=1; }
     done
     # 2) Skripte/Python
     for f in "$REPO/scripts/hypr" "$REPO/scripts/lock" "$REPO/scripts/screenrec"; do
         bash -n "$f" || rc=1
     done
-    python3 -I -m py_compile "$REPO/hypr/window.py" "$REPO/theme/gen/hypr.py" || rc=1
+    python3 -I -m py_compile "$REPO/theme/gen/hypr.py" || rc=1
     # 3) Hyprland selbst (startet keinen Compositor)
     if command -v Hyprland >/dev/null 2>&1; then
         local tmp
         tmp=$(mktemp -d)
-        printf '$DESKTOP = %s\nsource = $DESKTOP/hypr/hyprland.conf\n' "$REPO" > "$tmp/hyprland.conf"
-        Hyprland --verify-config -c "$tmp/hyprland.conf" || rc=1
+        # Endung .lua: daran erkennt Hyprland 0.56 das Format
+        printf 'DESKTOP = "%s"\nrequire(DESKTOP .. "/hypr/hyprland.lua")\n' "$REPO" > "$tmp/hyprland.lua"
+        # nur das Ergebnis zeigen, nicht das Start-Log
+        Hyprland --verify-config -c "$tmp/hyprland.lua" > "$tmp/out" 2>&1 || rc=1
+        sed -n '/parsing result/,$p' "$tmp/out"
         rm -rf "$tmp"
     else
         say "Hyprland nicht installiert – nur Teilprüfung (Dateien, Skripte)."

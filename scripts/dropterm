@@ -8,7 +8,7 @@
   dropterm status   läuft es? sichtbar? wo?
 
 Das Fenster hat die Klasse "kitty-drop" (kitty --class) und startet über `uwsm app --` (eigene systemd-Einheit,
-stirbt nicht mit der Shell). Hyprland-Regeln dafür: hypr/rules.conf (schwebend, Spezial-Workspace). Größe und Platz
+stirbt nicht mit der Shell). Hyprland-Regeln dafür: hypr/rules.lua (schwebend, Spezial-Workspace). Größe und Platz
 setzt dieses Skript bei jedem Einblenden neu, damit es auf jedem Monitor passt (Bar oben wird ausgespart).
 Anleitung: docs/knowledge/shell-features.md (Abschnitt Drop-down-Terminal)
 """
@@ -27,6 +27,14 @@ GAP = 8         # Abstand zur Bar/Oberkante in Pixeln
 def hc(*args):
     r = subprocess.run(["hyprctl", *args], capture_output=True, text=True)
     return r.stdout
+
+
+def dsp(*calls):
+    # Lua-Konfig: `dispatch X` wertet hl.dispatch(X) aus; mehrere in einem --batch (getrennt an " ; ", darum kein ";" im Lua)
+    return hc("--batch", " ; ".join("dispatch " + c for c in calls))
+
+
+TOGGLE = 'hl.dsp.workspace.toggle_special("dropterm")'
 
 
 def jq(what):
@@ -82,8 +90,9 @@ def place(c):
     w, h = round(mw * WIDTH), round(mh * HEIGHT)
     x, y = m["x"] + (mw - w) // 2, m["y"] + top + GAP
     a = f"address:{c['address']}"
-    hc("--batch", f"dispatch resizewindowpixel exact {w} {h},{a} ; dispatch movewindowpixel exact {x} {y},{a} ; "
-                  f"dispatch focuswindow {a}")
+    dsp(f'hl.dsp.window.resize({{ x = {w}, y = {h}, window = "{a}" }})',
+        f'hl.dsp.window.move({{ x = {x}, y = {y}, window = "{a}" }})',
+        f'hl.dsp.focus({{ window = "{a}" }})')
 
 
 def show():
@@ -92,14 +101,14 @@ def show():
         print("Kitty kam nicht hoch (kitty-drop)", file=sys.stderr)
         return 1
     if c["workspace"]["name"] != WS:  # vom Nutzer woandershin geschoben -> zurückholen
-        hc("dispatch", f"movetoworkspacesilent {WS},address:{c['address']}")
+        dsp(f'hl.dsp.window.move({{ workspace = "{WS}", follow = false, window = "address:{c["address"]}" }})')
         time.sleep(0.15)
     vis, foc = visible_on(), focused()
     if vis and foc and vis["name"] != foc["name"]:  # auf anderem Monitor offen -> dort zu, hier auf
-        hc("dispatch", f"togglespecialworkspace dropterm")
+        dsp(TOGGLE)
         vis = None
     if not vis:
-        hc("dispatch", "togglespecialworkspace dropterm")
+        dsp(TOGGLE)
     time.sleep(0.12)
     place(client() or c)
     return 0
@@ -107,7 +116,7 @@ def show():
 
 def hide():
     if visible_on():
-        hc("dispatch", "togglespecialworkspace dropterm")
+        dsp(TOGGLE)
     return 0
 
 
@@ -122,7 +131,7 @@ def kill():
     c = client()
     if c:
         hide()
-        hc("dispatch", f"closewindow address:{c['address']}")
+        dsp(f'hl.dsp.window.close({{ window = "address:{c["address"]}" }})')
     return 0
 
 

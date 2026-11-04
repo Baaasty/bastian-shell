@@ -4,7 +4,7 @@
 #   polkit-agent on       Shell-Dialog (Standard), KDE-Agent nur als Rückfall
 #   polkit-agent off      KDE-Agent (altes Fenster), Shell meldet sich ab – Rückweg, geht immer
 #   polkit-agent start    Wächter starten (Autostart), Modus bleibt
-#   polkit-agent run      Wächter (läuft als User-Dienst desktop-polkit-agent, startet hypr/autostart.conf)
+#   polkit-agent run      Wächter (läuft als User-Dienst desktop-polkit-agent, startet hypr/autostart.lua)
 #
 # Aussperr-Schutz (Wächter, alle 2 s): ist die Shell nicht als Agent registriert (abgestürzt, Neustart, Fehler),
 # startet er den KDE-Agenten; kommt die Shell zurück, übergibt er wieder (KDE-Agent aus, Shell meldet sich neu an).

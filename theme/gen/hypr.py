@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""theme/palette.json -> Hyprland-Look (hypr/look.conf).
+"""theme/palette.json -> Hyprland-Look (hypr/look.lua).
 
 Fenster-Rahmen: aktiv = Akzent (klar sichtbar, 2 px), inaktiv = ruhiges Holzbraun. Rundung wie die Fenster (radius.window),
 Schatten aus shadow (ruhig, kein Leuchten), Animationen kurz aus motion.
@@ -23,7 +23,7 @@ glass = src.get("glass", {})
 motion = src.get("motion", {})
 
 
-def hl(value: str, a: float | None = None) -> str:
+def hl_color(value: str, a: float | None = None) -> str:
     """Palette-Farbe -> Hyprland rgba(RRGGBBAA). a überschreibt den Alpha-Wert."""
     r, g, b, alpha = rgba(value)
     alpha = alpha if a is None else a
@@ -62,78 +62,83 @@ move = int(motion.get("move", slide))
 
 INACTIVE = t["border"] if blur_on else over(t["borderStrong"], t.get("surfaceRaised", t["surface"]))
 
-text = f"""# {MARK} ({variant}) – nicht von Hand ändern.
-# Neu erzeugen: python3 -I theme/gen/hypr.py [variante]   (läuft auch in theme/gen/all.py und scripts/rice variant)
+text = f"""-- {MARK} ({variant}) – nicht von Hand ändern.
+-- Neu erzeugen: python3 -I theme/gen/hypr.py [variante]   (läuft auch in theme/gen/all.py und scripts/rice variant)
 
-general {{
-    border_size = {border}
-    gaps_in = {gap // 2}
-    gaps_out = {gap}
-    # aktiv: Akzent, inaktiv: ruhiger Ton aus der Fläche (Glas-Varianten: Akzent gedämpft + Haarlinie)
-    col.active_border = {hl(t["accent"], 0.9 if not blur_on else 0.55)}
-    col.inactive_border = {hl(INACTIVE)}
-    col.nogroup_border = {hl(INACTIVE)}
-    col.nogroup_border_active = {hl(t["accent"], 0.9 if not blur_on else 0.55)}
-}}
+hl.config({{
+    general = {{
+        border_size = {border},
+        gaps_in = {gap // 2},
+        gaps_out = {gap},
+        -- aktiv: Akzent, inaktiv: ruhiger Ton aus der Fläche (Glas-Varianten: Akzent gedämpft + Haarlinie)
+        col = {{
+            active_border = "{hl_color(t["accent"], 0.9 if not blur_on else 0.55)}",
+            inactive_border = "{hl_color(INACTIVE)}",
+            nogroup_border = "{hl_color(INACTIVE)}",
+            nogroup_border_active = "{hl_color(t["accent"], 0.9 if not blur_on else 0.55)}",
+        }},
+    }},
 
-decoration {{
-    rounding = {rounding}
-    rounding_power = 2
-    active_opacity = 1.0
-    inactive_opacity = 1.0
-    dim_inactive = false
+    decoration = {{
+        rounding = {rounding},
+        rounding_power = 2,
+        active_opacity = 1.0,
+        inactive_opacity = 1.0,
+        dim_inactive = false,
 
-    # dezent und nur so weit wie nötig (Schatten kosten pro Fenster)
-    shadow {{
-        enabled = true
-        range = {sh_range}
-        render_power = 3
-        offset = 0 {sh_y}
-        color = {hl(t.get("shadow", t["bgBottom"]), sh_alpha)}
-        color_inactive = {hl(t.get("shadow", t["bgBottom"]), round(sh_alpha * 0.6, 3))}
-    }}
+        -- dezent und nur so weit wie nötig (Schatten kosten pro Fenster)
+        shadow = {{
+            enabled = true,
+            range = {sh_range},
+            render_power = 3,
+            offset = "0 {sh_y}",
+            color = "{hl_color(t.get("shadow", t["bgBottom"]), sh_alpha)}",
+            color_inactive = "{hl_color(t.get("shadow", t["bgBottom"]), round(sh_alpha * 0.6, 3))}",
+        }},
 
-    # Blur nur bei Varianten mit blur=true (hearth: aus, alles deckend). Wenige Pässe, kein Rauschen-Schnickschnack.
-    blur {{
-        enabled = {'true' if blur_on else 'false'}
-        size = {blur_size}
-        passes = {passes}
-        new_optimizations = true
-        xray = false
-        noise = 0.01
-        contrast = 1.0
-        brightness = 1.0
-        vibrancy = {vibrancy}
-        vibrancy_darkness = 0.0
-        special = false
-        popups = false
-        input_methods = false
-    }}
-}}
+        -- Blur nur bei Varianten mit blur=true (hearth: aus, alles deckend). Wenige Pässe, kein Rauschen-Schnickschnack.
+        blur = {{
+            enabled = {'true' if blur_on else 'false'},
+            size = {blur_size},
+            passes = {passes},
+            new_optimizations = true,
+            xray = false,
+            noise = 0.01,
+            contrast = 1.0,
+            brightness = 1.0,
+            vibrancy = {vibrancy},
+            vibrancy_darkness = 0.0,
+            special = false,
+            popups = false,
+            input_methods = false,
+        }},
+    }},
 
-misc {{
-    background_color = {hl(t["bg"], 1.0)}
-}}
+    misc = {{
+        background_color = "{hl_color(t["bg"], 1.0)}",
+    }},
 
-# Kurz und ruhig: OutCubic wie motion.easing, keine Feder, kein Nachschwingen, nichts läuft dauerhaft
-animations {{
-    enabled = true
-}}
-bezier = desktopOut, 0.33, 1, 0.68, 1
-# Verschieben: OutExpo – fast der ganze Weg in den ersten Frames (fühlt sich direkt an), dann weich einrasten
-bezier = desktopSnap, 0.16, 1, 0.3, 1
-animation = global, 1, {speed(state)}, desktopOut
-animation = windowsIn, 1, {speed(slide)}, desktopOut, popin 96%
-animation = windowsOut, 1, {speed(fade)}, desktopOut, popin 96%
-animation = windowsMove, 1, {speed(move)}, desktopSnap
-animation = fade, 1, {speed(fade)}, desktopOut
-animation = border, 1, {speed(state)}, desktopOut
-animation = borderangle, 0
-animation = workspaces, 1, {speed(slide)}, desktopOut, fade
-animation = specialWorkspace, 1, {speed(slide)}, desktopOut, fade
-# Layer-Flächen (Bar, Dashboard, OSD …) animiert die Shell selbst – sonst doppelt
-animation = layers, 0
-animation = fadeLayers, 0
+    -- Kurz und ruhig: OutCubic wie motion.easing, keine Feder, kein Nachschwingen, nichts läuft dauerhaft
+    animations = {{
+        enabled = true,
+    }},
+}})
+
+hl.curve("desktopOut", {{ type = "bezier", points = {{ {{ 0.33, 1 }}, {{ 0.68, 1 }} }} }})
+-- Verschieben: OutExpo – fast der ganze Weg in den ersten Frames (fühlt sich direkt an), dann weich einrasten
+hl.curve("desktopSnap", {{ type = "bezier", points = {{ {{ 0.16, 1 }}, {{ 0.3, 1 }} }} }})
+hl.animation({{ leaf = "global", enabled = true, speed = {speed(state)}, bezier = "desktopOut" }})
+hl.animation({{ leaf = "windowsIn", enabled = true, speed = {speed(slide)}, bezier = "desktopOut", style = "popin 96%" }})
+hl.animation({{ leaf = "windowsOut", enabled = true, speed = {speed(fade)}, bezier = "desktopOut", style = "popin 96%" }})
+hl.animation({{ leaf = "windowsMove", enabled = true, speed = {speed(move)}, bezier = "desktopSnap" }})
+hl.animation({{ leaf = "fade", enabled = true, speed = {speed(fade)}, bezier = "desktopOut" }})
+hl.animation({{ leaf = "border", enabled = true, speed = {speed(state)}, bezier = "desktopOut" }})
+hl.animation({{ leaf = "borderangle", enabled = false }})
+hl.animation({{ leaf = "workspaces", enabled = true, speed = {speed(slide)}, bezier = "desktopOut", style = "fade" }})
+hl.animation({{ leaf = "specialWorkspace", enabled = true, speed = {speed(slide)}, bezier = "desktopOut", style = "fade" }})
+-- Layer-Flächen (Bar, Dashboard, OSD …) animiert die Shell selbst – sonst doppelt
+hl.animation({{ leaf = "layers", enabled = false }})
+hl.animation({{ leaf = "fadeLayers", enabled = false }})
 """
 
-write(ROOT / "hypr/look.conf", text)
+write(ROOT / "hypr/look.lua", text)

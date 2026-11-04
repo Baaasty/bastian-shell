@@ -29,7 +29,7 @@ Singleton {
     }
 
     // Blur an/aus: pro Variante (blur) oder Rückfall data.style.blur. hearth = aus -> alles deckend.
-    // Aus: Glass-Töne werden auf den Grund gerechnet (deckend); Hyprland-Blur kommt aus hypr/look.conf (theme/gen/hypr.py).
+    // Aus: Glass-Töne werden auf den Grund gerechnet (deckend); Hyprland-Blur kommt aus hypr/look.lua (theme/gen/hypr.py).
     readonly property bool blurEnabled: t.blur !== undefined ? !!t.blur : !!(data.style && data.style.blur)
 
     // Farben

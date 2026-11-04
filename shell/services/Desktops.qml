@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "hyprlua.js" as Lua
 
 // Virtuelle Desktops unter Hyprland. Liste (Reihenfolge + Namen) gehört der Shell und liegt in
 // ~/.local/state/desktop/desktops.json – Hyprland löscht leere Workspaces, ein Desktop bleibt trotzdem.
@@ -177,7 +178,7 @@ Singleton {
             if (Hypr.deskOf(t) !== d)
                 continue;
             const ws = Hypr.wsFor(Hypr.slotOf(t), to);
-            cmds.push("dispatch movetoworkspacesilent " + (Hypr.isMinimized(t) ? "special:m" + ws : ws) + "," + Hypr.sel(t));
+            cmds.push(Lua.dsp(Lua.moveSilent(Hypr.isMinimized(t) ? "special:m" + ws : ws, Hypr.sel(t))));
         }
         const next = list.slice();
         next.splice(i, 1);

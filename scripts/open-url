@@ -7,7 +7,7 @@ erzeugt von scripts/hypr install). Auch die Shell öffnet Links hierüber (Launc
 
 Warum: Chromium öffnet Links im zuletzt aktiven Fenster – lag das auf einem anderen Desktop, sprang der rechte
 Monitor dorthin. Darum erst das Fenster hier fokussieren (dann ist es das „zuletzt aktive“) oder ein neues aufmachen
-(Regel monitor DP-1 in hypr/rules.conf legt es auf den aktiven Workspace rechts = aktueller Desktop).
+(Regel monitor DP-1 in hypr/rules.lua legt es auf den aktiven Workspace rechts = aktueller Desktop).
 """
 import json
 import os
@@ -56,7 +56,8 @@ def main(argv):
         os.execvp(BROWSER, [BROWSER, *urls])
     win = pick(hc("clients"), current_desk(hc("monitors")))
     if win:
-        subprocess.run(["hyprctl", "dispatch", "focuswindow", "address:" + win["address"]], capture_output=True, timeout=2)
+        subprocess.run(["hyprctl", "dispatch", f'hl.dsp.focus({{ window = "address:{win["address"]}" }})'],
+                       capture_output=True, timeout=2)
         # Chromium muss den Fokus erst mitbekommen, sonst gilt noch das alte Fenster als „zuletzt aktiv“
         time.sleep(0.15)
         os.execvp(BROWSER, [BROWSER, *urls])

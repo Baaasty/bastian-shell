@@ -9,7 +9,7 @@ Liest den Router per API, schaltet nur Routen aus, die an sind, nacheinander per
 --if KEY    tut nichts, wenn KEY in ~/.config/desktop/goxlr.json auf false steht (fehlt = an)
 --only-inputs  nur diese Eingänge (JSON-Namen, z. B. Game,Console) – zum vorsichtigen Testen
 -n          zeigt nur die geplanten Befehle
-Aufrufer: hypr/autostart.conf (scripts/goxlr-login, --if resetRoutingOnLogin), scripts/goxlr-state lock
+Aufrufer: hypr/autostart.lua (scripts/goxlr-login, --if resetRoutingOnLogin), scripts/goxlr-state lock
 (--if resetRoutingOnLock), systemd/desktop-keylight-off.service (ExecStop, --if resetRoutingOnExit,
 läuft vor „profiles device save“). Schalter in ~/.config/desktop/goxlr.json, ohne Datei sind alle an.
 """

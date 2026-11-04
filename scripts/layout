@@ -11,7 +11,7 @@
 Optionen: --desk N (statt des aktuellen Desktops) · --dry-run (restore: nur zeigen) · --force (save: überschreiben)
           · --json (list: maschinenlesbar)
 
-„Desktop“ = Workspace d auf DP-2 + 100+d links + 200+d rechts (Schema der Shell, hypr/monitors.conf).
+„Desktop“ = Workspace d auf DP-2 + 100+d links + 200+d rechts (Schema der Shell, hypr/monitors.lua).
 Ohne Namen gilt der Name des aktuellen Desktops (~/.local/state/desktop/desktops.json). Ist der Name eine Projekt-ID
 aus projects/projects.json, startet VS Code mit dem Projektordner und Helium mit der Dev-URL des Projekts.
 Nur Programme aus der Positivliste von config/hyprflow/config.toml (Kitty, Konsole, VS Code, Helium) – nie Chat/Spotify/Steam.
@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LAYOUTS = ROOT / "config" / "layouts"
 HF_CONF = ROOT / "config" / "hyprflow" / "config.toml"
-MONITORS_CONF = ROOT / "hypr" / "monitors.conf"
+MONITORS_CONF = ROOT / "hypr" / "monitors.lua"
 # projects.json ist lokal (gitignored); ohne sie gilt die Beispiel-Datei
 PROJECTS = ROOT / "projects" / "projects.json"
 if not PROJECTS.exists():
@@ -58,6 +58,21 @@ def hc(*args):
     return subprocess.run(["hyprctl", *args], capture_output=True, text=True).stdout
 
 
+def lua_str(s):
+    """Python-Text als Lua-String-Literal (für Befehle mit beliebigen Zeichen)."""
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+
+
+def dsp(lua):
+    # Lua-Konfig: `hyprctl dispatch X` wertet hl.dispatch(X) aus
+    return hc("dispatch", lua)
+
+
+def exec_with_rule(cmd, rule):
+    """Befehl über Hyprlands exec starten, mit Fensterregel für das erste Fenster (rule: Lua-Tabelle als Text)."""
+    return dsp(f"hl.dsp.exec_cmd({lua_str(cmd)}, {rule})")
+
+
 def jq(what):
     try:
         return json.loads(hc("-j", what))
@@ -66,13 +81,13 @@ def jq(what):
 
 
 def monitor_bases():
-    """Monitorname -> Workspace-Offset (0 / 100 / 200) aus hypr/monitors.conf (workspace = 101, monitor:HDMI-A-2)."""
+    """Monitorname -> Workspace-Offset (0 / 100 / 200) aus der Tabelle BASES in hypr/monitors.lua (["HDMI-A-2"] = 100,)."""
     bases = {}
     try:
         for line in MONITORS_CONF.read_text().splitlines():
-            m = re.match(r"\s*workspace\s*=\s*(\d+)\s*,\s*monitor:([^\s,]+)", line)
+            m = re.match(r'\s*\["([^"]+)"\]\s*=\s*(\d+)\s*,', line)
             if m:
-                bases.setdefault(m.group(2), (int(m.group(1)) // 100) * 100)
+                bases.setdefault(m.group(1), int(m.group(2)))
     except OSError:
         pass
     return bases or {"DP-2": 0, "HDMI-A-2": 100, "DP-1": 200}
@@ -205,7 +220,7 @@ def write_toml(path, name, desk, windows, note):
         "# Von Hand änderbar. Anleitung: docs/knowledge/shell-features.md",
         "# Reihenfolge = Startreihenfolge = Kachelreihenfolge (dwindle: das zweite Fenster teilt rechts vom ersten, das dritte",
         "# teilt das zweite). Gestartet wird nur, was auf dem Workspace des Monitors noch nicht läuft (gleiche Klasse).",
-        "# monitor: Name wie in hypr/monitors.conf. cmd: Programm + Argumente (ohne Shell). box: x y Breite Höhe als",
+        "# monitor: Name wie in hypr/monitors.lua. cmd: Programm + Argumente (ohne Shell). box: x y Breite Höhe als",
         "# Bruchteil des Monitors (Richtwert zum Lesen, wird beim Wiederherstellen nicht angewendet; weglassen ist erlaubt).",
         "",
         "version = 1",
@@ -391,21 +406,21 @@ def cmd_restore(name, desk, dry):
         before = {c["address"] for c in jq("clients")}
         # Über Hyprlands exec mit Regel: das Fenster öffnet gleich auf dem Ziel-Workspace (ohne Fokusklau) und wird dort
         # regulär gekachelt (nicht „verschoben“); gestartet wird trotzdem über uwsm (eigene systemd-Einheit).
-        hc("dispatch", "exec", f"[workspace {ws} silent] " + " ".join(shlex.quote(x) for x in ["uwsm", "app", "--", *cmd]))
+        exec_with_rule(" ".join(shlex.quote(x) for x in ["uwsm", "app", "--", *cmd]), f'{{ workspace = "{ws} silent" }}')
         c = wait_new(w["class"], before, DETECT_TIMEOUT)
         if not c:
             say(f"  ! {w['class']}: kein neues Fenster nach {int(DETECT_TIMEOUT)} s (läuft vielleicht in einem bestehenden Fenster)")
             continue
         if c["workspace"]["id"] != ws:
-            hc("dispatch", f"movetoworkspacesilent {ws},address:{c['address']}")
+            dsp(f'hl.dsp.window.move({{ workspace = {ws}, follow = false, window = "address:{c["address"]}" }})')
         started.append((w, c))
         # Sichtbarer Workspace: das neue Fenster fokussieren, damit das nächste es teilt (Kacheln: eins neben/unter dem anderen).
         # Unsichtbarer Workspace: kein Fokus (focuswindow würde dorthin umschalten); dann teilt jedes neue Fenster das erste.
         if ws in visible:
-            hc("dispatch", f"focuswindow address:{c['address']}")
+            dsp(f'hl.dsp.focus({{ window = "address:{c["address"]}" }})')
         time.sleep(PAUSE)
     if orig and any(ws in visible for _, ws, _, _ in todo):
-        hc("dispatch", f"focuswindow address:{orig}")  # Fokus zurück dorthin, wo du warst
+        dsp(f'hl.dsp.focus({{ window = "address:{orig}" }})')  # Fokus zurück dorthin, wo du warst
     say(f"Fertig: {len(started)} von {len(todo)} Fenstern gestartet.")
     return 0
 
@@ -479,7 +494,7 @@ def kdialog(*args):
     for f in (out, rc):
         f.unlink(missing_ok=True)
     inner = "kdialog " + " ".join(shlex.quote(a) for a in args) + f" > {shlex.quote(str(out))}; echo $? > {shlex.quote(str(rc))}"
-    hc("dispatch", "exec", "[float on; center on; size 620 420] sh -c " + shlex.quote(inner))
+    exec_with_rule("sh -c " + shlex.quote(inner), '{ float = true, center = true, size = "620 420" }')
     for _ in range(1200):  # bis zu 2 Minuten
         time.sleep(0.1)
         if rc.exists() and rc.read_text().strip():

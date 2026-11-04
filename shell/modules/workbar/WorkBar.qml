@@ -9,6 +9,7 @@ import qs.config
 import qs.services
 import qs.components
 import qs.modules.bar
+import "../../services/hyprlua.js" as Lua
 
 // Arbeitsplatz-Leiste unten links: Desktops (App-Icons oder Mini-Vorschau), + / Vorlagen, offene Apps.
 // Weicht wie die Top-Bar Fenstern aus, die unten hineinragen; Hover am unteren Rand holt sie zurück.
@@ -48,8 +49,8 @@ Scope {
     // es wandert also her – auf seinen Monitor) und nach vorn
     function bringHere(t) {
         if (Hypr.deskOf(t) !== Hypr.currentDesk || Hypr.isMinimized(t) || Hypr.isStashed(t))
-            Hypr.batch(["dispatch movetoworkspacesilent " + Hypr.wsFor(Hypr.slotOf(t), Hypr.currentDesk) + "," + Hypr.sel(t),
-                "dispatch focuswindow " + Hypr.sel(t)], null);
+            Hypr.batch([Lua.dsp(Lua.moveSilent(Hypr.wsFor(Hypr.slotOf(t), Hypr.currentDesk), Hypr.sel(t))),
+                Lua.dsp(Lua.focusWindow(Hypr.sel(t)))], null);
         else
             Hypr.activate(t);
     }

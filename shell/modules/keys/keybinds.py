@@ -3,25 +3,24 @@
 
   layout  Tastaturlayout (input:kb_layout), für code:NN lesbar zu machen
   binds   Ausgabe von `hyprctl binds -j` (was Hyprland wirklich gebunden hat)
-  conf    alle bind*-Zeilen der Konfiguration in Dateireihenfolge, mit Abschnitt ("# ---- Name ----")
-          und den #-Kommentaren darüber (conf-Beschreibungen) – nichts davon ist hartcodiert
+  conf    alle bind(…)-Zeilen aus hypr/binds.lua in Dateireihenfolge, mit Abschnitt ("-- ---- Name ----"), Titel
+          und den --Kommentaren darüber (conf-Beschreibungen) – nichts davon ist hartcodiert
 
-Die Konfiguration wird zur Laufzeit gefunden: $HYPRLAND_CONFIG, sonst $XDG_CONFIG_HOME/hypr/hyprland.conf,
-und von dort allen "source = …"-Zeilen gefolgt ($VAR aus der Konfiguration oder der Umgebung, ~, Globs).
+Format der Zeilen: bind("SUPER + SHIFT + Left", "Titel", Aktion, { release = true, … }) (Helfer in hypr/lib.lua).
+Eingerückte hl.bind(…) (Submaps) gehören nicht in den Viewer.
 Aufruf: python3 -I keybinds.py
 """
-import glob
 import json
-import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-SECTION = re.compile(r"^#\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
-VAR_DEF = re.compile(r"^\$(\w+)\s*=\s*(.*)$")
-BIND = re.compile(r"^(bind[a-z]*)\s*=\s*(.*)$")
-SOURCE = re.compile(r"^source\s*=\s*(.+)$")
-INLINE = re.compile(r"\s#\s+(\S.*)$")
+BINDS = Path(__file__).resolve().parents[3] / "hypr" / "binds.lua"
+SECTION = re.compile(r"^--\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
+BIND = re.compile(r'^bind\(\s*"([^"]+)"\s*,\s*(?:nil|"([^"]*)")\s*,\s*(.*)\)\s*$')
+# Bind-Optionen → die alten hyprlang-Flags, mit denen Keybinds.qml rechnet (r = Loslassen, m = Maus …)
+FLAGS = {"release": "r", "mouse": "m", "locked": "l", "repeating": "e", "ignore_mods": "i", "transparent": "t"}
 
 
 def hyprctl(*args):
@@ -33,94 +32,54 @@ def hyprctl(*args):
 
 
 def main():
-    variables = {}
-
-    def expand(s):
-        # längere Namen zuerst, damit $IPC2 nicht als $IPC + "2" ersetzt wird
-        for name in sorted(variables, key=len, reverse=True):
-            s = s.replace("$" + name, variables[name])
-        return re.sub(r"\$(\w+)", lambda m: os.environ.get(m.group(1), m.group(0)), s)
-
     state = {"section": "", "comment": [], "block": 0, "first": False}
     records = []
-    seen = set()
-
-    def read(path):
-        path = os.path.realpath(os.path.expanduser(path))
-        if path in seen or not os.path.isfile(path):
-            return
-        seen.add(path)
-        base = os.path.dirname(path)
-        try:
-            lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
-        except OSError:
-            return
-        for raw in lines:
-            line = raw.strip()
-            if not line:
+    try:
+        lines = BINDS.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        lines = []
+    for raw in lines:
+        line = raw.strip()
+        m = BIND.match(raw)
+        if not line or (not m and not line.startswith("--")):
+            # Leerzeile oder sonstiger Lua-Code: Kommentar darüber gehört nicht zum nächsten Bind
+            state["comment"] = []
+            state["first"] = False
+            continue
+        if not m:
+            s = SECTION.match(line)
+            if s:
+                state["section"] = s.group(1)
                 state["comment"] = []
                 state["first"] = False
                 continue
-            if line.startswith("#"):
-                m = SECTION.match(line)
-                if m:
-                    state["section"] = m.group(1)
-                    state["comment"] = []
-                    state["first"] = False
-                    continue
-                if state["first"]:
-                    # neuer Kommentarblock mitten in einer Gruppe
-                    state["comment"] = []
-                    state["first"] = False
-                state["comment"].append(line.lstrip("#").strip())
-                continue
-            m = VAR_DEF.match(line)
-            if m:
-                variables[m.group(1)] = expand(m.group(2).strip())
-                continue
-            m = SOURCE.match(line)
-            if m:
-                target = expand(m.group(1).strip())
-                if not os.path.isabs(target) and not target.startswith("~"):
-                    target = os.path.join(base, target)
-                for f in sorted(glob.glob(os.path.expanduser(target))):
-                    read(f)
-                continue
-            m = BIND.match(line)
-            if m:
-                body = expand(m.group(2))
-                trail = ""
-                t = INLINE.search(body)
-                if t:
-                    trail = t.group(1).strip()
-                    body = body[: t.start()]
-                parts = [p.strip() for p in body.split(",", 3)]
-                if len(parts) < 3:
-                    continue
-                while len(parts) < 4:
-                    parts.append("")
-                if state["comment"] and not state["first"]:
-                    state["block"] += 1
-                    state["first"] = True
-                    first = True
-                else:
-                    first = False
-                records.append({
-                    "flags": m.group(1)[4:],
-                    "mods": parts[0],
-                    "key": parts[1],
-                    "dispatcher": parts[2],
-                    "arg": parts[3],
-                    "section": state["section"],
-                    "comment": " ".join(state["comment"]) if state["comment"] else "",
-                    "block": state["block"] if state["comment"] else 0,
-                    "first": first,
-                    "trail": trail,
-                })
-
-    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    root = os.environ.get("HYPRLAND_CONFIG") or os.path.join(xdg, "hypr", "hyprland.conf")
-    read(root)
+            if state["first"]:
+                # neuer Kommentarblock mitten in einer Gruppe
+                state["comment"] = []
+                state["first"] = False
+            state["comment"].append(line[2:].strip())
+            continue
+        keys, title, rest = m.groups()
+        parts = [k.strip() for k in keys.split("+")]
+        flags = "".join(f for opt, f in FLAGS.items() if re.search(rf"\b{opt}\s*=\s*true\b", rest))
+        if state["comment"] and not state["first"]:
+            state["block"] += 1
+            state["first"] = True
+            first = True
+        else:
+            first = False
+        records.append({
+            "flags": flags,
+            "mods": " ".join(parts[:-1]),
+            "key": parts[-1],
+            "dispatcher": "",
+            "arg": "",
+            "section": state["section"],
+            "comment": " ".join(state["comment"]) if state["comment"] else "",
+            "block": state["block"] if state["comment"] else 0,
+            "first": first,
+            "trail": title or "",
+        })
 
     layout = ""
     opt = hyprctl("getoption", "input:kb_layout", "-j")

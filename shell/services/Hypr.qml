@@ -5,6 +5,7 @@ import Quickshell.Io
 import Quickshell.Hyprland
 import qs.config
 import "activation.js" as Act
+import "hyprlua.js" as Lua
 
 // Hyprland-Anbindung an einer Stelle: Fenster (Hyprland.toplevels), Monitore, Workspaces, Befehle.
 // Ersetzt unter Hyprland TasksModel/VirtualDesktopInfo (org.kde.taskmanager) und den KWin-D-Bus.
@@ -138,18 +139,18 @@ Singleton {
         return o.pinned !== true && wsId(t) > 0 && !isFullscreen(t) && followsApp(appId(t));
     }
     // Befehle, die folgende Fenster auf ihren Ziel-Workspace schieben (target(t) = Workspace-ID, 0 = bleibt).
-    // movetoworkspacesilent: kein Fokuswechsel; der Ziel-Workspace liegt per Regel (monitors.conf) auf demselben
+    // movetoworkspacesilent: kein Fokuswechsel; der Ziel-Workspace liegt per Regel (monitors.lua) auf demselben
     // Monitor, Schwebende behalten dort ihre Lage. Von links nach rechts, damit die Reihenfolge der Kacheln
     // (Discord links, Spotify rechts) bleibt; die Breite der linken Kachel wird danach wiederhergestellt (sonst 50:50).
     function followCmds(target): var {
         const list = toplevels.values.filter(follows).map(t => ({ t: t, to: target(t) })).filter(x => x.to > 0 && x.to !== wsId(x.t))
             .sort((a, b) => geo(a.t).x - geo(b.t).x);
-        const cmds = list.map(x => "dispatch movetoworkspacesilent " + x.to + "," + sel(x.t));
+        const cmds = list.map(x => Lua.dsp(Lua.moveSilent(x.to, sel(x.t))));
         const tiled = list.filter(x => ipc(x.t).floating !== true);
         if (tiled.length > 1 && tiled.every(x => x.to === tiled[0].to)) {
             const g = geo(tiled[0].t);
             if (g.width > 0)
-                cmds.push("dispatch resizewindowpixel exact " + Math.round(g.width) + " " + Math.round(g.height) + "," + sel(tiled[0].t));
+                cmds.push(Lua.dsp(Lua.resize(g.width, g.height, sel(tiled[0].t))));
         }
         return cmds;
     }
@@ -227,13 +228,13 @@ Singleton {
             return m ? wsFor(slotOfMonitor(m.name), desk) : 0;
         });
         for (const m of others)
-            cmds.push("dispatch focusmonitor " + m.name, "dispatch workspace " + wsFor(slotOfMonitor(m.name), desk));
+            cmds.push(Lua.dsp(Lua.focusMonitor(m.name)), Lua.dsp(Lua.workspace(wsFor(slotOfMonitor(m.name), desk))));
         if (others.length)
-            cmds.push("dispatch focusmonitor " + focused);
+            cmds.push(Lua.dsp(Lua.focusMonitor(focused)));
         if (change.some(m => m.name === focused))
-            cmds.push("dispatch workspace " + wsFor(slotOfMonitor(focused), desk));
+            cmds.push(Lua.dsp(Lua.workspace(wsFor(slotOfMonitor(focused), desk))));
         if (others.length)
-            return ["keyword cursor:no_warps 1"].concat(cmds, ["keyword cursor:no_warps " + (noWarps ? 1 : 0)]);
+            return [Lua.evl(Lua.config({ cursor: { no_warps: true } }))].concat(cmds, [Lua.evl(Lua.config({ cursor: { no_warps: noWarps } }))]);
         return cmds;
     }
 
@@ -244,7 +245,7 @@ Singleton {
 
     // ---------- Kürzel-Sperre ----------
     // Solange ein Panel mit Tastatur offen ist (Passwörter …), sind die globalen Kürzel aus: Hyprland wechselt in die
-    // Submap „modal“ (hypr/binds.conf, dort nur Esc, das Panel-Kürzel und der Not-Aus). Name pro Panel, damit sich
+    // Submap „modal“ (hypr/binds.lua, dort nur Esc, das Panel-Kürzel und der Not-Aus). Name pro Panel, damit sich
     // zwei offene Panels nicht gegenseitig freischalten.
     property var modals: []
     function setModal(name: string, on: bool): void {
@@ -254,7 +255,7 @@ Singleton {
         if (next.length === modals.length && on === modals.includes(name))
             return;
         modals = next;
-        dispatch("submap " + (next.length ? "modal" : "reset"));
+        dispatch(Lua.submap(next.length ? "modal" : "reset"));
     }
 
     // ---------- Aktionen ----------
@@ -262,7 +263,8 @@ Singleton {
         if (running)
             Hyprland.dispatch(request);
     }
-    // mehrere Befehle in einem hyprctl --batch (z. B. "dispatch workspace 3"), danach optional done()
+    // request = Lua-Dispatcher aus hyprlua.js (z. B. Lua.close(sel(t)))
+    // mehrere Befehle in einem hyprctl --batch (Lua.dsp(…) / Lua.evl(…)), danach optional done()
     function batch(cmds: var, done: var): void {
         if (!running || !cmds.length) {
             if (done)
@@ -302,12 +304,12 @@ Singleton {
         const cmds = [];
         const m = /^special:m(\d+)$/.exec(wsName(t));
         if (m)
-            cmds.push("dispatch movetoworkspacesilent " + m[1] + "," + sel(t));
+            cmds.push(Lua.dsp(Lua.moveSilent(m[1], sel(t))));
         const d = deskOf(t);
         if (d > 0 && d !== currentDesk)
             for (const c of switchCmds(d))
                 cmds.push(c);
-        cmds.push("dispatch focuswindow " + sel(t));
+        cmds.push(Lua.dsp(Lua.focusWindow(sel(t))));
         batch(cmds, null);
     }
     // Fenster will nach vorn (urgent, focus_on_activate ist aus): Regel in activation.js
@@ -323,20 +325,20 @@ Singleton {
         const what = Act.decide({ cls: appId(t), desk: deskOf(t), current: currentDesk, fullscreen: isFullscreen(t),
             minimized: isMinimized(t), follows: follows(t), stashed: isStashed(t), pinned: ipc(t).pinned === true });
         if (what === "focus")
-            batch(["dispatch focuswindow " + key], null);
+            batch([Lua.dsp(Lua.focusWindow(key))], null);
         else if (what === "go")
             activate(t);
         else if (what === "pull")
-            batch(["dispatch movetoworkspacesilent " + wsFor(slotOf(t), currentDesk) + "," + key, "dispatch focuswindow " + key], null);
+            batch([Lua.dsp(Lua.moveSilent(wsFor(slotOf(t), currentDesk), key)), Lua.dsp(Lua.focusWindow(key))], null);
     }
     function close(t): void {
         if (t)
-            dispatch("closewindow " + sel(t));
+            dispatch(Lua.close(sel(t)));
     }
     function minimize(t): void {
         const id = wsId(t);
         if (t && id > 0)
-            dispatch("movetoworkspacesilent special:m" + id + "," + sel(t));
+            dispatch(Lua.moveSilent("special:m" + id, sel(t)));
     }
     function toggleMinimized(t): void {
         if (isMinimized(t))
@@ -356,7 +358,7 @@ Singleton {
         const ws = wsFor(slot, desk);
         if (!t || desk <= 0 || ws === wsId(t))
             return;
-        const cmds = ["dispatch movetoworkspacesilent " + ws + "," + sel(t)];
+        const cmds = [Lua.dsp(Lua.moveSilent(ws, sel(t)))];
         const to = monitors.values.find(m => slotOfMonitor(m.name) === slot);
         const from = monitors.values.find(m => m.name === monitorName(t));
         const g = geo(t);
@@ -369,18 +371,18 @@ Singleton {
             const w = Math.round(Math.min(g.width, aw - 2 * pad)), h = Math.round(Math.min(g.height, ah - 2 * pad));
             const x = Math.round(ax + Math.max(pad, Math.min(g.x - from.x - r[0], aw - w - pad)));
             const y = Math.round(ay + Math.max(pad, Math.min(g.y - from.y - r[1], ah - h - pad)));
-            cmds.push("dispatch resizewindowpixel exact " + w + " " + h + "," + sel(t), "dispatch movewindowpixel exact " + x + " " + y + "," + sel(t));
+            cmds.push(Lua.dsp(Lua.resize(w, h, sel(t))), Lua.dsp(Lua.move(x, y, sel(t))));
         }
         batch(cmds, null);
     }
     // weg (Hintergrund-App): unsichtbar, merkt sich den Monitor
     function stash(t): void {
         if (t)
-            dispatch("movetoworkspacesilent special:parked" + slotOf(t) + "," + sel(t));
+            dispatch(Lua.moveSilent("special:parked" + slotOf(t), sel(t)));
     }
 
     // ---------- aktuell halten (Events statt Polling) ----------
-    // Wert aus hypr/general.conf (true), bis hyprctl antwortet – mit false stellte der Desktop-Wechsel
+    // Wert aus hypr/general.lua (true), bis hyprctl antwortet – mit false stellte der Desktop-Wechsel
     // (switchCmds) cursor:no_warps auf 0 zurück, wenn die Abfrage noch nicht gelaufen war: Maus sprang danach
     property bool noWarps: true
     Process {
@@ -389,7 +391,9 @@ Singleton {
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    root.noWarps = !!JSON.parse(text).int;
+                    // Lua-Konfiguration: Bool-Optionen kommen als "bool" (hyprlang: "int")
+                    const o = JSON.parse(text);
+                    root.noWarps = !!(o.bool ?? o.int);
                 } catch (e) {}
             }
         }
@@ -428,7 +432,7 @@ Singleton {
             if (n === "activespecial") {
                 const m = /^special:(parked\d*),(.+)$/.exec(event.data || "");
                 if (m)
-                    root.batch(["dispatch focusmonitor " + m[2], "dispatch togglespecialworkspace " + m[1]], null);
+                    root.batch([Lua.dsp(Lua.focusMonitor(m[2])), Lua.dsp(Lua.toggleSpecial(m[1]))], null);
             }
             if (n === "urgent")
                 root._onUrgent(event.data || "");
@@ -505,7 +509,7 @@ Singleton {
         if (!running)
             return;
         warpsProc.running = true;
-        dispatch("submap reset");       // falls die Shell mit offenem Panel abgestürzt ist
+        dispatch(Lua.submap("reset"));       // falls die Shell mit offenem Panel abgestürzt ist
     }
 
     IpcHandler {
@@ -517,7 +521,7 @@ Singleton {
                 active: root.isActive(t), urgent: root.isUrgent(t), fullscreen: root.isFullscreen(t), geo: root.geo(t)
             })));
         }
-        // nach Fenster-Befehlen von außen (hypr/window.py): Lage neu holen (Hyprland meldet Verschieben nicht)
+        // nach Fenster-Befehlen von außen (scripts/winmove): Lage neu holen (Hyprland meldet Verschieben nicht)
         function refresh(): void {
             if (root.running)
                 refreshTop.restart();

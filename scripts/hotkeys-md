@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Erzeugt docs/knowledge/hotkeys.md aus hypr/binds.conf (Abschnitte '# ---- Name ----' + Inline-Titel '# Titel')
+"""Erzeugt docs/knowledge/hotkeys.md aus hypr/binds.lua (Abschnitte '-- ---- Name ----' + Titel in bind("Tasten", "Titel", …))
 und den Bar-Buchstaben aus shell/services/BarKeys.qml.
 
-Nie von Hand in docs/knowledge/hotkeys.md ändern: Kürzel in hypr/binds.conf ändern, dann `scripts/hotkeys-md`.
+Nie von Hand in docs/knowledge/hotkeys.md ändern: Kürzel in hypr/binds.lua ändern, dann `scripts/hotkeys-md`.
 Live ansehen: Super+K (Keybind-Viewer der Shell, liest dieselbe Datei zur Laufzeit).
 """
 import re
@@ -10,12 +10,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONF = ROOT / "hypr" / "binds.conf"
+CONF = ROOT / "hypr" / "binds.lua"
 BARKEYS = ROOT / "shell" / "services" / "BarKeys.qml"
 OUT = ROOT / "docs" / "knowledge" / "hotkeys.md"
 
-SECTION = re.compile(r"^#\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
-BIND = re.compile(r"^(bind[a-z]*)\s*=\s*(.*?)\s+#\s+(\S.*)$")
+SECTION = re.compile(r"^--\s*[-=─]{3,}\s*(.+?)\s*[-=─]{3,}\s*$")
+# nur Binds mit Titel; eingerückte hl.bind(…) (Submaps) gehören nicht hierher
+BIND = re.compile(r'^bind\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*(.*)\)\s*$')
 MODS = {"SUPER": "Super", "ALT": "Alt", "SHIFT": "Shift", "CTRL": "Ctrl"}
 KEYS = {"Return": "Enter", "Escape": "Esc", "Delete": "Del", "period": "·", "Left": "←", "Right": "→", "Up": "↑",
         "Down": "↓", "space": "Space", "mouse:272": "Mouse left", "mouse:273": "Mouse right", "code:49": "^",
@@ -23,12 +24,12 @@ KEYS = {"Return": "Enter", "Escape": "Esc", "Delete": "Del", "period": "·", "Le
 ORDER = ["Super", "Ctrl", "Alt", "Shift"]
 
 
-# Fester Abschnitt am Ende (App-Kürzel kommen nicht aus binds.conf, sondern aus config/appkeys/)
+# Fester Abschnitt am Ende (App-Kürzel kommen nicht aus binds.lua, sondern aus config/appkeys/)
 APPKEYS = """## App-Kürzel und Cheat-Sheet (Super+K)
 
 Super+K ist ein Nachschlagewerk für alles: oben die App, die beim Öffnen fokussiert war (*focused app*; Kitty mit yazi/lazygit
 zeigt beides), dann die Topbar (Super+Leertaste, Direktkürzel, Popouts, Benachrichtigungen, Tray), dann die übrige Shell
-(live aus `hypr/binds.conf` + Anleitungen zu Workspace-Modus und Launcher), darunter
+(live aus `hypr/binds.lua` + Anleitungen zu Workspace-Modus und Launcher), darunter
 alle Programme. Sofort tippen = Suche über App-Name, Tasten und Beschreibung (`upload`, `discord mute`, `ctrl+shift+u`).
 ↑/↓ und Bild↑/↓ scrollen, Tab/Shift+Tab springt zur nächsten/vorigen App, Esc schließt.
 
@@ -47,7 +48,7 @@ Eine Datei pro Programm in `config/appkeys/<app>.json`, von Hand pflegbar (nach 
 - Tasten: `Ctrl+Shift+M` · Alternativen als Liste `["Ctrl+Tab", "Ctrl+PgDn"]` · Leerzeichen = mehrere Tasten (`g g`, `Alt+↑ ↓`) ·
   `Ctrl+Plus` für + · `Alt (tap)` = Modifier allein antippen.
 - `shell.json` (`"group": "shell"`) hängt Anleitungen an die Shell-Kürzel; `"area": "topbar"` stellt einen Abschnitt in die
-  Gruppe „Topbar“ (zusammen mit dem binds.conf-Abschnitt `Topbar`). Abschnitte mit `"auto"` füllt
+  Gruppe „Topbar“ (zusammen mit dem binds.lua-Abschnitt `Topbar`). Abschnitte mit `"auto"` füllt
   `shell/modules/keys/appkeys.py` selbst: `barLetters` (`shell/services/BarKeys.qml`), `launcherPrefixes`
   (`shell/modules/launcher/Launcher.qml`), `webShortcuts` (`config/launcher/web.json`).
 - Kaputte Datei: nur sie fehlt, der Grund steht im Log (`qs log -p … | grep appkeys`).
@@ -56,15 +57,14 @@ Eine Datei pro Programm in `config/appkeys/<app>.json`, von Hand pflegbar (nach 
 
 
 def bar_letters():
-    """Buchstaben des Bar-Modus aus BarKeys.qml (Reihenfolge = Bar) mit dem Direktkürzel aus binds.conf
+    """Buchstaben des Bar-Modus aus BarKeys.qml (Reihenfolge = Bar) mit dem Direktkürzel aus binds.lua
     (erstes `barmode popout <name>`), z. B. "F Focus (Super+F) · …"."""
     direct = {}
     for raw in CONF.read_text().splitlines():
-        b = BIND.match(raw.strip())
+        b = BIND.match(raw)
         m = re.search(r"barmode popout (\w+)", raw)
         if b and m and m.group(1) not in direct:
-            parts = [x.strip() for x in b.group(2).split(",", 2)]
-            names, k = combo(parts[0], parts[1])
+            names, k = combo(*split_keys(b.group(1)))
             direct[m.group(1)] = "+".join([*names, k])
     found = re.findall(r'\{\s*key:\s*"([^"]+)",\s*name:\s*"([^"]*)",\s*label:\s*"([^"]+)"[^}]*\}', BARKEYS.read_text())
     return " · ".join(f"{k} {label}" + (f" ({direct[n]})" if n in direct else "") for k, n, label in found)
@@ -77,6 +77,12 @@ def key_name(k):
     if k.startswith("XF86"):
         return k[4:]
     return KEYS.get(k, k.upper() if len(k) == 1 else k)
+
+
+def split_keys(keys):
+    """"SUPER + SHIFT + Left" -> ("SUPER SHIFT", "Left")."""
+    parts = [p.strip() for p in keys.split("+")]
+    return " ".join(parts[:-1]), parts[-1]
 
 
 def combo(mods, key):
@@ -111,17 +117,14 @@ def main():
             current = (m.group(1), {})
             sections.append(current)
             continue
-        b = BIND.match(line)
+        b = BIND.match(raw)
         if not b or current is None:
             continue
-        kind, rest, title = b.groups()
-        parts = [p.strip() for p in rest.split(",", 2)]
-        if len(parts) < 2:
-            continue
-        mods, key = parts[0], parts[1]
-        # Modifier allein antippen (bindr = SUPER, SUPER_L / bindr = ALT, ALT_L)
+        keys, title, rest = b.groups()
+        mods, key = split_keys(keys)
+        # Modifier allein antippen (bind("SUPER + SUPER_L", …, { release = true }))
         tap = {"SUPER_L": "Super", "ALT_L": "Alt"}.get(key)
-        if tap and kind == "bindr":
+        if tap and re.search(r"\brelease\s*=\s*true\b", rest):
             current[1].setdefault(title, []).append(([tap], "tippen"))
             continue
         current[1].setdefault(title, []).append(combo(mods, key))
@@ -129,7 +132,7 @@ def main():
     out = [
         "# Tastenkürzel",
         "",
-        "_Erzeugt aus `hypr/binds.conf` mit `scripts/hotkeys-md` – nicht von Hand ändern._",
+        "_Erzeugt aus `hypr/binds.lua` mit `scripts/hotkeys-md` – nicht von Hand ändern._",
         "",
         "**Live ansehen: Super+K** (Keybind-Viewer, liest die Konfiguration bei jedem Öffnen; Suche tippt sofort).",
         "",

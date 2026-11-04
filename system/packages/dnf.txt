@@ -43,7 +43,7 @@ tesseract                      # OCR im Snip (scripts/snip-ocr), dnf history 53
 tesseract-langpack-deu
 tesseract-langpack-eng
 polkit-kde                     # Rückfall-Agent, falls die Shell den Passwort-Dialog nicht übernimmt (scripts/polkit-agent)
-pam-kwallet                    # KWallet mit dem Login-Passwort öffnen (hypr/autostart.conf: pam_kwallet_init)
+pam-kwallet                    # KWallet mit dem Login-Passwort öffnen (hypr/autostart.lua: pam_kwallet_init)
 
 # == Quickshell + Werkzeuge der Shell/Generatoren
 quickshell                     # COPR errornointernet/quickshell (0.3.2; Fedoras 0.2.1 kann keinen Blur)

@@ -3,12 +3,13 @@ import Quickshell.Io
 import qs.config
 import qs.services
 import qs.components
+import "../../services/hyprlua.js" as Lua
 
 // Browser-Chip in der Bar (Helium, Standard für http/https laut xdg-mime): Klick holt das zuletzt benutzte
 // Helium-Fenster nach vorn (ist es schon vorn: das nächste, reihum wie in der App-Leiste), sonst startet Helium.
 // Mittelklick = neues Fenster. Weggeräumte Fenster (special:parked) zählen nicht.
 // Kürzel/Bar-Modus (here): bleibt auf dem Desktop – Browser hier → nach vorn + neuer Tab, sonst neues Fenster.
-// Bar-Modus (Super+Leertaste): B · Kürzel Super+B, alt Super+W (hypr/binds.conf, ohne Shell startet es Helium direkt)
+// Bar-Modus (Super+Leertaste): B · Kürzel Super+B, alt Super+W (hypr/binds.lua, ohne Shell startet es Helium direkt)
 // IPC: qs ipc call browser focus|newWindow|status
 Chip {
     id: chip
@@ -32,7 +33,7 @@ Chip {
         Hypr.activate(wins.length > 1 && Hypr.isActive(wins[0]) ? wins[1] : wins[0]);
     }
     // Super+B: nie auf einen anderen Desktop springen. Browser auf diesem Desktop → nach vorn + neuer Tab,
-    // sonst neues Fenster (landet per Regel rechts auf dem sichtbaren Workspace, hypr/rules.conf)
+    // sonst neues Fenster (landet per Regel rechts auf dem sichtbaren Workspace, hypr/rules.lua)
     function here(): void {
         const wins = windows().filter(t => Hypr.deskOf(t) === Hypr.currentDesk);
         if (!wins.length) {
@@ -43,7 +44,7 @@ Chip {
             return;
         }
         Hypr.activate(wins[0]);
-        Hypr.batch(["dispatch sendshortcut CTRL, T, " + Hypr.sel(wins[0])], null);
+        Hypr.batch([Lua.dsp(Lua.sendShortcut("CTRL", "T", Hypr.sel(wins[0])))], null);
     }
     function newWindow(): void {
         Launch.cmd([desktopId, "--new-window"]);

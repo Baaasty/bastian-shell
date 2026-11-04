@@ -1,7 +1,7 @@
 {
   "name": "Desktop shell",
   "group": "shell",
-  "about": "Hyprland keys come live from hypr/binds.conf; these guides from config/appkeys/shell.json (\"area\": \"topbar\" = group Topbar)",
+  "about": "Hyprland keys come live from hypr/binds.lua; these guides from config/appkeys/shell.json (\"area\": \"topbar\" = group Topbar)",
   "sections": [
     {
       "name": "Bar mode",

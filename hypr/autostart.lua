@@ -1,0 +1,42 @@
+-- Was beim Start von Hyprland mitläuft. Alles über uwsm als eigene systemd-Unit (APP = "uwsm app --"),
+-- damit es nicht an Hyprland hängt und sauber beendet wird.
+--
+-- NICHT hier, sondern als systemd-Dienst (scripts/hypr install):
+--   Shell      desktop-shell-hyprland.service (qs -p $DESKTOP/shell, Neustart bei Absturz)
+--   Mail/Feeds desktop-mail-watch, desktop-mail/-agenda.timer (wie unter Plasma, graphical-session.target)
+--   GoXLR, Key Light, iCloud – laufen ohnehin als User-Dienste
+-- Zwischenablage-Verlauf startet die Shell selbst (wl-paste --watch cliphist, services/Clipboard.qml).
+-- XDG-Autostart (~/.config/autostart) startet uwsm über xdg-desktop-autostart.target.
+local d = require(DESKTOP .. "/hypr/lib.lua")
+
+hl.on("hyprland.start", function()
+    -- Leerlauf: Monitore aus/Standby nur gesperrt (Konfiguration ~/.config/hypr/hypridle.conf → hypr/hypridle.conf)
+    hl.exec_cmd(d.APP .. " hypridle")
+
+    -- Passwort-Abfragen (pkexec, Systemeinstellungen, Paketmanager): eigener Dialog der Shell (shell/modules/polkit, AP 17).
+    -- Der Wächter (User-Dienst desktop-polkit-agent) startet den KDE-Agenten NUR als Rückfall, solange die Shell
+    -- nicht als Agent registriert ist – kein Aussperren. Zurück zum KDE-Fenster: scripts/polkit-agent off
+    hl.exec_cmd(DESKTOP .. "/scripts/polkit-agent start")
+
+    -- KWallet mit dem Login-Passwort öffnen (Plasma Login legt es per pam_kwallet bereit, sonst fragt KWallet einmal)
+    hl.exec_cmd("/usr/libexec/pam_kwallet_init")
+    -- Bei Autologin gibt es kein Login-Passwort → pam_kwallet_init startet nichts, und ohne kwalletd6 fehlt der Secret Service.
+    -- Das Wallet hat deshalb ein leeres Passwort (docs/knowledge/hyprland.md), sonst fehlen Helium/Claude ihre Cookie-Schlüssel
+    -- (icp legt dann einen neuen Schlüssel an und verwirft seinen Tresor → Passwörter leer). Läuft er schon, beendet sich der zweite.
+    hl.exec_cmd(d.APP .. " kwalletd6")
+
+    -- Cursor-Theme „Desktop“ auch für Hyprland selbst (Apps lesen XCURSOR_* aus env.conf)
+    hl.exec_cmd("hyprctl setcursor Desktop 24")
+
+    -- Session restore: Fenster nach Neustart/Absturz wiederherstellen (hyprflow, scripts/session, docs/knowledge/hyprland.md).
+    -- Wartet selbst auf die Shell, tut ohne installiertes hyprflow nichts, nur Sitzungen unter 24 h. Not-Aus: scripts/session off
+    hl.exec_cmd(d.APP .. " " .. DESKTOP .. "/scripts/session boot")
+
+    -- GoXLR: Routing komplett aus (Dashboard zeigt „alles aus“) + Standard-Ausgang 100 %. Wartet auf den Daemon.
+    -- Schalter ~/.config/desktop/goxlr.json / audio.json, Doku docs/setup/goxlr.md
+    hl.exec_cmd(d.APP .. " " .. DESKTOP .. "/scripts/goxlr-login")
+
+    -- PC-Beleuchtung (AP 23): alle RGBs (Mainboard, NZXT, RAM) statisch in accent der aktiven Palette-Variante (OpenRGB).
+    -- Läuft als eigene Unit im Hintergrund (Scan dauert ein paar Sekunden), --boot = ohne openrgb still Exit 0. Doku docs/knowledge/hardware.md
+    hl.exec_cmd(d.APP .. " " .. DESKTOP .. "/scripts/rgb apply --boot")
+end)

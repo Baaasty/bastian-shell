@@ -604,7 +604,7 @@ if want 10; then
         if (( need_hypr )); then run "'$REPO/scripts/hypr' install"
         else ok "Hyprland-Konfiguration + Shell-Dienst desktop-shell-hyprland$( [ -n "$envrepo" ] && where_note "$envrepo")"; fi
 
-        # Session-Restore (hyprflow): Config-Link + Autosave-Timer; Login-Restore kommt aus hypr/autostart.conf
+        # Session-Restore (hyprflow): Config-Link + Autosave-Timer; Login-Restore kommt aus hypr/autostart.lua
         if link_owner "$HOME/.config/hyprflow/config.toml" config/hyprflow/config.toml >/dev/null \
            && systemctl --user is-enabled desktop-session-save.timer >/dev/null 2>&1; then ok "Session-Restore (hyprflow, Autosave-Timer)"
         else run "'$REPO/scripts/session' install"; fi

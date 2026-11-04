@@ -84,7 +84,7 @@ Aus dem Repo (systemd/*; Links bzw. angepasste Kopien – bootstrap 9 legt sie a
   Hyprland:  desktop-shell-hyprland.service (scripts/hypr install) · desktop-session-save.{service,timer} (scripts/session install)
              desktop-keylight-off.service, desktop-goxlr-unlock.{path,service}, desktop-mail.{service,timer},
              desktop-agenda.{service,timer}, desktop-mail-watch.service, desktop-passwords.{service,timer} (rice feeds, bootstrap 9)
-  Transient: desktop-polkit-agent (Wächter, startet scripts/polkit-agent aus hypr/autostart.conf per systemd-run – keine Datei)
+  Transient: desktop-polkit-agent (Wächter, startet scripts/polkit-agent aus hypr/autostart.lua per systemd-run – keine Datei)
 Fremd, eigene Dateien (in system/dotfiles/.config/systemd/user):
   goxlr.service              goxlr-daemon (GoXLR Utility), default.target
   icloud-photos.service      rclone mount iCloud-Fotos → ~/Data/iCloud/Photos (read-only), default.target

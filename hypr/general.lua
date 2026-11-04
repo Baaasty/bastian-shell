@@ -1,0 +1,88 @@
+-- Verhalten (Eingabe, Fokus, Fenster). Aussehen steht in look.lua (erzeugt aus theme/palette.json).
+-- Ziel: Kacheln first (dwindle), Klick-Fokus, kein Mausspringen.
+hl.config({
+    input = {
+        -- Tastatur wie unter Plasma (localectl: de, nodeadkeys, pc105)
+        kb_layout = "de",
+        kb_variant = "nodeadkeys",
+        kb_model = "pc105",
+        numlock_by_default = true,
+        -- KDE-Standard: 600 ms Verzögerung, 25 Zeichen/s
+        repeat_delay = 600,
+        repeat_rate = 25,
+        -- Maus: KDE-Standard (adaptive Beschleunigung, Empfindlichkeit 0)
+        accel_profile = "adaptive",
+        sensitivity = 0,
+        -- Klick-Fokus wie KWin: Tastatur bleibt beim angeklickten Fenster, Scrollen geht ans Fenster unter der Maus
+        follow_mouse = 2,
+        float_switch_override_focus = 0,
+    },
+
+    general = {
+        -- Kacheln: ein Fenster füllt den Schirm, ein zweites teilt (Spezialfälle schweben, rules.lua)
+        layout = "dwindle",
+        -- keine Titelleisten unter Hyprland: Größe am Rand ziehen (unsichtbarer Greifbereich), sonst Super+Rechtsklick
+        resize_on_border = true,
+        extend_border_grab_area = 12,
+        hover_icon_on_border = true,
+        -- Tearing nur für Fenster mit Regel "immediate" (Spiele, rules.lua) oder eigenem Tearing-Hinweis; sonst wirkungslos
+        allow_tearing = true,
+        -- Einrasten beim Ziehen (wie KWin: an Monitor- und Fensterkanten)
+        snap = {
+            enabled = true,
+            window_gap = 8,
+            monitor_gap = 8,
+            respect_gaps = true,
+        },
+    },
+
+    dwindle = {
+        -- Teilung bleibt, wie sie ist (Super+S dreht sie), auch wenn Nachbarn zu- und weggehen
+        preserve_split = true,
+        -- neues Fenster landet immer rechts/unten vom Fokus (statt je nach Mausseite)
+        force_split = 2,
+    },
+
+    misc = {
+        disable_hyprland_logo = true,
+        disable_splash_rendering = true,
+        force_default_wallpaper = 0,
+        -- Nach-vorn-Wünsche entscheidet die Shell (Event „urgent“ → shell/services/activation.js): Ein-Fenster-Apps
+        -- kommen auf den aktuellen Desktop, Browser/VS Code → alle Monitore wechseln. Mit true sprang Hyprland nur den
+        -- Monitor des Fensters um (Browser „flog“ auf einen anderen Desktop). Links: scripts/open-url
+        focus_on_activate = false,
+        mouse_move_enables_dpms = true,
+        key_press_enables_dpms = true,
+        -- stürzt die Sperre (Quickshell) ab, darf sie oder hyprlock die Sperre übernehmen (scripts/lock)
+        allow_session_lock_restore = true,
+        animate_mouse_windowdragging = false,
+        animate_manual_resizes = false,
+    },
+
+    binds = {
+        hide_special_on_workspace_change = true,
+        -- Super + links ziehen: gekachelte Fenster lösen sich erst nach 4 px aus der Kachel. Bei 0 passiert das schon
+        -- beim Klick, noch bevor die Markierung „dragging“ (binds.lua) greift – dann bliebe das Fenster groß.
+        drag_threshold = 4,
+    },
+
+    cursor = {
+        -- kein Mausspringen beim Fokuswechsel per Taste (KWin macht das auch nicht); die Shell liest den Wert
+        no_warps = true,
+    },
+
+    xwayland = {
+        force_zero_scaling = true,
+    },
+
+    render = {
+        -- Content Type (Spiel/Video/Foto) nicht an den Monitor melden: der Philips auf DP-2 wechselt dann sein Profil
+        -- und ist bei jedem Vollbild-Wechsel ~0,5 s schwarz (auch VS Code, nicht nur Spiele)
+        send_content_type = false,
+    },
+
+    ecosystem = {
+        no_update_news = true,
+        no_donation_nag = true,
+    },
+})

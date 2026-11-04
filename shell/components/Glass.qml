@@ -3,7 +3,7 @@ import qs.config
 
 // Fläche: deckend, 1-px-Rand, ruhiger harter Schatten (ein Rechteck, kein Blur, kein Leuchten).
 // Mit Theme.blurEnabled (nur ältere Varianten) sind Töne wieder durchsichtig; der Blur selbst kommt vom Compositor
-// über BackgroundEffect.blurRegion in den Modulen (hypr/look.conf: decoration.blur.enabled folgt dem Flag).
+// über BackgroundEffect.blurRegion in den Modulen (hypr/look.lua: decoration.blur.enabled folgt dem Flag).
 // strong = eine Stufe heller (Bar, Leisten, dringende Popups). shadow:false für Flächen ohne Schatten.
 Rectangle {
     property bool strong: false

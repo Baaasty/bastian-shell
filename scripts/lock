@@ -5,13 +5,13 @@
 #   lock now              sperren (Super+L, Power-Menü, hypridle lock_cmd): Shell, sonst hyprlock
 #   lock idle [force]     Leerlauf: sperren (im Fokus-Block nur mit force; ohne Shell immer per hyprlock)
 #   lock dpms-if-locked   Monitore aus, aber nur wenn gesperrt (hypridle)
+#   lock suspend-if-locked  Standby, aber nur wenn gesperrt (hypridle)
 #   lock status           locked | unlocked
-#   lock rescue           sofort hyprlock (Notfall; aus dem TTY per hyprctl dispatch exec, s. Doku)
+#   lock rescue           sofort hyprlock (Notfall; aus dem TTY per hyprctl dispatch 'hl.dsp.exec_cmd(…)', s. Doku)
 #   lock guard            Wächter starten (macht die Shell beim Sperren selbst)
 #
 # Zustand: $XDG_RUNTIME_DIR/desktop-lock („locked“/„unlocked“, schreibt die Shell bzw. der Wächter).
 # Unter KWin/Plasma: „now“ = loginctl lock-session (kscreenlocker), alles andere tut nichts.
-# Abdunkeln vor dem Sperren: scripts/idle.
 set -uo pipefail
 
 SELF=$(readlink -f "$0")
@@ -155,7 +155,7 @@ PY
 run_hyprlock() {
     command -v hyprlock >/dev/null || { sleep 10; return 1; }
     # Sperre einer abgestürzten Shell übernehmen dürfen (sonst bleibt Hyprlands Notfall-Bildschirm)
-    hyprctl keyword misc:allow_session_lock_restore 1 >/dev/null 2>&1 || true
+    hyprctl eval 'hl.config({ misc = { allow_session_lock_restore = true } })' >/dev/null 2>&1 || true
     write_hyprlock_conf 2>/dev/null || HYPRLOCK_CONF=""
     local start rc
     start=$(date +%s)
@@ -227,7 +227,8 @@ cmd_idle() {
 case "${1:-}" in
     now) cmd_now ;;
     idle) cmd_idle "${2:-}" ;;
-    dpms-if-locked) [ "$(state)" = locked ] && on_hyprland && hyprctl dispatch dpms off >/dev/null ;;
+    dpms-if-locked) [ "$(state)" = locked ] && on_hyprland && hyprctl dispatch 'hl.dsp.dpms({ action = "off" })' >/dev/null ;;
+    suspend-if-locked) [ "$(state)" = locked ] && on_hyprland && systemctl suspend ;;
     status) s=$(state); echo "${s:-unlocked}" ;;
     rescue) on_hyprland && emergency ;;
     guard) start_guard ;;

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fenster verschieben, Fokus und Mauszeiger folgen dem Fenster auf den anderen Monitor.
 
-  winmove dir l|r|u|d        wie `movewindow <richtung>`
-  winmove mon <monitorname>  wie `movewindow mon:<name>`
+  winmove dir l|r|u|d        wie `hl.dsp.window.move({ direction = … })`
+  winmove mon <monitorname>  wie `hl.dsp.window.move({ monitor = … })`
   winmove max up|down        Stufe hoch/runter: schwebend → normal → maximiert → Vollbild (Super+Shift+↑/↓, Alt+Shift+↑/↓)
 
 Warum: Mit cursor:no_warps bleibt der Mauszeiger auf dem alten Monitor, und Hyprland fokussiert dort das
@@ -10,7 +10,7 @@ verbliebene Fenster, nicht das verschobene (z. B. zwei Fenster im Split, rechtes
 Wechselt das Fenster den Monitor, setzen wir Fokus und Zeiger auf das verschobene Fenster. Auf demselben
 Monitor passiert nichts weiter (Zeiger bleibt, wo er ist).
 
-max: Hyprland kennt nur Umschalter (`fullscreen 1` maximiert, `fullscreen 0` Vollbild, jeweils nochmal = aus).
+max: Hyprland kennt nur Umschalter (`fullscreen` mit mode maximized bzw. fullscreen, jeweils nochmal = aus).
 Für „↑ eine Stufe größer, ↓ eine Stufe zurück“ braucht es den aktuellen Zustand (activewindow.fullscreen:
 0 normal, 1 maximiert, 2+ Vollbild). Ein Umschalter auf einen anderen Modus wechselt direkt dorthin.
 Unter „normal“ liegt „schwebend“ (activewindow.floating): ↓ löst das Fenster aus der Kachel (mittig, 60 × 70 %),
@@ -25,6 +25,11 @@ import time
 
 def hc(*args):
     return subprocess.run(["hyprctl", *args], capture_output=True, text=True, timeout=5).stdout
+
+
+def dsp(*calls):
+    # Lua-Konfig: `dispatch X` wertet hl.dispatch(X) aus; mehrere in einem --batch (getrennt an " ; ", darum kein ";" im Lua)
+    return hc("--batch", " ; ".join("dispatch " + c for c in calls))
 
 
 def jq(what):
@@ -43,14 +48,19 @@ def step(direction):
     # -1 schwebend · 0 normal · 1 maximiert · 2 Vollbild
     state = 2 if fs >= 2 else fs if fs else (-1 if floating else 0)
     if direction == "up" and state == -1:
-        hc("dispatch", "settiled", "active")
+        dsp('hl.dsp.window.float({ action = "off" })')
     elif direction == "up" and state < 2:
-        hc("dispatch", "fullscreen", "1" if state == 0 else "0")
+        dsp('hl.dsp.window.fullscreen({ mode = "%s" })' % ("maximized" if state == 0 else "fullscreen"))
     elif direction == "down" and state > 0:
         # Vollbild → maximiert (Umschalter auf anderen Modus), maximiert → normal (Umschalter aus)
-        hc("dispatch", "fullscreen", "1")
+        dsp('hl.dsp.window.fullscreen({ mode = "maximized" })')
     elif direction == "down" and state == 0:
-        hc("--batch", "dispatch setfloating active ; dispatch resizeactive exact 60% 70% ; dispatch centerwindow")
+        # resize kennt in Lua nur Pixel (kein „60%“): aus der logischen Größe des Monitors rechnen
+        m = next((m for m in (jq("monitors") or []) if m.get("id") == w.get("monitor")), None)
+        sc = (m or {}).get("scale") or 1
+        size = f"x = {round(m['width'] / sc * 0.6)}, y = {round(m['height'] / sc * 0.7)}" if m else None
+        dsp('hl.dsp.window.float({ action = "on" })', *([f"hl.dsp.window.resize({{ {size} }})"] if size else []),
+            "hl.dsp.window.center()")
     else:
         return 0
     shell_refresh()
@@ -79,27 +89,28 @@ def main():
     if not w or not w.get("address"):
         return 0
     addr, mon_before = w["address"], w.get("monitor")
-    # Hintergrund-Apps (Spotify, Discord) haben no_anim (rules.conf), damit Wegräumen nicht sichtbar gleitet –
+    # Hintergrund-Apps (Spotify, Discord) haben no_anim (rules.lua), damit Wegräumen nicht sichtbar gleitet –
     # beim bewussten Verschieben soll man aber sehen, wohin sie gehen: Sperre kurz aufheben, danach wieder Regel
     sel = f"address:{addr}"
     lifted = "true" in hc("getprop", sel, "no_anim")
     start = time.monotonic()
-    hc("--batch", (f"dispatch setprop {sel} no_anim 0 ; " if lifted else "")
-       + "dispatch movewindow " + (arg if kind == "dir" else "mon:" + arg))
+    move = (f'hl.dsp.window.move({{ direction = "{arg}" }})' if kind == "dir"
+            else f'hl.dsp.window.move({{ monitor = "{arg}" }})')
+    dsp(*([f'hl.dsp.window.set_prop({{ prop = "no_anim", value = "0", window = "{sel}" }})'] if lifted else []), move)
     for _ in range(10):
         time.sleep(0.05)
         now = next((c for c in (jq("clients") or []) if c.get("address") == addr), None)
         if now and now.get("monitor") != mon_before:
             cx = now["at"][0] + now["size"][0] // 2
             cy = now["at"][1] + now["size"][1] // 2
-            hc("--batch", f"dispatch focuswindow {sel} ; dispatch movecursor {cx} {cy}")
+            dsp(f'hl.dsp.focus({{ window = "{sel}" }})', f"hl.dsp.cursor.move({{ x = {cx}, y = {cy} }})")
             break
         if now and kind == "dir":
             break
     if lifted:
         # erst nach der Animation (motion.move in palette.json, mit Luft) – sonst springt das Fenster ans Ziel
         time.sleep(max(0.0, 0.4 - (time.monotonic() - start)))
-        hc("dispatch", "setprop", sel, "no_anim", "unset")
+        dsp(f'hl.dsp.window.set_prop({{ prop = "no_anim", value = "unset", window = "{sel}" }})')
     return 0
 
 

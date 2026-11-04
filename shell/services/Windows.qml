@@ -12,7 +12,7 @@ Singleton {
 
     property bool topBlocked: false
     property bool fullscreen: false
-    // Vollbild-Fenster ist ein Spiel (Inhaltstyp "game": Regel in hypr/rules.conf für steam_app_…, oder das Spiel
+    // Vollbild-Fenster ist ein Spiel (Inhaltstyp "game": Regel in hypr/rules.lua für steam_app_…, oder das Spiel
     // meldet es selbst). Dann nehmen Bar und Arbeitsplatz-Leiste ihre Overlay-Flächen ganz weg: jede Overlay-Fläche
     // auf dem Monitor verhindert in Hyprland direct scanout und Tearing (CMonitor::isSolitaryBlocked, SC_OVERLAYS).
     property bool game: false

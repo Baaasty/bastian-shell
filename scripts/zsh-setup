@@ -50,7 +50,7 @@ def set_shell(shell: str):
     subprocess.run(["dbus-update-activation-environment", "--systemd", f"SHELL={shell}"], check=False)
     # Hyprland gibt seine eigene Umgebung an `uwsm app` (Super+Return) weiter
     if shutil.which("hyprctl") and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-        subprocess.run(["hyprctl", "keyword", "env", f"SHELL,{shell}"], check=False, stdout=subprocess.DEVNULL)
+        subprocess.run(["hyprctl", "eval", f'hl.env("SHELL", "{shell}")'], check=False, stdout=subprocess.DEVNULL)
 
 
 def install():

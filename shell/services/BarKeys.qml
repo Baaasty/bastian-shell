@@ -13,7 +13,7 @@ Singleton {
     id: root
 
     // Buchstabe → Popout (name = Popouts-Kennung des Popouts). Reihenfolge wie in der Bar (links → rechts) = Hinweiszeile,
-    // Kürzel-Menü (Super+K) und docs/knowledge/hotkeys.md. Einzelkürzel je Eintrag: hypr/binds.conf, Abschnitt Topbar.
+    // Kürzel-Menü (Super+K) und docs/knowledge/hotkeys.md. Einzelkürzel je Eintrag: hypr/binds.lua, Abschnitt Topbar.
     // Tray = Y (sYstray): T gehört den Tasks (Super+T), Y ist frei und liegt auf QWERTZ links unten bei Super/Alt.
     // action: kein Popout, der Chip tut direkt etwas (actionRequested) – z. B. Dateimanager, Browser
     readonly property var entries: [
@@ -76,7 +76,7 @@ Singleton {
         const e = entries.find(x => x.name === name);
         return e ? e.key : "";
     }
-    // Einzelkürzel ohne Alt (hypr/binds.conf, Abschnitt Topbar); alle anderen Buchstaben: Super+Alt+<Buchstabe>
+    // Einzelkürzel ohne Alt (hypr/binds.lua, Abschnitt Topbar); alle anderen Buchstaben: Super+Alt+<Buchstabe>
     readonly property var superOnly: ["F", "T", "A", "E", "B", "I"]
     // Tooltip für Chips ohne eigenen Text (Chip.tipText): „Resources · Super+Alt+R“
     function tipFor(key: string): string {

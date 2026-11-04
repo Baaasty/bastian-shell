@@ -21,14 +21,14 @@ case "${1:-}" in
     undim) ipc stop >/dev/null ;;
     black)
         # Shell antwortet nicht: trotzdem aus (Eingabe weckt sie, hypridle-Resume schaltet an)
-        [ "$(ipc black "$(force "${2:-}")")" = skip ] || hyprctl dispatch dpms off >/dev/null
+        [ "$(ipc black "$(force "${2:-}")")" = skip ] || hyprctl dispatch 'hl.dsp.dpms({ action = "off" })' >/dev/null
         ;;
     dim-test) ipc test "$(num "${2:-}" 10 2 60)" ;;
     black-test)
         s=$(num "${2:-}" 3 1 10)
         # Rückweg auch bei Abbruch (Strg+C, kill)
-        trap 'hyprctl dispatch dpms on >/dev/null' EXIT
-        hyprctl dispatch dpms off >/dev/null
+        trap "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })' >/dev/null" EXIT
+        hyprctl dispatch 'hl.dsp.dpms({ action = "off" })' >/dev/null
         sleep "$s"
         ;;
     status) ipc status || echo clear ;;

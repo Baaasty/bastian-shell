@@ -9,8 +9,8 @@ import qs.components
 
 // Keybind-Viewer (Super+K): durchsuchbares Cheat-Sheet für alles.
 //  - oben die App, die beim Öffnen fokussiert war (hervorgehoben; Kitty mit yazi/lazygit: beide)
-//  - dann die Topbar (Abschnitt „Topbar“ in hypr/binds.conf + Anleitungen mit "area": "topbar" aus shell.json)
-//  - dann die übrige Shell: live gebundene Kürzel aus hyprctl binds -j + Kommentare in hypr/binds.conf, dazu die Anleitungen
+//  - dann die Topbar (Abschnitt „Topbar“ in hypr/binds.lua + Anleitungen mit "area": "topbar" aus shell.json)
+//  - dann die übrige Shell: live gebundene Kürzel aus hyprctl binds -j + Kommentare in hypr/binds.lua, dazu die Anleitungen
 //    aus config/appkeys/shell.json (Workspace-Modus, Launcher, Launcher-Präfixe automatisch)
 //  - darunter alle anderen Programme aus config/appkeys/*.json, nach App gruppiert
 // Tippen sucht überall (App-Name, Tasten, Titel, Beschreibung). Daten und Gruppierung: services/Keybinds.qml
@@ -22,7 +22,7 @@ Scope {
     property bool mediaOpen: false
     // immer der Hauptmonitor, nie der fokussierte: große Panels öffnen stets dort mittig
     readonly property string screenName: Config.mainScreen
-    // Abschnittsname in hypr/binds.conf ("# ---------- Topbar ----------"), der in die eigene Gruppe „Topbar“ kommt
+    // Abschnittsname in hypr/binds.lua ("-- ---------- Topbar ----------"), der in die eigene Gruppe „Topbar“ kommt
     readonly property string topbarSection: "Topbar"
     // Fenster, das beim Öffnen fokussiert war (der Viewer selbst ist eine Layer-Fläche, ändert das also nicht)
     property string activeClass: ""
@@ -110,7 +110,7 @@ Scope {
         const actIds = act.map(a => a.id);
         for (const a of act)
             out.push({ key: "a:" + a.id, title: a.name, about: a.about, active: true, cats: filterCats(a.cats, tk) });
-        // Topbar zuerst: binds.conf-Abschnitt „Topbar“ (Super+Leertaste, Super+<Buchstabe>, Super+Alt+<Buchstabe>) + Anleitungen mit area "topbar".
+        // Topbar zuerst: binds.lua-Abschnitt „Topbar“ (Super+Leertaste, Super+<Buchstabe>, Super+Alt+<Buchstabe>) + Anleitungen mit area "topbar".
         // Dann die übrige Shell: Hyprland-Kürzel, Anleitungen aus shell.json vor den (eingeklappten) Media keys
         const guides = [];
         const barGuides = [];

@@ -275,7 +275,7 @@ skip_reason() {
         "theme/out/chrome-desktop/Cached Theme.pak") echo "Browser-Cache" ;;
         theme/out/icons/*) echo "erzeugt theme/gen/icons.py neu (rice theme on)" ;;
         .vscode/settings.json) echo "Projektfarbe aus scripts/vscode-colors (lokal per .git/info/exclude; neu: scripts/vscode-colors refresh)" ;;
-        system/copies/.config/kwinoutputconfig.json) echo "nur KWin (Monitore stehen in hypr/monitors.conf) → Sicherung in $(tilde "$MIG")" ;;
+        system/copies/.config/kwinoutputconfig.json) echo "nur KWin (Monitore stehen in hypr/monitors.lua) → Sicherung in $(tilde "$MIG")" ;;
         *) return 1 ;;
     esac
 }
