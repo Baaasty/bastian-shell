@@ -59,7 +59,7 @@ Spalte „Klasse“:
 | `~/.config/user-dirs.dirs` | – | Standard |
 | `~/.config/autostart/*.desktop` | K | `claude-desktop.desktop` repariert (2026-10-18): `distrobox-enter -n ubuntu -- claude-desktop --startup`. Claude Desktop schreibt die Datei neu, wenn man dort „Beim Anmelden starten“ umschaltet → dann `system/sync push --apply` |
 | `~/.config/systemd/user/goxlr.service`, `icloud-photos.service`, `icloud-sync.{service,timer}` | L | |
-| `~/.config/systemd/user/app.slice.d/50-mem.conf` | L | RAM-Obergrenze für alle Apps (sonst friert der PC bei vollem RAM ein) |
+| `~/.config/systemd/user/app.slice.d/50-mem.conf`, `app-graphical.slice.d/50-mem.conf`, `app-.scope.d/50-oom.conf` | L | RAM-Obergrenze für alle Apps (sonst friert der PC bei vollem RAM ein); bei Überlauf stirbt nur ein Prozess, nicht die ganze App |
 | `~/.config/containers/systemd/anisette.container` | L | Quadlet für icp |
 | `~/.config/rclone/icloud-filter.txt` | L | |
 | `~/.local/share/kio/servicemenus/desktop-icloud-sync.desktop` | L | Dolphin-Kontextmenü „Sync iCloud Drive now“ |
@@ -95,7 +95,7 @@ system/dotfiles/                   # → Symlinks nach ~
   .config/containers/systemd/anisette.container
   .config/rclone/icloud-filter.txt
   .config/systemd/user/{goxlr.service,icloud-photos.service,icloud-sync.service,icloud-sync.timer}
-  .config/systemd/user/app.slice.d/50-mem.conf
+  .config/systemd/user/{app.slice.d,app-graphical.slice.d}/50-mem.conf, app-.scope.d/50-oom.conf
   .local/bin/{keylight,icloud-sync,icloud-login}
 system/copies.txt                  # Liste der Kopien (Datei oder "Ordner/ Muster")
 system/copies/                     # → Kopien nach ~
