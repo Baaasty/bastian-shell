@@ -185,6 +185,8 @@ selftest() {
     tmp="$(mktemp -d)"
     run_greeter_offscreen "" "$tmp/base.log" 4
     run_greeter_offscreen "$dir/qml" "$tmp/theme.log" 4
+    # Zeigeradressen (QQuickView(0x…)) ändern sich bei jedem Start – sonst gilt jede solche Zeile als neu
+    sed -i 's/0x[0-9a-f]\+/0x…/g' "$tmp/base.log" "$tmp/theme.log"
     sort -u "$tmp/base.log" > "$tmp/base.sorted"
     grep -v -x -F -f "$tmp/base.sorted" "$tmp/theme.log" > "$tmp/new.log" || true
     if [ -s "$tmp/new.log" ]; then
