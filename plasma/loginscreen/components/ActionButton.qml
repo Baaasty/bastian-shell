@@ -37,7 +37,22 @@ T.AbstractButton {
     readonly property string desktopGlyph: desktopGlyphs[icon.name] || "radio_button_unchecked"
     readonly property string desktopLabel: desktopLabels[icon.name] || text
 
-    readonly property bool lit: hovered || activeFocus
+    // Neustart/Ausschalten erst beim zweiten Drücken – gleiches Verhalten wie der Sperrbildschirm (LockAction.qml).
+    // Maus und Tasten laufen über trigger(); erst der zweite Druck löst clicked() aus, den Main.qml behandelt.
+    readonly property bool desktopConfirm: icon.name === "system-reboot" || icon.name === "system-shutdown"
+    property bool desktopArmed: false
+
+    function desktopTrigger() {
+        if (desktopConfirm && !desktopArmed) {
+            desktopArmed = true;
+            desktopArmTimer.restart();
+            return;
+        }
+        desktopArmed = false;
+        clicked();
+    }
+
+    readonly property bool lit: hovered || activeFocus || desktopArmed || desktopArea.containsMouse
 
     implicitWidth: 96
     implicitHeight: 76
@@ -48,8 +63,20 @@ T.AbstractButton {
 
     background: Item {}
 
-    HoverHandler {
+    Timer {
+        id: desktopArmTimer
+        interval: 3000
+        onTriggered: btn.desktopArmed = false
+    }
+
+    // fängt die Maus vor T.AbstractButton ab (sonst löste schon der erste Klick aus)
+    MouseArea {
+        id: desktopArea
+        anchors.fill: parent
+        z: 1
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
+        onClicked: btn.desktopTrigger()
     }
 
     contentItem: ColumnLayout {
@@ -60,7 +87,7 @@ T.AbstractButton {
             implicitHeight: 44
             radius: 22
             color: btn.down || btn.lit ? DesktopTheme.accentSoft : DesktopTheme.glassStrong
-            border.width: 1
+            border.width: btn.desktopArmed ? 2 : 1
             border.color: btn.lit ? DesktopTheme.accent : DesktopTheme.border
             Behavior on color { ColorAnimation { duration: 120 } }
             Text {
@@ -73,14 +100,19 @@ T.AbstractButton {
         }
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: btn.desktopLabel
+            text: btn.desktopArmed ? "Press again" : btn.desktopLabel
             textFormat: Text.PlainText
-            color: btn.lit ? DesktopTheme.text : DesktopTheme.textFaint
+            color: btn.desktopArmed ? DesktopTheme.accentText : btn.lit ? DesktopTheme.text : DesktopTheme.textFaint
             font.family: DesktopTheme.fontUi
             font.pixelSize: 12
         }
     }
 
-    Keys.onEnterPressed: clicked()
-    Keys.onReturnPressed: clicked()
+    Keys.onEnterPressed: desktopTrigger()
+    Keys.onReturnPressed: desktopTrigger()
+    // Leertaste selbst annehmen, sonst löst T.AbstractButton beim Loslassen aus
+    Keys.onSpacePressed: event => {
+        event.accepted = true;
+        desktopTrigger();
+    }
 }

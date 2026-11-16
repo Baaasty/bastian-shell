@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Effects
 import Quickshell
-import Quickshell.Io
 import Quickshell.Wayland
 import qs.config
 import qs.services
@@ -26,23 +25,8 @@ WlSessionLockSurface {
 
     color: Theme.bg
 
-    // Wallpaper wie bisher: Bild aus kscreenlockerrc (setzt scripts/wallpaper, „mitte“ auf allen Monitoren)
-    property string wallpaper: Quickshell.env("HOME") + "/.local/share/wallpapers/desktop/desktop-mitte-2560x1440.jpg"
-    FileView {
-        path: Quickshell.env("HOME") + "/.config/kscreenlockerrc"
-        printErrors: false
-        onLoaded: {
-            let group = "";
-            for (const line of text().split("\n")) {
-                if (line.startsWith("["))
-                    group = line.trim();
-                else if (group === "[Greeter][Wallpaper][org.kde.image][General]" && line.startsWith("Image=")) {
-                    const p = line.slice(6).trim().replace(/^file:\/\//, "");
-                    if (p)
-                        surface.wallpaper = p;
-                }
-            }
-        }
+    LockWallpaper {
+        id: wallpaper
     }
 
     Item {
@@ -59,7 +43,7 @@ WlSessionLockSurface {
         Image {
             id: base
             anchors.fill: parent
-            source: "file://" + surface.wallpaper
+            source: "file://" + wallpaper.path
             fillMode: Image.PreserveAspectCrop
             sourceSize.width: surface.width
             sourceSize.height: surface.height
@@ -183,7 +167,8 @@ WlSessionLockSurface {
                     }
                 }
 
-                // Aktionen (heute nur Standby; Ruhezustand kann der PC nicht, Benutzerwechsel gibt es unter Hyprland nicht)
+                // Aktionen wie der Login-Bildschirm. Ruhezustand kann der PC nicht; Benutzerwechsel bewusst nicht
+                // (einziger Nutzer – er öffnete nur einen zweiten Login-Bildschirm)
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 8
@@ -191,6 +176,18 @@ WlSessionLockSurface {
                         text: "Standby"
                         glyph: "bedtime"
                         onClicked: Quickshell.execDetached(["systemctl", "suspend"])
+                    }
+                    LockAction {
+                        text: "Restart"
+                        glyph: "restart_alt"
+                        confirm: true
+                        onClicked: Quickshell.execDetached(["systemctl", "reboot"])
+                    }
+                    LockAction {
+                        text: "Shut down"
+                        glyph: "power_settings_new"
+                        confirm: true
+                        onClicked: Quickshell.execDetached(["systemctl", "poweroff"])
                     }
                 }
 
@@ -236,59 +233,11 @@ WlSessionLockSurface {
         }
 
         // ---- Entsperren: obere/untere Hälfte als Standbild, darunter das scharfe Wallpaper ----
-        ShaderEffectSource {
-            id: top
-            visible: false
-            width: stage.width
-            height: Math.ceil(stage.height / 2)
+        // danach entsperrt Lock.qml (unlockTimer, 760 ms nach dem Start)
+        SplitReveal {
+            id: split
+            anchors.fill: parent
             sourceItem: content
-            sourceRect: Qt.rect(0, 0, width, height)
-            live: false
-            hideSource: visible
-        }
-        ShaderEffectSource {
-            id: bottom
-            visible: false
-            y: top.height
-            width: stage.width
-            height: stage.height - top.height
-            sourceItem: content
-            sourceRect: Qt.rect(0, top.height, width, height)
-            live: false
-            hideSource: visible
-        }
-        Rectangle {
-            id: seam
-            anchors.centerIn: parent
-            width: 0
-            height: 2
-            radius: 1
-            opacity: 0
-            color: Theme.accent
-        }
-    }
-
-    SequentialAnimation {
-        id: unlockAnim
-        ScriptAction {
-            script: {
-                top.scheduleUpdate();
-                bottom.scheduleUpdate();
-                top.visible = true;
-                bottom.visible = true;
-            }
-        }
-        // Glut-Linie in der Mitte
-        ParallelAnimation {
-            NumberAnimation { target: seam; property: "opacity"; to: 1; duration: 140; easing.type: Easing.OutCubic }
-            NumberAnimation { target: seam; property: "width"; to: surface.width * 0.6; duration: 180; easing.type: Easing.OutCubic }
-        }
-        // auffächern (danach entsperrt Lock.qml, 760 ms nach dem Start)
-        ParallelAnimation {
-            NumberAnimation { target: top; property: "y"; to: -top.height; duration: 560; easing.type: Easing.InOutCubic }
-            NumberAnimation { target: bottom; property: "y"; to: surface.height; duration: 560; easing.type: Easing.InOutCubic }
-            NumberAnimation { target: seam; property: "width"; to: surface.width; duration: 300; easing.type: Easing.OutCubic }
-            NumberAnimation { target: seam; property: "opacity"; to: 0; duration: 420; easing.type: Easing.InCubic }
         }
     }
 
@@ -296,7 +245,7 @@ WlSessionLockSurface {
         target: surface.ctx
         function onUnlockingChanged(): void {
             if (surface.ctx.unlocking)
-                unlockAnim.start();
+                split.start();
         }
         function onRejected(): void {
             shakeAnim.restart();

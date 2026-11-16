@@ -58,6 +58,7 @@ ShellRoot {
     Osd {}
     Power {}
     Lock {}
+    SessionReveal {}
     Idle {}
     Keys {}
     Packages {}
@@ -74,6 +75,13 @@ ShellRoot {
     Component.onCompleted: {
         ProjectTime.init();
         CamLight.init();
+    }
+
+    // Fallen nach Updates (Login-Theme aus, Neustart nötig) melden – erst wenn die Benachrichtigungen bereitstehen
+    Timer {
+        running: true
+        interval: 15000
+        onTriggered: Quickshell.execDetached([Quickshell.shellDir + "/../scripts/update-traps"])
     }
 
     // qs ipc --any-display -p ~/Workspace/bastian-shell/shell call shell status

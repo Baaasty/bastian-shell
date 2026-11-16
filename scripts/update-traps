@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Fallen nach Updates melden (ohne root): je Falle eine Benachrichtigung, sonst still (Exit 0).
+#
+#   scripts/update-traps            prüfen, jede Falle per notify-send (App „Desktop“)
+#   scripts/update-traps --print    dasselbe nur auf stdout (Handaufruf, Tests)
+#
+# Falle 1: Login-Theme veraltet – Plasma-Update ändert die Dateien, gegen die der Fingerabdruck geprüft wird; der Greeter
+#          fällt dann still auf den Standard zurück (Prüfung selbst: scripts/loginscreen theme-stale).
+# Falle 2: Neustart nötig – NVIDIA-Kernel-Treiber und Userspace-Bibliotheken passen nach einem Update nicht mehr zusammen
+#          (oder ein neuer Kernel liegt bereit). Abmelden reicht dann nicht: der Greeter-KWin bekommt mit altem Modul und
+#          neuen Bibliotheken kein Bild, der Login-Bildschirm bleibt schwarz.
+#
+# Für Tests lassen sich alle Messwerte per Umgebung setzen (leer = Prüfung überspringen):
+#   UPDATE_TRAPS_NVIDIA_LOADED, UPDATE_TRAPS_NVIDIA_INSTALLED, UPDATE_TRAPS_KERNEL_RUNNING, UPDATE_TRAPS_KERNEL_LATEST,
+#   UPDATE_TRAPS_THEME_STALE=0|1
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PRINT=0
+[ "${1:-}" = "--print" ] && PRINT=1
+
+nvidia_loaded() {
+    cat /sys/module/nvidia/version 2>/dev/null || true
+}
+
+nvidia_installed() {
+    rpm -q --qf '%{VERSION}' xorg-x11-drv-nvidia-libs.x86_64 2>/dev/null || true
+}
+
+# Nach Version sortiert statt nach Installationszeit (--last): so wählt auch GRUB/BLS den Standard-Kernel
+kernel_latest() {
+    rpm -q --qf '%{VERSION}-%{RELEASE}.%{ARCH}\n' kernel-core 2>/dev/null | grep -v 'not installed' | sort -V | tail -n1 || true
+}
+
+theme_stale() {
+    if "$REPO/scripts/loginscreen" theme-stale > /dev/null 2>&1; then echo 1; else echo 0; fi
+}
+
+# ${VAR-default}: gesetzt-aber-leer bleibt leer (Test „Wert fehlt“), ungesetzt misst echt
+nv_loaded="${UPDATE_TRAPS_NVIDIA_LOADED-$(nvidia_loaded)}"
+nv_installed="${UPDATE_TRAPS_NVIDIA_INSTALLED-$(nvidia_installed)}"
+k_running="${UPDATE_TRAPS_KERNEL_RUNNING-$(uname -r)}"
+k_latest="${UPDATE_TRAPS_KERNEL_LATEST-$(kernel_latest)}"
+stale="${UPDATE_TRAPS_THEME_STALE-$(theme_stale)}"
+
+report() {
+    if [ "$PRINT" = 1 ]; then
+        printf '%s: %s\n' "$1" "$2"
+    else
+        notify-send -a Desktop -u critical "$1" "$2" 2>/dev/null || true
+    fi
+}
+
+if [ "$stale" = 1 ]; then
+    report "Login-Bildschirm" "Plasma wurde aktualisiert, eigenes Theme ist aus. Neu einspielen: scripts/loginscreen apply"
+fi
+
+what=""; running=""; installed=""
+if [ -n "$nv_loaded" ] && [ -n "$nv_installed" ] && [ "$nv_loaded" != "$nv_installed" ]; then
+    what="Treiber"; running="NVIDIA $nv_loaded"; installed="NVIDIA $nv_installed"
+fi
+if [ -n "$k_running" ] && [ -n "$k_latest" ] && [ "$k_running" != "$k_latest" ]; then
+    what="${what:+$what/}Kernel"; running="${running:+$running, }Kernel $k_running"; installed="${installed:+$installed, }Kernel $k_latest"
+fi
+if [ -n "$what" ]; then
+    report "Neustart nötig" "$what aktualisiert (läuft $running, installiert $installed). Nur abmelden reicht nicht – sonst bleibt der Login-Bildschirm schwarz."
+fi
+exit 0

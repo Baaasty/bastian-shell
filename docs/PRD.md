@@ -97,7 +97,7 @@ eine Palette färbt Shell und Apps, und `system/` setzt den ganzen PC neu auf.
 
 ### System
 
-- **F39** Sperrbildschirm (Super+L): eigene Sperre per ext-session-lock + PAM, hyprlock als Notfall ([LOCKSCREEN.md](knowledge/hyprland.md)).
+- **F39** Sperrbildschirm (Super+L): eigene Sperre per ext-session-lock + PAM, hyprlock als Notfall; Knöpfe, Absicherung und Auffächern wie der Login-Bildschirm ([hyprland.md](knowledge/hyprland.md#sperrbildschirm)).
 - **F40** Eigene Dialoge: Polkit-Agent, Share-Picker ([SHARING.md](knowledge/shell-features.md)), Datei-Wähler, Absturz-Karte statt DrKonqi ([CRASHES.md](knowledge/shell-features.md)).
 - **F41** Paketmanager (Super+P): dnf, COPR, Flatpak, AppImage, Updates; Root nur per pkexec.
 - **F42** Theming: `theme/palette.json` → Generatoren für Qt/KDE, GTK, Terminals, VS Code, Discord, Browser, Cursor, Wallpaper ([knowledge/theming.md](knowledge/theming.md)).

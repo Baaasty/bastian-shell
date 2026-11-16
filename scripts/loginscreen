@@ -6,6 +6,7 @@
 #   scripts/loginscreen restore             Ursprungszustand aus dem Backup zurück (exakt)
 #   scripts/loginscreen preview             echten Login-Bildschirm zeigen, Sitzung läuft weiter
 #   scripts/loginscreen status
+#   scripts/loginscreen theme-stale         Exit 0 = Theme installiert, aber nach Plasma-Update veraltet (still)
 #   scripts/loginscreen shot                Theme ohne root als Bilder (echter Greeter, offscreen, Testmodus)
 #   scripts/loginscreen test [sekunden]     Theme ohne root live auf allen Monitoren (Testmodus, endet von selbst)
 #   scripts/loginscreen theme off|on        nur das Layout-Theme aus/an (Farben/Wallpaper bleiben; sudo)
@@ -403,6 +404,13 @@ cmd_preview() {
         org.freedesktop.DisplayManager.Seat SwitchToGreeter
 }
 
+# Exit 0 = Theme installiert, aber Plasma-Systemdateien passen nicht mehr zum Fingerabdruck (Greeter fällt auf Standard zurück).
+# Nur die Systemdateien sind ohne root prüfbar (unsere liegen in $PLHOME). Auch für scripts/update-traps.
+theme_stale() {
+    [ -f "$THEME_FP" ] || return 1
+    ! grep -E '^[0-9a-f]+  /' "$THEME_FP" | sha256sum --quiet --strict -c - > /dev/null 2>&1
+}
+
 cmd_status() {
     echo "Login Manager: $(systemctl is-active plasmalogin.service 2>/dev/null || true) (plasmalogin.service)"
     if grep -qxF "$MARK_BEGIN" "$CONF"; then
@@ -416,11 +424,10 @@ cmd_status() {
         echo "Backup: keins"
     fi
     if [ -f "$THEME_FP" ]; then
-        # nur die Systemdateien prüfbar ohne root (unsere liegen in $PLHOME)
-        if grep -E '^[0-9a-f]+  /' "$THEME_FP" | sha256sum --quiet --strict -c - > /dev/null 2>&1; then
-            echo "Layout-Theme: installiert, passt zum System (aktiv, außer „theme off“)"
-        else
+        if theme_stale; then
             echo "Layout-Theme: installiert, aber Plasma wurde aktualisiert -> normaler Greeter, bis: scripts/loginscreen apply"
+        else
+            echo "Layout-Theme: installiert, passt zum System (aktiv, außer „theme off“)"
         fi
     else
         echo "Layout-Theme: nicht installiert (scripts/loginscreen apply)"
@@ -451,11 +458,12 @@ case "${1:-}" in
     restore) cmd_restore ;;
     preview) cmd_preview ;;
     status)  cmd_status ;;
+    theme-stale) theme_stale ;;
     shot)    cmd_shot ;;
     test)    cmd_test "${2:-}" ;;
     theme)   cmd_theme "${2:-}" ;;
     *)
-        sed -n '2,12p' "$0"
+        sed -n '2,13p' "$0"
         exit 1
         ;;
 esac
