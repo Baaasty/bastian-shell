@@ -12,6 +12,7 @@ Eingang für Ideen, damit nichts im Chat verloren geht. Eine Zeile pro Idee: **T
 - **Mit mir geteilte Passwort-Gruppen** – Gruppen fremder Besitzer (Shared-DB + Teilnehmer-Schlüssel) in icp lesen; eigene Gruppen gehen schon (`~/Apps/icp/icp/sharing`) (2026-10-19, Quelle: Chat)
 - **Claude-Chats-Bubble** – eine Bubble für Claude-Desktop/claude.ai-Antworten; Code liegt bereit (`shell/services/ClaudeChats.qml`, `shell/modules/bar/ClaudeChatsChip.qml`), **blockiert**: Claude Desktop schickt unter Linux keine Benachrichtigungen (2026-10-18, aus der Roadmap 2026-10-20)
 - **Härtetest der Shell** – Shell-Neustart, DP-2 aus/an, Standby, Netz weg: fängt sich die Shell ohne Neustart? (aus der Roadmap 2026-10-20, AP 21)
+- **Mehrere Projekt-Terminals** – `open.terminal` als Liste (z. B. `dev` = services + `dev:servers` und `app` = `dev:app` für Expo), Erweiterung „Desktop Projekte“ öffnet je Eintrag ein eigenes VS-Code-Terminal; dazu Port-Rolle `metro` (Versatz 10) in `ports allocate` (2026-11-04, Quelle: /project dapitup)
 
 ## In Ausarbeitung
 

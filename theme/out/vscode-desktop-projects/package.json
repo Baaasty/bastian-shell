@@ -1,8 +1,8 @@
 {
   "name": "desktop-projects",
   "displayName": "Desktop Projekte",
-  "description": "Projektfarbe als Punkt + Name links in der Statusleiste, Dev-Terminal beim Projekt-Öffnen. ERZEUGT aus theme/palette.json.",
-  "version": "0.2.0",
+  "description": "Projektfarbe als Punkt + Name links in der Statusleiste, Dev-Terminal beim Projekt-Öffnen, feste Breite der Seitenleisten. ERZEUGT aus theme/palette.json.",
+  "version": "0.3.0",
   "publisher": "desktop",
   "license": "UNLICENSED",
   "engines": {
@@ -20,5 +20,35 @@
       "supported": true
     },
     "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "desktop.resetSideBars",
+        "title": "Desktop: Reset side bar widths"
+      }
+    ],
+    "configuration": {
+      "title": "Desktop",
+      "properties": {
+        "desktop.sideBars.keep": {
+          "type": "boolean",
+          "default": true,
+          "description": "Put both side bars back to their width when the window gets wide again."
+        },
+        "desktop.sideBars.primaryWidth": {
+          "type": "number",
+          "default": 380,
+          "minimum": 170,
+          "description": "Primary side bar (Explorer) in px, 60 px steps."
+        },
+        "desktop.sideBars.secondaryWidth": {
+          "type": "number",
+          "default": 530,
+          "minimum": 170,
+          "description": "Secondary side bar (Claude) in px, 60 px steps."
+        }
+      }
+    }
   }
 }

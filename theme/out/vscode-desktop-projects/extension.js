@@ -66,6 +66,101 @@ function activate(ctx) {
     } catch (e) { /* ohne Watch: beim nächsten Fenster */ }
   }
   openTerminals(ctx);
+  keepSideBars(ctx);
+}
+
+// Feste Leisten: Wird das Fenster schmal (Kacheln, anderer Monitor), quetscht VS Code irgendwann Explorer und
+// Claude-Leiste; wird es wieder breit, bekommt nur der Editor den Platz zurück. Eine API für die Breite gibt es
+// nicht: Leiste fokussieren, mit „Decrease View Size“ auf die Mindestbreite, dann in Schritten hoch (beide Werte
+// aus dem VS-Code-Bundle). Die Fenstergröße kommt von Hyprland – alle Fenster gehören zum VS-Code-Hauptprozess
+// (= Eltern des Extension-Hosts), welches unseres ist, verrät nur der Titel.
+const BAR_MIN = 170;
+const BAR_STEP = 60;
+const EDITOR_ROOM = 500; // schmaler darf der Editor neben beiden Leisten nicht werden, sonst gelten sie als gequetscht
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function barConfig() {
+  const c = vscode.workspace.getConfiguration("desktop.sideBars");
+  return { keep: c.get("keep", true), primary: c.get("primaryWidth", 380), secondary: c.get("secondaryWidth", 530) };
+}
+
+let resizing = false;
+
+async function setBar(focus, width) {
+  await vscode.commands.executeCommand(focus);
+  await sleep(80); // Webviews (Claude) nehmen den Fokus verzögert, vorher träfe das Schrumpfen den Editor
+  for (let i = 0; i < 20; i++) await vscode.commands.executeCommand("workbench.action.decreaseViewSize");
+  const steps = Math.max(0, Math.round((width - BAR_MIN) / BAR_STEP));
+  for (let i = 0; i < steps; i++) await vscode.commands.executeCommand("workbench.action.increaseViewSize");
+}
+
+async function resetSideBars() {
+  if (resizing) return;
+  resizing = true;
+  try {
+    const c = barConfig();
+    await setBar("workbench.action.focusSideBar", c.primary);
+    await setBar("workbench.action.focusAuxiliaryBar", c.secondary);
+    await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
+  } finally {
+    resizing = false;
+  }
+}
+
+// Breite des eigenen Fensters oder null (Hyprland fehlt, Titel passt auf kein oder mehrere Fenster)
+function ownWidth() {
+  const name = vscode.workspace.name;
+  if (!name) return Promise.resolve(null);
+  return new Promise((done) => {
+    require("child_process").execFile("hyprctl", ["clients", "-j"], { timeout: 2000 }, (err, out) => {
+      try {
+        const mine = JSON.parse(out).filter((w) => w.pid === process.ppid && (w.title.startsWith(name + " - ") || w.title.includes(" - " + name + " - ")));
+        done(!err && mine.length === 1 ? mine[0].size[0] : null);
+      } catch (e) {
+        done(null);
+      }
+    });
+  });
+}
+
+function keepSideBars(ctx) {
+  ctx.subscriptions.push(vscode.commands.registerCommand("desktop.resetSideBars", resetSideBars));
+  let squeezed = true; // Fenster neu: Zustand der Leisten unbekannt, einmal setzen
+  let timer = null;
+  const check = async () => {
+    const c = barConfig();
+    if (!c.keep || resizing) return;
+    const w = await ownWidth();
+    if (!w) return;
+    if (w < c.primary + c.secondary + EDITOR_ROOM) squeezed = true;
+    else if (squeezed) {
+      squeezed = false;
+      await resetSideBars().catch((e) => console.error("desktop-projects: Leisten", e));
+    }
+  };
+  const soon = () => { clearTimeout(timer); timer = setTimeout(check, 300); };
+  const poll = setInterval(soon, 5000); // Rückfall: nicht jede Größenänderung (Teilungsverhältnis) meldet Hyprland
+  ctx.subscriptions.push({ dispose: () => { clearTimeout(timer); clearInterval(poll); } });
+  ctx.subscriptions.push(vscode.window.onDidChangeWindowState(soon));
+  ctx.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration("desktop.sideBars")) { squeezed = true; soon(); }
+  }));
+  // Hyprland-Ereignisse (Fenster auf/zu, verschoben, Vollbild …) sofort; Titelwechsel beim Tippen ignorieren
+  const sig = process.env.HYPRLAND_INSTANCE_SIGNATURE;
+  const run = process.env.XDG_RUNTIME_DIR;
+  if (sig && run) {
+    let sock = null;
+    let closed = false;
+    const connect = () => {
+      sock = require("net").createConnection(path.join(run, "hypr", sig, ".socket2.sock"));
+      sock.on("data", (d) => { if (/^(?!windowtitle|activelayout)\w+>>/m.test(d.toString())) soon(); });
+      sock.on("error", () => {});
+      sock.on("close", () => { if (!closed) setTimeout(connect, 10000); });
+    };
+    connect();
+    ctx.subscriptions.push({ dispose: () => { closed = true; sock && sock.destroy(); } });
+  }
+  soon();
 }
 
 // Dev-Terminal beim Projekt-Öffnen (shell/services/Templates.qml -> openProject): Einmal-Marke
@@ -163,4 +258,4 @@ function openTerminals(ctx) {
 
 exports.activate = activate;
 exports.deactivate = () => {};
-exports._test = { checkMarks, startTerminal, matches, ownPaths, MARKS };
+exports._test = { checkMarks, startTerminal, matches, ownPaths, MARKS, resetSideBars };
