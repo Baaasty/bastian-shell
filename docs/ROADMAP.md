@@ -1,6 +1,6 @@
 # Roadmap – desktop (bastian-shell)
 
-Stand 2026-10-20. Eine Roadmap für alles; die alten Listen (KWin-Zeit `ROADMAP.md`, `ROADMAP-HYPRLAND.md` mit allen
+Stand 2026-11-11. Eine Roadmap für alles; die alten Listen (KWin-Zeit `ROADMAP.md`, `ROADMAP-HYPRLAND.md` mit allen
 Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese Liste leer → dann nur noch Backlog.
 
 > **Leitlinie (2026-10-19): Tastatur zuerst.** Shell komplett per Hotkeys, Maus nur in Browser und Apps.
@@ -24,12 +24,13 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [x] Mail/Kalender: iCloud-Passwort nur noch in Thunderbird, Shell liest es dort (2026-10-23)
 - [x] Mail/Kalender: Konten und Kalender automatisch aus Thunderbird (ohne OAuth-Konten) (2026-10-23)
 - [x] Paket-Panel: „Update all“ (System) hebt keine COPR-Pakete mehr mit (so kam Hyprland 0.57 ungefragt), COPR nur einzeln (2026-11-02)
-- [ ] Hyprland 0.57 (nur noch Lua, alte `hyprctl dispatch`/`keyword` tot): Konfig `hypr/`, Shell (`Hypr.qml` u. a.), Skripte, hotkeys-md/Super+K umbauen, dann `dnf versionlock delete hyprland hyprland-uwsm` (bis dahin 0.56.2 aus COPR lionheartp, gesperrt) – Plan zuerst
+- [x] Hyprland 0.57 (nur noch Lua): Konfig `hypr/*.lua`, Shell, Skripte, hotkeys-md/Super+K umgebaut, Versionssperre weg; HDR-Automatik bei Vollbild aus (2026-11-11)
+- [ ] Sperre wie Login: Standby/Neustart/Ausschalten, Neustart und Ausschalten erst beim zweiten Druck (auch im Login), Auffächern nach dem Login; Hinweis nach Updates (`scripts/update-traps`) – Bastian testet
 - [ ] Discord-Popout „Random call“ (Super+Alt+J): Plugin neu einspielen (Restart Discord), dann mehrmals drücken – landet jedes Mal in einem anderen Call mit Leuten, nie voll/AFK; allein gelandet → springt selbst weiter
 - [ ] Passwörter: neuen Login anlegen (Super+O → Ctrl+N, Passwort-Vorschlag Ctrl+G) → erscheint am iPhone
-- [ ] Passwörter: Browser fragt beim Registrieren/Anmelden „Speichern / Aktualisieren / Als weiteren Login“ (Shell-Meldung, sonst Leiste in der Seite)
 - [ ] Passwörter: Speichern gescheitert → Formular mit allen Eingaben wieder offen (Test: Netz aus, Ctrl+N, Ctrl+S)
 - [x] Passwörter: iCloud-Login im Panel („Send code“/Ctrl+L/Launcher „iCloud Login“ → 2FA-Code); Anisette lokal über Wine, nur bei Bedarf (`scripts/anisette`) (2026-11-17)
+- [ ] Passwörter: Browser fragt beim Registrieren/Anmelden „Speichern / Aktualisieren / Als weiteren Login“ (Shell-Meldung, sonst Leiste in der Seite)
 - [ ] KWallet ohne Abfrage beim Autologin: Wallet-Passwort leer (Bastian, `kwalletmanager5`) → nach dem nächsten Login keine Abfrage, Helium/Claude bleiben eingeloggt
 - [x] Workspace-Leiste: Tooltip nicht mehr abgeschnitten, entfernter Workspace taucht nicht wieder auf (2026-10-26)
 - [x] Links/Aktivierungen auf dem aktuellen Desktop: Link aus VS Code mit Helium nur auf anderem Desktop → neues Fenster hier, zweiter Link → Tab dort; Ein-Fenster-App kommt her; Claude-Terminal nur markiert (2026-10-26)

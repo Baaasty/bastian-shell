@@ -127,110 +127,106 @@ bind("ALT + Escape", "Workspace mode", ipc("workbar mode"))
 
 -- ---------- Topbar ----------
 -- The chips show their letter; ←/→ or Tab picks, Enter opens, Esc or Super+Space again closes
-bind("SUPER + space", "Bar mode (letter opens a popout)", ipc("barmode toggle"))
+bind("SUPER + space", "Bar mode (letter opens a popout)", ipc("barmode toggle"), { shell = true })
 -- Häufige Ziele ohne Alt: Super+<Buchstabe> = Super+Leertaste, dann derselbe Buchstabe (shell/services/BarKeys.qml).
 -- Popouts per Taste haben Tastaturfokus und schließen nicht durch Weghovern; nochmal = zu.
 -- Dateien/Browser ohne laufende Shell: Dolphin bzw. Helium direkt (|| …). Super+W = alter Browser-Griff, bleibt.
-bind("SUPER + F", "Focus", ipc("barmode popout focus"))
-bind("SUPER + T", "Tasks", ipc("barmode popout todo"))
-bind("SUPER + A", "Agents (Claude)", ipc("barmode popout claudehub"))
-bind("SUPER + E", "Files", ipc("barmode popout files || " .. APP .. " org.kde.dolphin.desktop"))
-bind("SUPER + B", "Browser here: new tab, else new window", ipc("barmode popout browser || " .. APP .. " helium.desktop"))
-bind("SUPER + W", "Browser", ipc("barmode popout browser || " .. APP .. " helium.desktop"))
-bind("SUPER + I", "Settings", ipc("barmode popout settings"))
+bind("SUPER + F", "Focus", ipc("barmode popout focus"), { shell = true })
+bind("SUPER + T", "Tasks", ipc("barmode popout todo"), { shell = true })
+bind("SUPER + A", "Agents (Claude)", ipc("barmode popout claudehub"), { shell = true })
+bind("SUPER + E", "Files", ipc("barmode popout files || " .. APP .. " org.kde.dolphin.desktop"), { shell = true })
+bind("SUPER + B", "Browser here: new tab, else new window", ipc("barmode popout browser || " .. APP .. " helium.desktop"), { shell = true })
+bind("SUPER + W", "Browser", ipc("barmode popout browser || " .. APP .. " helium.desktop"), { shell = true })
+bind("SUPER + I", "Settings", ipc("barmode popout settings"), { shell = true })
 -- Alle übrigen: Super+Alt+<Buchstabe>, Reihenfolge wie in der Bar. Server (H) ist der Reiter Server im Dev-Popout (BarKeys.aliases).
-bind("SUPER + ALT + P", "Screen sharing: stop, forget", ipc("barmode popout share"))
-bind("SUPER + ALT + M", "Music (Spotify)", ipc("barmode popout spotify"))
-bind("SUPER + ALT + C", "Chat (Discord)", ipc("barmode popout discord"))
-bind("SUPER + ALT + V", "Dev services", ipc("barmode popout devservices"))
-bind("SUPER + ALT + H", "Servers (consoles, upload, files, terminal)", ipc("barmode popout servers"))
-bind("SUPER + ALT + R", "Resources", ipc("barmode popout resources"))
-bind("SUPER + ALT + L", "Light", ipc("barmode popout light"))
-bind("SUPER + ALT + G", "Gear (devices)", ipc("barmode popout gear"))
-bind("SUPER + ALT + S", "Sound mixer", ipc("barmode popout mixer"))
-bind("SUPER + ALT + N", "Network", ipc("barmode popout net"))
-bind("SUPER + ALT + D", "Downloads", ipc("barmode popout downloads"))
-bind("SUPER + ALT + U", "Updates (package manager)", ipc("barmode popout updates"))
-bind("SUPER + ALT + Y", "Tray", ipc("barmode popout tray"))
+bind("SUPER + ALT + P", "Screen sharing: stop, forget", ipc("barmode popout share"), { shell = true })
+bind("SUPER + ALT + M", "Music (Spotify)", ipc("barmode popout spotify"), { shell = true })
+bind("SUPER + ALT + C", "Chat (Discord)", ipc("barmode popout discord"), { shell = true })
+bind("SUPER + ALT + V", "Dev services", ipc("barmode popout devservices"), { shell = true })
+bind("SUPER + ALT + H", "Servers (consoles, upload, files, terminal)", ipc("barmode popout servers"), { shell = true })
+bind("SUPER + ALT + R", "Resources", ipc("barmode popout resources"), { shell = true })
+bind("SUPER + ALT + L", "Light", ipc("barmode popout light"), { shell = true })
+bind("SUPER + ALT + G", "Gear (devices)", ipc("barmode popout gear"), { shell = true })
+bind("SUPER + ALT + S", "Sound mixer", ipc("barmode popout mixer"), { shell = true })
+bind("SUPER + ALT + N", "Network", ipc("barmode popout net"), { shell = true })
+bind("SUPER + ALT + D", "Downloads", ipc("barmode popout downloads"), { shell = true })
+bind("SUPER + ALT + U", "Updates (package manager)", ipc("barmode popout updates"), { shell = true })
+bind("SUPER + ALT + Y", "Tray", ipc("barmode popout tray"), { shell = true })
 -- Benachrichtigungen per Tastatur: ↑↓ wählen, Enter öffnen, 1–3 Knöpfe, S später erinnern, Entf wegklicken, Esc zu
-bind("SUPER + ALT + Z", "Notifications (keyboard)", ipc("barmode popout notifs"))
-bind("SUPER + ALT + X", "Dismiss newest notification", ipc("popups dismissNewest"))
+bind("SUPER + ALT + Z", "Notifications (keyboard)", ipc("barmode popout notifs"), { shell = true })
+bind("SUPER + ALT + X", "Dismiss newest notification", ipc("popups dismissNewest"), { shell = true })
 
 -- ---------- Apps & menus ----------
 -- Tap Super alone – fires only if no other key was pressed in between
-bind("SUPER + SUPER_L", "Dashboard", ipc("dashboard toggle"), { release = true })
-bind("SUPER + Return", "Terminal", exec(APP .. " kitty.desktop"))
+bind("SUPER + SUPER_L", "Dashboard", ipc("dashboard toggle"), { release = true, shell = true })
+bind("SUPER + Return", "Terminal", exec(APP .. " kitty.desktop"), { shell = true })
 -- Drop-down terminal (scripts/dropterm): Kitty slides in from the top, stays alive in the background (docs/knowledge/shell-features.md)
-bind("SUPER + SHIFT + Return", "Drop-down terminal", exec(DESKTOP .. "/scripts/dropterm toggle"))
-bind("SUPER + V", "Clipboard history at the cursor (Enter pastes)", ipc("clip toggle"))
-bind("SUPER + period", "Emoji picker at the cursor (Enter inserts)", ipc("emoji toggle"))
+bind("SUPER + SHIFT + Return", "Drop-down terminal", exec(DESKTOP .. "/scripts/dropterm toggle"), { shell = true })
+bind("SUPER + V", "Clipboard history at the cursor (Enter pastes)", ipc("clip toggle"), { shell = true })
+bind("SUPER + period", "Emoji picker at the cursor (Enter inserts)", ipc("emoji toggle"), { shell = true })
 -- Kürzel-Übersicht (liest diese Datei + hyprctl binds zur Laufzeit) und Paketmanager
-bind("SUPER + K", "Keyboard shortcuts", ipc("keys toggle"))
-bind("SUPER + P", "Package manager", ipc("packages toggle"))
+bind("SUPER + K", "Keyboard shortcuts", ipc("keys toggle"), { shell = true })
+bind("SUPER + P", "Package manager", ipc("packages toggle"), { shell = true })
 -- iCloud-Schlüsselbund (scripts/passwords): Strg+U Benutzer, Strg+P/Enter Passwort, Strg+T 2FA-Code
-bind("SUPER + O", "Passwords", ipc("passwords toggle"))
+bind("SUPER + O", "Passwords", ipc("passwords toggle"), { shell = true })
 -- Window layouts: apply a saved layout, save this workspace, delete (shell menu; kdialog fallback without the shell, docs/knowledge/shell-features.md)
-bind("SUPER + ALT + K", "Layout menu", ipc("layouts toggle || " .. DESKTOP .. "/scripts/layout menu"))
+bind("SUPER + ALT + K", "Layout menu", ipc("layouts toggle || " .. DESKTOP .. "/scripts/layout menu"), { shell = true })
 -- Discord-Kameras (docs/knowledge/discord.md): alle an/aus, Overlay mit Super+Alt+Pfeilen in eine Ecke schieben
-bind("SUPER + C", "Call cameras on/off", ipc("cams toggle"))
-bind("SUPER + ALT + Left", "Call cameras: dock left", ipc("cams move left"))
-bind("SUPER + ALT + Right", "Call cameras: dock right", ipc("cams move right"))
-bind("SUPER + ALT + Up", "Call cameras: dock top", ipc("cams move up"))
-bind("SUPER + ALT + Down", "Call cameras: dock bottom", ipc("cams move down"))
+bind("SUPER + C", "Call cameras on/off", ipc("cams toggle"), { shell = true })
+bind("SUPER + ALT + Left", "Call cameras: dock left", ipc("cams move left"), { shell = true })
+bind("SUPER + ALT + Right", "Call cameras: dock right", ipc("cams move right"), { shell = true })
+bind("SUPER + ALT + Up", "Call cameras: dock top", ipc("cams move up"), { shell = true })
+bind("SUPER + ALT + Down", "Call cameras: dock bottom", ipc("cams move down"), { shell = true })
 -- Zufalls-Call (Plugin desktopBridge): Leute drin, nicht voll, kein AFK; im Call = nächster. Popout zeigt, wo du gelandet bist
-bind("SUPER + ALT + J", "Random call / next call (people in, not full)", ipc("discord randomCall; " .. d.IPC .. " barmode popout discord"))
+bind("SUPER + ALT + J", "Random call / next call (people in, not full)", ipc("discord randomCall; " .. d.IPC .. " barmode popout discord"), { shell = true })
 
 -- ---------- Screenshots ----------
 -- Screenshot: Bereich (kopieren + speichern) · Strg+Druck: alle Monitore speichern + kopieren
-bind("Print", "Screenshot region", ipc("snip region"))
-bind("SUPER + SHIFT + S", "Screenshot region", ipc("snip region"))
-bind("CTRL + Print", "Screenshot all monitors", ipc("snip all"))
-bind("SUPER + R", "Screen recording", ipc("snip record"))
+bind("Print", "Screenshot region", ipc("snip region"), { shell = true })
+bind("SUPER + SHIFT + S", "Screenshot region", ipc("snip region"), { shell = true })
+bind("CTRL + Print", "Screenshot all monitors", ipc("snip all"), { shell = true })
+bind("SUPER + R", "Screen recording", ipc("snip record"), { shell = true })
 -- Snip-Extras (docs/knowledge/shell-features.md): im Snip-Modus gehen auch T (Text), C (Farbe), P (Anpinnen) – Direktkürzel nur für
 -- Text und Anpinnen; die Pipette lebt nur im Snip (eine Pipette statt zwei Wege)
-bind("SUPER + SHIFT + T", "Snip text (OCR)", ipc("snip text"))
-bind("SUPER + SHIFT + P", "Pin screenshot", ipc("snip pin"))
+bind("SUPER + SHIFT + T", "Snip text (OCR)", ipc("snip text"), { shell = true })
+bind("SUPER + SHIFT + P", "Pin screenshot", ipc("snip pin"), { shell = true })
 
 -- ---------- System ----------
-bind("SUPER + Escape", "Power menu", ipc("power toggle"))
-bind("SUPER + L", "Lock screen", exec(LOCK .. " now"))
+bind("SUPER + Escape", "Power menu", ipc("power toggle"), { shell = true })
+bind("SUPER + L", "Lock screen", exec(LOCK .. " now"), { shell = true })
 -- End the Hyprland session (log out, close apps)
-bind("SUPER + SHIFT + M", "Log out", exec("uwsm stop"))
+bind("SUPER + SHIFT + M", "Log out", exec("uwsm stop"), { shell = true })
 -- Emergency exit: shell off, terminal open, hint to log out
 bind("CTRL + ALT + SHIFT + Q", "Panic: shell off", exec(HYPR .. " panic"))
 -- Shell power menu; if the shell is not running, a dialog asks and logs out via uwsm
-bind("CTRL + ALT + Delete", "Power menu (works without the shell)", exec(HYPR .. " power"))
+bind("CTRL + ALT + Delete", "Power menu (works without the shell)", exec(HYPR .. " power"), { shell = true })
 
 -- ---------- Media keys (auch gesperrt) ----------
 -- Lautstärke: bewusst KEINE Tasten – alles regelt Bastian am GoXLR, der PC-Ausgang bleibt fest auf 100 %
 -- (Wächter in shell/services/Audio.qml, Schalter ~/.config/desktop/audio.json; Doku docs/setup/goxlr.md)
-bind("XF86AudioMute", "Mute", exec("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
-bind("XF86AudioMicMute", "Mute microphone", exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true })
-bind("SUPER + XF86AudioMute", "Mute microphone", exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true })
+bind("XF86AudioMute", "Mute", exec("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true, shell = true })
+bind("XF86AudioMicMute", "Mute microphone", exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true, shell = true })
+bind("SUPER + XF86AudioMute", "Mute microphone", exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true, shell = true })
 -- Medien
-bind("XF86AudioPlay", "Play / pause", ipc("media playPause"), { locked = true })
-bind("XF86AudioPause", "Play / pause", ipc("media playPause"), { locked = true })
-bind("XF86AudioNext", "Next track", ipc("media next"), { locked = true })
-bind("XF86AudioPrev", "Previous track", ipc("media previous"), { locked = true })
-bind("XF86AudioStop", "Stop", ipc("media stop"), { locked = true })
+bind("XF86AudioPlay", "Play / pause", ipc("media playPause"), { locked = true, shell = true })
+bind("XF86AudioPause", "Play / pause", ipc("media playPause"), { locked = true, shell = true })
+bind("XF86AudioNext", "Next track", ipc("media next"), { locked = true, shell = true })
+bind("XF86AudioPrev", "Previous track", ipc("media previous"), { locked = true, shell = true })
+bind("XF86AudioStop", "Stop", ipc("media stop"), { locked = true, shell = true })
 -- Helligkeit (DDC/CI über die Shell), mit Shift feiner
-bind("XF86MonBrightnessUp", "Brightness up", ipc("brightness up"), { locked = true, repeating = true })
-bind("XF86MonBrightnessDown", "Brightness down", ipc("brightness down"), { locked = true, repeating = true })
-bind("SHIFT + XF86MonBrightnessUp", "Brightness up (fine)", ipc("brightness fineUp"), { locked = true, repeating = true })
-bind("SHIFT + XF86MonBrightnessDown", "Brightness down (fine)", ipc("brightness fineDown"), { locked = true, repeating = true })
+bind("XF86MonBrightnessUp", "Brightness up", ipc("brightness up"), { locked = true, repeating = true, shell = true })
+bind("XF86MonBrightnessDown", "Brightness down", ipc("brightness down"), { locked = true, repeating = true, shell = true })
+bind("SHIFT + XF86MonBrightnessUp", "Brightness up (fine)", ipc("brightness fineUp"), { locked = true, repeating = true, shell = true })
+bind("SHIFT + XF86MonBrightnessDown", "Brightness down (fine)", ipc("brightness fineDown"), { locked = true, repeating = true, shell = true })
 -- Power button: power menu
-bind("XF86PowerOff", "Power menu", exec(HYPR .. " power"), { locked = true })
+bind("XF86PowerOff", "Power menu", exec(HYPR .. " power"), { locked = true, shell = true })
 
 -- ---------- Kürzel-Sperre (Submap „modal“) ----------
--- Aktiv, solange ein Shell-Panel mit Tastatur offen ist (Hypr.setModal) – dann gehen nur diese Kürzel, alle anderen
--- Tasten ans Panel. Rettungsweg, falls die Shell hängt: Not-Aus (hebt die Sperre mit auf); nach einem Absturz setzt
--- die neu startende Shell sie zurück. Ohne Titel und eingerückt → erscheinen nicht im Keybind-Viewer.
-hl.define_submap("modal", function()
-    hl.bind("SUPER + SUPER_L", ipc("dashboard toggle"), { release = true })
-    -- Panel-Kürzel: direkt ins nächste Panel wechseln (das offene schließt sich, Hypr.panelOpened)
-    hl.bind("SUPER + O", ipc("passwords toggle"))
-    hl.bind("SUPER + P", ipc("packages toggle"))
-    hl.bind("SUPER + K", ipc("keys toggle"))
+-- Aktiv, solange Dashboard oder Passwörter offen sind (Hypr.setModal): Fenster-Kürzel aus (Super+Q träfe das Fenster
+-- dahinter), alle mit { shell = true } gehen weiter (das offene Panel schließt sich, Hypr.panelOpened), übrige Tasten
+-- ans Panel. Rettungsweg, falls die Shell hängt: Not-Aus (hebt die Sperre mit auf); hängt die Sperre ohne offenes
+-- Panel, setzt die Shell sie selbst zurück (Hypr.qml, Event „submap“). Ohne Titel → nicht im Keybind-Viewer.
+d.modal_submap(function()
     hl.bind("CTRL + ALT + SHIFT + Q", function()
         hl.dispatch(exec(HYPR .. " panic"))
         hl.dispatch(hl.dsp.submap("reset"))

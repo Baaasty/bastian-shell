@@ -38,7 +38,8 @@ Was gebaut wird: [PRD.md](PRD.md) · warum dieser Stack: [TECHSTACK.md](TECHSTAC
   JSON-Zeilen im Dauerlauf, `SplitParser`), Befehle bei Bedarf über stdin (z. B. `scripts/procs watch`,
   `scripts/discord-bridge`). Schreibende/lange Aktionen laufen als eigene systemd-Unit.
 - **Popouts**: immer nur eins offen (`services/Popouts.qml`); Tastatur über `services/BarKeys.qml` + `components/KeyNav.qml`.
-  Offene Panels mit Tastatur sperren die übrigen Kürzel über die Submap `modal` (`Hypr.setModal`, Ende `binds.conf`).
+  Dashboard und Passwörter sperren hinter sich die Fenster-Kürzel (Submap `modal`, `Hypr.setModal`, Ende `binds.lua`);
+  Shell-Kürzel (`{ shell = true }`) gehen überall und schließen das offene Panel.
 - **Farben**: nur aus `theme/palette.json` über `config/Theme.qml` (live neu geladen), nie hart im QML.
 
 ## Zustand und Konfiguration

@@ -1,6 +1,6 @@
 # desktop – Bastians Shell (Quickshell auf Hyprland)
 
-Bastians einziges Theme „desktop“ (früher „Hütte“): Quickshell (QML, Layer-Shell) auf Fedora 44 / Hyprland 0.56 (uwsm).
+Bastians einziges Theme „desktop“ (früher „Hütte“): Quickshell (QML, Layer-Shell) auf Fedora 44 / Hyprland 0.57 (uwsm, Konfig in Lua).
 Plasma bleibt installiert (Dolphin, Dateidialog, Qt-Theme, Bluetooth/WLAN), ist aber nicht mehr die Sitzung.
 Der alte KWin-Weg ist aus dem Repo entfernt und liegt nur noch im Git-Tag `kwin-final` (`docs/knowledge/hyprland.md`).
 
@@ -37,7 +37,7 @@ Flächen aus Tokens `surface` / `surfaceRaised` / `surfaceSunken`; `Glass.qml` l
 
 - Hyprland aus COPR `sdegler/hyprland` unter uwsm · Quickshell **0.3.2 aus COPR `errornointernet/quickshell`** (Fedoras 0.2.1 zu alt).
 - Fenster/Workspaces über `Quickshell.Hyprland` (`shell/services/Hypr.qml`).
-- Kürzel nur in `hypr/binds.conf` → `qs ipc call …`; der Titel `# …` dahinter speist Super+K und `scripts/hotkeys-md`
+- Kürzel nur in `hypr/binds.lua` → `qs ipc call …`; der Titel je `bind(…)` speist Super+K und `scripts/hotkeys-md`
   (erzeugt `docs/knowledge/hotkeys.md` – nie von Hand ändern).
 - Sperre = eigene Shell-Sperre (`shell/modules/lock`, ext-session-lock), Notfall hyprlock.
 
@@ -74,6 +74,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - Bildschirm teilen: `scripts/share-picker status|remembered|forget [app]` (gemerkte Auswahl je App) · laufende Freigaben: `scripts/share-stop list|stop <node>|stop all`
 - Mail/Kalender: Konten + Passwort aus Thunderbird, Shell liest sie (`scripts/tb-accounts --check`)
 - Klänge: `scripts/sounds play [notify-urgent]|build|on|off|status` (Probehören, neu erzeugen, Sound-Theme für Apps)
+- Nach Updates: `scripts/update-traps [--print]` (Login-Theme aus, Neustart nötig; läuft auch beim Shell-Start)
 - Kürzel geändert: `scripts/hotkeys-md` (Cheat-Sheet neu) · Farben geändert: `python3 -I theme/gen/all.py`
 - PC neu aufsetzen: `system/bootstrap` (dry-run, echt mit `--apply`) · Umzug: `docs/setup/migrate.md`
 - Checks: `scripts/check` (Tests unter `scripts/tests/`, qmllint wenn installiert) – läuft auch als Git-Hook
@@ -122,7 +123,7 @@ Defaults, Grenzwerte, Pfade. Vor dem Schreiben im Code nachsehen, wie es umgeset
 | Scope ändert sich (Ziel, Nicht-Ziel) | `docs/PRD.md` (gilt als PRD) + DECISIONS – nur nach OK |
 | Neues Feature | eine Zeile in `docs/PRD.md` (Kern-Funktionen) |
 | Grenze oder Stolperfalle eines Features, die der Code nicht zeigt | `docs/knowledge/shell-features.md` (≤ 6 Zeilen je Feature) |
-| Neues Kürzel | `hypr/binds.conf` mit Titel, dann `scripts/hotkeys-md` |
+| Neues Kürzel | `hypr/binds.lua` mit Titel, dann `scripts/hotkeys-md` |
 | Neuer Befehl, Ordner, Skript | CLAUDE.md „Befehle“ / „Struktur“ |
 | Setup-/Login-Schritt gelernt | `docs/setup/<thema>.md` |
 | Fehler passiert zum zweiten Mal | Regel unter „Regeln“ |

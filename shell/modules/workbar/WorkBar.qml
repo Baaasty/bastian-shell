@@ -79,6 +79,7 @@ Scope {
     property int revealTick: 0   // per IPC (z. B. Kürzel) → Leiste holen
     signal quickLinksRequested(string deskId)   // per IPC: Quicklinks-Popup eines Workspaces öffnen
     signal modeLinksRequested()                 // per IPC: wie Q im Workspace-Modus
+    signal modeDismissed()                      // Modus ohne Aktion beendet: Leiste sofort weg
 
     // ---------- Workspace-Modus (Alt antippen / Alt+Esc): Leiste per Tastatur bedienen ----------
     property bool modeOn: false
@@ -102,6 +103,11 @@ Scope {
         modeOn = false;
         delId = "";
         modeNote = "";
+    }
+    // Alt/Esc: nichts passiert, also gibt es auch nichts zu zeigen
+    function modeDismiss() {
+        modeClose();
+        modeDismissed();
     }
     function note(text) {
         modeNote = text;
@@ -205,7 +211,7 @@ Scope {
         // Alt antippen / Alt+Esc: Workspace-Modus an/aus (Leiste unten bekommt die Tastatur); modeOpen / modeClose einzeln
         function mode(): void {
             if (root.modeOn)
-                root.modeClose();
+                root.modeDismiss();
             else
                 root.modeOpen();
         }
@@ -438,13 +444,16 @@ Scope {
                         if (root.keyOn) {
                             grabDelay.restart();
                             keys.forceActiveFocus();
-                            win.stick();
                         } else {
                             // Leiste kurz stehen lassen (zeigt, wo man gelandet ist), dann wie sonst wieder weg
                             win.revealed = true;
                             if (quickLinks.kb && quickLinks.visible)
                                 quickLinks.visible = false;
                         }
+                    }
+                    function onModeDismissed() {
+                        win.revealed = false;
+                        win.sticky = false;
                     }
                 }
                 // Quicklinks per Taste zu: Esc = zurück in den Modus, sonst (Link geöffnet, Add link) ist der Modus fertig
@@ -518,7 +527,7 @@ Scope {
                         return;
                     }
                     if (k === Qt.Key_Escape) {
-                        root.modeClose();
+                        root.modeDismiss();
                     } else if (k === Qt.Key_Left || k === Qt.Key_H || k === Qt.Key_Right || k === Qt.Key_L) {
                         const d = (k === Qt.Key_Left || k === Qt.Key_H) ? -1 : 1;
                         if (shift && (k === Qt.Key_Left || k === Qt.Key_Right)) {

@@ -244,9 +244,10 @@ Singleton {
     signal panelOpened(string name)
 
     // ---------- Kürzel-Sperre ----------
-    // Solange ein Panel mit Tastatur offen ist (Passwörter …), sind die globalen Kürzel aus: Hyprland wechselt in die
-    // Submap „modal“ (hypr/binds.lua, dort nur Esc, das Panel-Kürzel und der Not-Aus). Name pro Panel, damit sich
-    // zwei offene Panels nicht gegenseitig freischalten.
+    // Solange ein Panel mit Tastatur offen ist (Dashboard, Passwörter), sind die Fenster-Kürzel aus (Super+Q träfe
+    // das Fenster dahinter): Hyprland wechselt in die Submap „modal“ (hypr/binds.lua). Dort gehen nur die
+    // Shell-Kürzel (bind … { shell = true }) und der Not-Aus. Name pro Panel, damit sich zwei offene Panels nicht
+    // gegenseitig freischalten.
     property var modals: []
     function setModal(name: string, on: bool): void {
         const next = modals.filter(n => n !== name);
@@ -436,7 +437,13 @@ Singleton {
             }
             if (n === "urgent")
                 root._onUrgent(event.data || "");
+            // Kürzel-Sperre heilt sich selbst: Hyprland steht in „modal“, ohne dass ein Panel offen ist (2026-11-04
+            // hing sie so fest, alle Kürzel tot) bzw. hat sie verloren (Konfig neu geladen), obwohl eins offen ist
+            if (n === "submap" && (event.data === "modal") !== (root.modals.length > 0))
+                root.dispatch(Lua.submap(root.modals.length ? "modal" : "reset"));
             if (n === "configreloaded") {
+                if (root.modals.length)
+                    root.dispatch(Lua.submap("modal"));
                 warpsProc.running = true;
                 refreshWs.restart();
                 refreshTop.restart();

@@ -16,7 +16,7 @@ Passwort ändern. Wer Autologin abschaltet, setzt es wieder aufs Login-Passwort 
 - Pakete (sudo) stehen in `system/packages/dnf.txt` (Abschnitt Hyprland-Sitzung). Danach ohne sudo `scripts/hypr install`,
   prüfen mit `scripts/hypr check` (`Hyprland --verify-config`, startet nichts), `scripts/hypr status` zeigt Fehlendes.
   Im Login **„Hyprland (uwsm-managed)“** wählen.
-- `install` legt nur Includes und Links an, die allein in der Hyprland-Sitzung wirken: `~/.config/hypr/*.conf` → `hypr/`,
+- `install` legt nur Includes und Links an, die allein in der Hyprland-Sitzung wirken: `~/.config/hypr/hyprland.lua` und `hypridle.conf` → `hypr/`,
   uwsm-Umgebung aus `hypr/env.conf`, Portal-Zuordnung, User-Unit `desktop-shell-hyprland`, und ein Drop-in, das hier
   DrKonqi anhält (eigene Absturz-Karte, [shell-features.md](shell-features.md); einzeln zurück:
   `scripts/hypr drkonqi on`). Fremde Dateien sichert es nach `~/.local/state/desktop/hypr-backup/`, `uninstall` holt sie zurück.
@@ -26,9 +26,9 @@ Passwort ändern. Wer Autologin abschaltet, setzt es wieder aufs Login-Passwort 
 
 ## Aufbau
 
-- `hypr/hyprland.conf` ist der Einstieg (`$DESKTOP` = Repo, `$IPC`, `$APP` = `uwsm app --`); daneben `env.conf`,
-  `monitors.conf`, `general.conf`, `rules.conf`, `binds.conf` (Kürzel: [hotkeys.md](hotkeys.md)), `autostart.conf`,
-  `hypridle.conf`, `portals.conf`. `look.conf` wird aus `theme/palette.json` **erzeugt** (`theme/gen/hypr.py`), nie von Hand.
+- Seit Hyprland 0.57 nur noch Lua: `hypr/hyprland.lua` ist der Einstieg (`DESKTOP` = Repo), gemeinsame Helfer in
+  `lib.lua`, Kürzel in `binds.lua` (Titel je Zeile: [hotkeys.md](hotkeys.md)); `hypridle.conf`/`portals.conf` bleiben,
+  weil sie nicht Hyprland lesen. `look.lua` wird aus `theme/palette.json` **erzeugt** (`theme/gen/hypr.py`), nie von Hand.
   `window.py` (altes Fensterschema) ist nicht mehr gebunden.
 - Workspaces gehören fest zu Monitoren: Desktop d = Workspace d (DP-2) / 100+d (HDMI-A-2) / 200+d (DP-1).
 - Kacheln ist Standard; schweben nur Dialoge, Picker, Bild im Bild, Steam.
@@ -50,16 +50,20 @@ Spiele (`steam_app_<id>`) öffnen auf DP-2 mit `content game`; Vollbild schalten
 ## Grenzen gegenüber KWin
 
 - Keine Titelleisten: verschieben mit Super+links ziehen, Größe am Rand oder Super+rechts ziehen.
-- „Immer oben“ gibt es nicht; Anpinnen nur per Regel (Discord/Spotify, `hypr/rules.conf`) und pro Monitor.
+- „Immer oben“ gibt es nicht; Anpinnen nur per Regel (Discord/Spotify, `hypr/rules.lua`) und pro Monitor.
 - Mausverschiebungen meldet Hyprland nicht: die Bar merkt sie erst beim nächsten Fenster-Ereignis
   (Super+Pfeile melden sich selbst über `qs ipc call hypr refresh`).
 - Super antippen und Super+Tab gehen über `qs ipc` (ein Prozessstart je Taste); wirkt das träge → Quickshell-`GlobalShortcut`.
 - Bildschirm teilen: Discord nutzt keine Portal-Restore-Tokens (Log von xdph: nie `restore_data`) – die Auswahl merkt
   darum unser Picker selbst je App ([shell-features.md](shell-features.md#bildschirm-teilen), `scripts/share-picker forget`).
-- Monitore nur über `monitors.conf`. Plasma-only bleibt `scripts/wallpaper set`
+- Monitore nur über `monitors.lua`. Plasma-only bleibt `scripts/wallpaper set`
   (in Plasma ausführen; die Hyprland-Shell übernimmt neue Wallpaper über `kscreenlockerrc`).
-- **hyprlang (.conf) ist seit 0.55 veraltet** und fällt bald weg → vor einem Update auf 0.57+ Release-Notes lesen,
-  ggf. auf Lua umstellen oder das Update zurückhalten.
+- **Nach Updates von NVIDIA-Treiber oder Kernel neu starten, nicht nur abmelden:** Der geladene Kernel-Treiber bleibt
+  bis zum Neustart alt, der Login-Bildschirm lädt aber schon die neuen Bibliotheken und bekommt kein Bild (schwarze
+  Konsole mit Strich). Hyprland stürzt beim Beenden nach einem eigenen Update ab (alte Bibliothek gelöscht) – harmlos.
+  `scripts/update-traps` meldet beides nach dem Shell-Start, ebenso ein durch ein Plasma-Update abgeschaltetes Login-Theme.
+- HDR-Automatik bei Vollbild ist aus (`render.cm_auto_hdr` in `general.lua`, seit 0.57 standardmäßig an): sonst gehen die
+  Monitore bei Vollbild (auch VS Code) kurz aus und kommen in HDR zurück.
 
 ## Offen aus dem ersten Test (18.10.2026, abgebrochen)
 
@@ -91,6 +95,10 @@ kscreenlocker. Einstieg für alles: `scripts/lock`.
 - Zustand in `$XDG_RUNTIME_DIR/desktop-lock` (`locked`/`unlocked`) – daran hängen u. a. GoXLR-Fader beim Entsperren.
 - **Absturz:** Hyprland bleibt gesperrt (`misc:allow_session_lock_restore`). Der Wächter `scripts/lock guard` startet
   hyprlock, wenn die Shell die Sperre ~12 s nicht hält; die neu gestartete Shell sperrt dank Zustandsdatei selbst wieder.
+- **Gleich wie der Login-Bildschirm:** dieselben Knöpfe (ohne Nutzerwechsel – einziger Nutzer) und Neustart/Ausschalten
+  erst beim zweiten Druck, damit offene Fenster nicht durch einen Fehlklick verloren gehen. Das Auffächern nach dem Login
+  spielt die Shell beim Start (`SessionReveal.qml`), weil Plasma den Greeter nach dem Login sofort beendet; einmal je
+  Hyprland-Start (Merkdatei mit Instanz-Kennung), ein Shell-Neustart spielt es nicht nochmal.
 - **Notfall aus dem TTY:** Strg+Alt+F3, einloggen,
   `hyprctl --instance 0 dispatch exec ~/Workspace/bastian-shell/scripts/lock rescue`, zurück mit Strg+Alt+F2.
 
@@ -106,7 +114,7 @@ Stand: installiert, Autosave läuft; **ein echter Restore ist noch nicht geteste
   Nicht gemerkt: Inhalte, Vollbild, schwebende Fenster.
 - **Autosave** alle 5 min (`desktop-session-save.timer`, 20 Stände). Er speichert nicht während des Login-Restores, bei
   0 Fenstern oder nach einem Einbruch der Fensterzahl – sonst überschreibt der leere Desktop nach einem Absturz den guten Stand.
-- **Login** (`exec-once` in `hypr/autostart.conf`): `session boot` wartet auf die Shell, nimmt den neuesten Stand (< 24 h)
+- **Login** (`hypr/autostart.lua`): `session boot` wartet auf die Shell, nimmt den neuesten Stand (< 24 h)
   und startet die Apps nacheinander per `uwsm app --`. In dieser Minute nichts öffnen.
 - **Kacheln:** Pixelpositionen wirken in dwindle nicht; maßgeblich sind Workspace-Nummer (legt den Monitor fest) und
   Startreihenfolge. Wer links/rechts im Split landet, kann abweichen.
@@ -114,7 +122,7 @@ Stand: installiert, Autosave läuft; **ein echter Restore ist noch nicht geteste
   `session-prepare` baut eine bereinigte Kopie in `$XDG_RUNTIME_DIR` (Positivliste, Namen/Ordner geprüft, Vollbild/Schweben
   aus, weil hyprflow `fullscreen` aufs fokussierte Fenster anwendet). Sitzungsdateien enthalten Fenstertitel → `0700`/`0600`.
 - **Not-Aus:** `scripts/session off` (hält auch einen wartenden Login-Restore an; stoppt den Timer nur, kein `disable`,
-  das würde den Unit-Link löschen). Ganz weg: `session uninstall`, Zeile in `autostart.conf`, Binary löschen.
+  das würde den Unit-Link löschen). Ganz weg: `session uninstall`, Zeile in `autostart.lua`, Binary löschen.
 - **hyprsession verworfen:** `load` beendet erst alle offenen Fenster, startet Befehle als ungequoteten Shell-String,
   keine Positivliste, eine einzige Sitzung alle 60 s nicht atomar überschrieben, Zuordnung nur per Fenstertitel, Daemon.
 

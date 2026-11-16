@@ -79,6 +79,8 @@ hl.config({
         -- Content Type (Spiel/Video/Foto) nicht an den Monitor melden: der Philips auf DP-2 wechselt dann sein Profil
         -- und ist bei jedem Vollbild-Wechsel ~0,5 s schwarz (auch VS Code, nicht nur Spiele)
         send_content_type = false,
+        -- kein automatisches HDR bei Vollbild (Vorgabe seit 0.57: 1): Monitore gingen kurz aus und blieben in HDR
+        cm_auto_hdr = 0,
     },
 
     ecosystem = {
