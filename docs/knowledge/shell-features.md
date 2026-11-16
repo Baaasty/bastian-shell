@@ -236,6 +236,8 @@ Code: `shell/services/Hypr.qml` (`follows`, `followCmds`, `switchCmds`), `shell/
 Code: `scripts/open-url` (Test `scripts/tests/open-url-test.py`), `shell/services/activation.js` (Regel, Test `activation-test.js`), `Hypr._onUrgent`, `Launch.url` · `helium.desktop`-Kopie von `scripts/hypr install`
 - Warum: Chromium öffnet Links im *zuletzt aktiven* Fenster, und mit `focus_on_activate` sprang Hyprland nur dessen Monitor um – die Monitore liefen auseinander. Darum fokussiert `open-url` erst das Helium-Fenster des Desktops (oder macht `--new-window` auf) und `focus_on_activate` ist aus.
 - Die `helium.desktop` ist eine Kopie der System-Datei (gleiche ID, Standardbrowser unverändert); nach Helium-Updates mit neuen Aktionen `scripts/hypr install` erneut.
+- Helium startet überall über `scripts/helium` (Flags, Warum steht dort). Neuer Startweg mit nacktem `helium` → Netflix wieder schwarz.
+- Widevine lud Helium trotz DRM-Schalter nie selbst (`WidevineCdm/` im Profil leer → Netflix M7701-1003); 2026-11-16 von Hand aus Spotifys Cache kopiert, samt Hinweisdatei `latest-component-updated-widevine-cdm`.
 - Hyprland meldet Nach-vorn-Wünsche nur als `urgent` – dasselbe Event wie eine Dringend-Markierung (Terminal-Glocke, Steam). Deshalb die Nur-markieren-Liste in `activation.js`; neue Spiele-/Terminal-Klassen dort ergänzen.
 
 ## Quicklinks & Git/CI
@@ -266,10 +268,10 @@ Code: `shell/services/ProjectTime.qml`, Anzeige im Kachelkopf `shell/modules/wor
   stattdessen eine Meldung mit „Log in“ → Panel. Erst „Send code“ (Klick, Ctrl+L, Launcher) meldet mit dem
   gespeicherten Passwort an und löst damit den Code aus. Ein gescheitertes Speichern wartet nur im Speicher des Workers auf den
   Login (Passwort nie auf Platte) → überlebt Shell-Neustart, nicht Abmelden/Neustart.
-
-## Externe Dienste: Drosselung
 - Scheitert Speichern endgültig (auch „Discard“), geht im Panel das Formular mit allen Eingaben wieder auf. Der Entwurf
   liegt nur im Shell-Speicher (nicht auf Platte) → nach einem Shell-Neustart weg.
+
+## Externe Dienste: Drosselung
 Regel: nie im Sekunden-/Minutentakt gegen fremde APIs; bei Fehlern wachsender Abstand, `Retry-After` gilt.
 - Passwörter neu anlegen (`icp add`): nur eine Website (weitere danach per Bearbeiten); Website + Benutzer, die es schon gibt,
   lehnt iCloud ab (ein Eintrag je Paar) → Hinweis, stattdessen bearbeiten. Titel/Notiz/2FA brauchen ein vorhandenes

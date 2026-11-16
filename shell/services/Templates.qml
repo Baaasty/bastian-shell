@@ -76,7 +76,7 @@ Singleton {
             if (o.code !== false)
                 Launch.code(["--new-window", target]);
             if (urls.length)
-                Launch.cmd(["helium", "--new-window"].concat(urls));
+                Launch.cmd([Quickshell.shellDir + "/../scripts/helium", "--new-window"].concat(urls));
         });
     }
 

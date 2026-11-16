@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-BROWSER = "helium"
+BROWSER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "helium")   # Wrapper mit Flags
 CLASSES = ("helium", "google-chrome")
 MAIN = "DP-2"   # wie Config.preferredScreen; fehlt er, gilt der erste Monitor
 

@@ -35,8 +35,9 @@ MARK="# ERZEUGT von scripts/hypr install"
 VIDEOBRIDGE_AUTOSTART="$CONF/autostart/org.kde.xwaylandvideobridge.desktop"
 # .desktop-Overrides (config/applications) – gleiche ID wie unter /usr/share/applications gewinnt, weil ~/.local/share zuerst kommt
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-# Kopie der System-helium.desktop, nur Exec mit URL zeigt auf scripts/open-url: gleiche ID, Standardbrowser bleibt
-# helium.desktop (nichts an xdg-settings), Plasma bekommt dasselbe (open-url reicht dort einfach durch)
+# Kopie der System-helium.desktop, Exec mit URL zeigt auf scripts/open-url, die übrigen auf scripts/helium (Flags):
+# gleiche ID, Standardbrowser bleibt helium.desktop (nichts an xdg-settings), Plasma bekommt dasselbe
+# (open-url reicht dort einfach durch)
 BROWSER_SYS=/usr/share/applications/helium.desktop
 BROWSER_DESKTOP="$APPS/helium.desktop"
 
@@ -130,7 +131,8 @@ EOF
     done
     if [ -f "$BROWSER_SYS" ]; then
         { say "$MARK – aus $BROWSER_SYS, Links über scripts/open-url"
-          sed "s|^Exec=helium \(%[uU]\)\$|Exec=$REPO/scripts/open-url \1|" "$BROWSER_SYS"; } | write "$BROWSER_DESKTOP"
+          sed -e "s|^Exec=helium \(%[uU]\)\$|Exec=$REPO/scripts/open-url \1|" \
+              -e "s|^Exec=helium\b|Exec=$REPO/scripts/helium|" "$BROWSER_SYS"; } | write "$BROWSER_DESKTOP"
     fi
     if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database "$APPS" 2>/dev/null || true; fi
 

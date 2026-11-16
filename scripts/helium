@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Helium mit den Flags, die dieser PC braucht. Alle Startwege zeigen hierher (scripts/open-url, Templates.qml,
+# helium.desktop aus scripts/hypr install) – ein Wrapper in ~/.local/bin griffe nicht, das systemd-PATH kennt ihn nicht.
+#
+# --disable-gpu-memory-buffer-video-frames: Netflix (Widevine, AV1) blieb auf NVIDIA + Wayland schwarz bei laufendem
+# Ton (Chromium-Bug seit 151, crbug 551668260); so bleibt die Grafikbeschleunigung an. Prüfen, wenn Chromium es behebt.
+exec /usr/bin/helium --disable-gpu-memory-buffer-video-frames "$@"
