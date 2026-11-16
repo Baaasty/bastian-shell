@@ -52,6 +52,21 @@ Item {
         removeTotp = false;
         deleteArmed = false;
         showPw = false;
+        const d = pw.editDraft;
+        if (d) {
+            // Speichern war gescheitert: alles wie eingegeben zurück (pw.restoreDraft)
+            pw.editDraft = null;
+            titleIn.text = d.title || "";
+            userIn.text = d.user || "";
+            pwIn.text = d.password || "";
+            urlsIn.text = (d.urls || []).map(u => u.replace(/^https:\/\//, "")).join("\n");
+            totpIn.text = d.totp || "";
+            notesIn.text = d.notes || "";
+            removeTotp = !!d.removeTotp;
+            showPw = pw.creating;
+            userIn.forceActiveFocus();
+            return;
+        }
         if (pw.creating) {
             // Suchtext wie „github.com“ gleich als Website übernehmen; starkes Passwort schon vorschlagen
             const q = pw.query.trim();

@@ -105,6 +105,7 @@ Scope {
                 { id: "act:focus", glyph: "timer", title: Focus.mode === "idle" ? "Start Focus" : "End Focus", sub: Focus.blockMin + " min block", run: () => Focus.toggle() },
                 { id: "act:task", glyph: "checklist", title: "Add Task", sub: "to " + Todos.current, run: () => Prompt.ask("checklist", "New task for " + Todos.current, "", x => Todos.add(Todos.current, x)) },
                 { id: "act:passwords", glyph: "key", title: "Passwords", sub: "iCloud Keychain · Super+O", run: () => Quickshell.execDetached(["qs", "ipc", "--any-display", "-p", Quickshell.shellDir, "call", "passwords", "open"]) },
+                { id: "act:icloud-login", glyph: "login", title: "iCloud Login", sub: "Passwords · sends a 2FA code to your Apple devices", run: () => Quickshell.execDetached(["qs", "ipc", "--any-display", "-p", Quickshell.shellDir, "call", "passwords", "login"]) },
                 { id: "act:icloud", glyph: "cloud_sync", title: "iCloud Sync", sub: "Sync iCloud Drive now", run: () => ICloud.syncNow() },
                 { id: "act:lock", glyph: "lock", title: "Lock", sub: "Lock screen", run: () => Quickshell.execDetached(["loginctl", "lock-session"]) }
             ];

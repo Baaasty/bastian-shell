@@ -371,7 +371,7 @@ if want 6; then
 
     if [ -x "$HOME/Apps/icp/.venv/bin/icp" ]; then ok "icp (iCloud-Passwörter)"
     else run "git clone https://github.com/Sank6/iCloud-Keychain-for-Linux ~/Apps/icp && python3 -m venv ~/Apps/icp/.venv && ~/Apps/icp/.venv/bin/pip install -q -U pip && ~/Apps/icp/.venv/bin/pip install -q -e ~/Apps/icp && ln -sf ~/Apps/icp/.venv/bin/icp ~/.local/bin/icp"; fi
-    info "Anisette-Container für icp: Quadlet aus den Dotfiles (Schritt 8)"
+    info "Anisette für icp: scripts/anisette setup <iCloud-Ordner>, dann scripts/anisette install (docs/setup/passwords.md)"
 
     # Fremd-Builds für Hyprland (cargo/gcc aus Schritt 2). Die Skripte klonen selbst und prüfen den festen Stand.
     if (( HYPR )); then
@@ -487,8 +487,6 @@ if want 8; then
             systemctl --user is-enabled goxlr.service >/dev/null 2>&1 && ok "goxlr.service aktiv" \
                 || run "systemctl --user daemon-reload && systemctl --user enable --now goxlr.service"
         fi
-        [ -f "$DOT/.config/containers/systemd/anisette.container" ] && ! systemctl --user is-active anisette.service >/dev/null 2>&1 \
-            && run "systemctl --user daemon-reload && systemctl --user start anisette.service"
     fi
 fi
 
@@ -642,7 +640,7 @@ if want 11; then
    6. Thunderbird-Konten: docs/setup/mail-calendar.md
    7. iCloud: rclone config (Remotes icloud + icloud-photos) → icloud-login
       → systemctl --user enable --now icloud-photos.service icloud-sync.timer
-   8. icp: Login mit Apple-ID (Anisette läuft auf 127.0.0.1:6969), Browser-Erweiterung aus ~/Apps/icp/extension laden
+   8. icp: scripts/anisette setup + install, dann Login mit Apple-ID, Browser-Erweiterung aus ~/Apps/icp/extension laden
    9. Wake-on-LAN: nmcli connection modify "<Kabel>" 802-3-ethernet.wake-on-lan magic
   10. Helium: Erweiterung + Theme „Desktop“ laden (helium://extensions, Entwicklermodus, Ordner aus theme/out/)
   11. VS Code: Theme „Desktop“ wählen · Settings Sync anmelden

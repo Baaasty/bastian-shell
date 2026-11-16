@@ -12,7 +12,7 @@ Plasma bleibt installiert und ist die Rückfall-Sitzung. Stand 2026-10-18 (AP 15
 | `packages/flatpak.txt` | Flatpaks (System/User), Bundles, Overrides |
 | `packages/vscode-extensions.txt` | VS Code-Erweiterungen |
 | `packages/other.txt` | Rest: `~/.local/bin`, Fremd-Builds (`~/.local/src`), distrobox (Claude Desktop), Podman, Schriften, systemd-Units, `/etc`-Änderungen |
-| `dotfiles/` | **verlinkt** nach `~`: `.gitconfig`, `.bashrc.d/desktop.sh`, `.ssh/config` (ohne Keys), iCloud-/GoXLR-Units, Anisette-Quadlet, rclone-Filter, `~/.local/bin/{keylight,icloud-sync,icloud-login}` |
+| `dotfiles/` | **verlinkt** nach `~`: `.gitconfig`, `.bashrc.d/desktop.sh`, `.ssh/config` (ohne Keys), iCloud-/GoXLR-Units, `ICP_ANISETTE_URL` (environment.d), rclone-Filter, `~/.local/bin/{keylight,icloud-sync,icloud-login}` |
 | `copies/` + `copies.txt` | **kopiert** nach `~` (Apps schreiben die Dateien selbst um): VS Code-Settings/Keybindings, `~/.claude/settings.json`, `mimeapps.list`, Autostart, Monitor-Anordnung (KWin), GoXLR-Profile |
 | `sync` | Kopien abgleichen: `pull` PC → Repo, `push` Repo → PC (siehe unten) |
 | `dotfiles.md` | welche Configs wichtig sind und warum Link oder Kopie |
@@ -101,7 +101,7 @@ Umstellen von normalen Dateien auf Links (`system/sync` zeigt den Stand):
    - legt `~/.bashrc.d/desktop.sh` an und nimmt die `DOCKER_HOST`-Zeile aus `~/.bashrc` (Backup `~/.bashrc.vor-desktop`).
      Den Starship-Block in `~/.bashrc` verwaltet weiter `scripts/rice theme on|off`.
 3. Prüfen: neues Terminal (`echo $DOCKER_HOST`), `git config user.name`, `ssh -T git@github.com`,
-   `systemctl --user status goxlr icloud-sync.timer`, `/usr/libexec/podman/quadlet -dryrun -user | grep anisette`
+   `systemctl --user status goxlr icloud-sync.timer`
 4. chezmoi stilllegen: `rm -rf ~/.local/share/chezmoi ~/.config/chezmoi` (sonst überschreibt ein `chezmoi apply`
    die Links) und das alte Repo archivieren: `gh repo archive <github-user>/dotfiles`
 5. Zurück: Link löschen, `<datei>.vor-desktop` zurückbenennen.
@@ -133,7 +133,7 @@ Steht gekürzt auch am Ende von `bootstrap` (Schritt 11).
 - [ ] **Thunderbird-Konten:** [mail-calendar.md](../docs/setup/mail-calendar.md)
 - [ ] **iCloud:** `rclone config` (Remotes `icloud` + `icloud-photos`, Typ iclouddrive) → `icloud-login`
       → `systemctl --user enable --now icloud-photos.service icloud-sync.timer`
-- [ ] **icp:** Login mit Apple-ID (Anisette läuft auf 127.0.0.1:6969), Browser-Erweiterung (Helium) aus `~/Apps/icp/extension`
+- [ ] **icp:** erst Anisette (`scripts/anisette setup <iCloud-Ordner>`, dann `install` – `docs/setup/passwords.md`), dann Login mit Apple-ID, Browser-Erweiterung (Helium) aus `~/Apps/icp/extension`
 - [ ] Wake-on-LAN: `nmcli connection modify "<Kabel>" 802-3-ethernet.wake-on-lan magic`
 - [ ] **Helium:** Erweiterung + Theme „Desktop“ laden (`helium://extensions`, Entwicklermodus, Ordner aus `theme/out/`)
 - [ ] **VS Code:** Theme „Desktop“ wählen, Settings Sync anmelden

@@ -207,7 +207,7 @@ Code: `shell/services/Crashes.qml`, `shell/modules/crash/` · DrKonqi: `scripts/
 Code: `scripts/devservices` (`show` = Test ohne Shell), `shell/services/DevServices.qml`, `shell/modules/bar/DevChip.qml`, `DevPopout.qml` · Konfig: `projects/projects.json` (nur lesen, ändern über `scripts/project`)
 - Geteilte Altports (3000, 5432 …) ordnen nichts zu – dafür Port-Blöcke (`projects/README.md`).
 - Start als Unit `devserver-<projekt>` (überlebt Shell-Neustart); startet nicht, wenn der erste App-Port schon belegt ist.
-- Von systemd/Quadlet verwaltete Container ohne Projekt (z. B. `systemd-anisette`) zählen nicht im Chip; Stoppen kann systemd rückgängig machen.
+- Von systemd/Quadlet verwaltete Container ohne Projekt zählen nicht im Chip; Stoppen kann systemd rückgängig machen.
 - Chip-Klick öffnet immer den Reiter Services; Server nur per Super+Alt+H / Bar-Modus `H`.
 
 ## Server (sshs)
@@ -263,10 +263,13 @@ Code: `shell/services/ProjectTime.qml`, Anzeige im Kachelkopf `shell/modules/wor
   neues Konto in Thunderbird → erscheint von selbst). Apples „Nie sichern“ ist ein Login mit Benutzer
   „Passwords not saved“ – wird nie vorgeschlagen. „Create new Hide My Email“ legt bei Apple echt eine Adresse an (Label = Host).
 - iCloud-Login abgelaufen: Sync und Speichern loggen sich bewusst nie selbst mit dem Passwort ein (2FA-Push, Kontosperre) –
-  stattdessen eine Meldung mit „Log in“ (Terminal). Ein gescheitertes Speichern wartet nur im Speicher des Workers auf den
+  stattdessen eine Meldung mit „Log in“ → Panel. Erst „Send code“ (Klick, Ctrl+L, Launcher) meldet mit dem
+  gespeicherten Passwort an und löst damit den Code aus. Ein gescheitertes Speichern wartet nur im Speicher des Workers auf den
   Login (Passwort nie auf Platte) → überlebt Shell-Neustart, nicht Abmelden/Neustart.
 
 ## Externe Dienste: Drosselung
+- Scheitert Speichern endgültig (auch „Discard“), geht im Panel das Formular mit allen Eingaben wieder auf. Der Entwurf
+  liegt nur im Shell-Speicher (nicht auf Platte) → nach einem Shell-Neustart weg.
 Regel: nie im Sekunden-/Minutentakt gegen fremde APIs; bei Fehlern wachsender Abstand, `Retry-After` gilt.
 - Passwörter neu anlegen (`icp add`): nur eine Website (weitere danach per Bearbeiten); Website + Benutzer, die es schon gibt,
   lehnt iCloud ab (ein Eintrag je Paar) → Hinweis, stattdessen bearbeiten. Titel/Notiz/2FA brauchen ein vorhandenes

@@ -1,0 +1,11 @@
+# Anisette für icp nur bei Bedarf: der erste Zugriff auf den Port startet Proxy + Server, im Leerlauf läuft nichts.
+# Installiert/entfernt über scripts/anisette install|uninstall (Link nach ~/.config/systemd/user).
+[Unit]
+Description=Desktop: Anisette für icp (startet bei Bedarf)
+
+[Socket]
+ListenStream=127.0.0.1:6969
+Service=desktop-anisette-proxy.service
+
+[Install]
+WantedBy=sockets.target

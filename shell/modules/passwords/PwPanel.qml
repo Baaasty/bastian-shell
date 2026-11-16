@@ -153,6 +153,10 @@ Glass {
                         panel.pw.startCreate();
                         event.accepted = true;
                     }
+                    if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_L && panel.pw.loginShown) {
+                        panel.pw.startLogin();
+                        event.accepted = true;
+                    }
                 }
 
                 Txt {
@@ -209,7 +213,7 @@ Glass {
             anchors.topMargin: chips.visible ? 8 : 12
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: syncLine.visible ? syncLine.top : hideLine.top
+            anchors.bottom: loginCard.visible ? loginCard.top : syncLine.visible ? syncLine.top : hideLine.top
             anchors.bottomMargin: 6
             clip: true
             spacing: 2
@@ -254,7 +258,7 @@ Glass {
             anchors.bottom: parent.bottom
             small: true
             gap: Theme.space3
-            hints: [["↵", "copy password"], ["Ctrl+U", "user"], ["Ctrl+T", "2FA"], ["Ctrl+E", "show"], ["F2", "edit"], ["Ctrl+N", "new"]].concat(panel.pw.groups.length ? [["Tab", "group"]] : [])
+            hints: [["↵", "copy password"], ["Ctrl+U", "user"], ["Ctrl+T", "2FA"], ["Ctrl+E", "show"], ["F2", "edit"], ["Ctrl+N", "new"]].concat(panel.pw.groups.length ? [["Tab", "group"]] : []).concat(panel.pw.loginShown ? [["Ctrl+L", "iCloud login"]] : [])
         }
 
         // Logos rechts
@@ -289,6 +293,121 @@ Glass {
             }
         }
 
+        // iCloud-Login abgelaufen: Code erst auf Klick/Ctrl+L auslösen (pw.startLogin), dann hier eintippen
+        Rectangle {
+            id: loginCard
+            readonly property string step: panel.pw.loginStep
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: hideLine.top
+            anchors.bottomMargin: 6
+            height: 60
+            radius: Theme.radiusMd
+            color: Theme.raise
+            border.width: 1
+            border.color: codeIn.activeFocus ? Qt.alpha(Theme.accent, 0.55) : Qt.alpha(Theme.warning, 0.4)
+            Behavior on border.color { ColorAnimation { duration: Theme.fade } }
+            visible: panel.pw.loginShown
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 12
+                spacing: 12
+                Icon {
+                    name: loginCard.step === "sending" || loginCard.step === "checking" ? "sync" : loginCard.step === "code" ? "password" : "cloud_off"
+                    size: 20
+                    color: loginCard.step === "code" ? Theme.accentText : Theme.warning
+                }
+                Column {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    Txt {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: loginCard.step === "sending" ? "Signing in…" : loginCard.step === "code" ? "Enter the 6-digit code" : loginCard.step === "checking" ? "Checking the code…" : "iCloud login needed"
+                        font.pixelSize: Theme.fontMd
+                    }
+                    Txt {
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: loginCard.step === "failed" ? panel.pw.loginError
+                            : loginCard.step === "code" ? "From your iPhone, iPad or Mac · Esc cancels"
+                            : loginCard.step === "" ? "Sends a code to your Apple devices" : "with the saved password"
+                        font.pixelSize: Theme.fontSm
+                        font.weight: Font.Normal
+                        color: loginCard.step === "failed" ? Theme.warning : Theme.textFaint
+                    }
+                }
+                // Code-Feld: 6 Ziffern, voll = senden (Enter geht auch)
+                Rectangle {
+                    visible: loginCard.step === "code"
+                    Layout.preferredWidth: 112
+                    Layout.preferredHeight: Theme.buttonHeightSm
+                    radius: Theme.radiusSm
+                    color: Theme.surfaceSunken
+                    TextInput {
+                        id: codeIn
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        verticalAlignment: TextInput.AlignVCenter
+                        horizontalAlignment: TextInput.AlignHCenter
+                        maximumLength: 6
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        validator: RegularExpressionValidator { regularExpression: /[0-9]{0,6}/ }
+                        color: Theme.text
+                        selectionColor: Theme.accentSoft
+                        font.family: Theme.fontMono
+                        font.pixelSize: Theme.fontLg
+                        font.letterSpacing: 3
+                        onTextChanged: if (text.length === 6) panel.pw.sendCode(text)
+                        Keys.onReturnPressed: panel.pw.sendCode(text)
+                        Keys.onEnterPressed: panel.pw.sendCode(text)
+                        Keys.onEscapePressed: {
+                            panel.pw.cancelLogin();
+                            panel.focusSearch();
+                        }
+                    }
+                }
+                Button {
+                    visible: loginCard.step === "failed" && panel.pw.loginTerminal
+                    small: true
+                    text: "Terminal"
+                    icon: "terminal"
+                    onClicked: panel.pw.loginInTerminal()
+                }
+                Button {
+                    visible: loginCard.step === "" || loginCard.step === "failed"
+                    small: true
+                    primary: true
+                    text: loginCard.step === "failed" ? "Try again" : "Send code"
+                    icon: "login"
+                    onClicked: {
+                        panel.pw.startLogin();
+                        panel.focusSearch();
+                    }
+                }
+            }
+        }
+        Connections {
+            target: panel.pw
+            function onLoginStepChanged() {
+                if (panel.pw.loginStep === "code") {
+                    codeIn.text = "";
+                    codeIn.forceActiveFocus();
+                } else if (codeIn.activeFocus) {
+                    panel.focusSearch();
+                }
+            }
+            function onLoginFocusRequested() {
+                if (panel.pw.loginStep === "code")
+                    codeIn.forceActiveFocus();
+                else
+                    panel.focusSearch();
+            }
+        }
+
         // Sync-Stand: „Updated 3 min ago“, „iCloud login needed …“, „Update failed · next try 14:20“
         RowLayout {
             id: syncLine
@@ -298,7 +417,7 @@ Glass {
             anchors.bottomMargin: 2
             height: 20
             spacing: 6
-            visible: panel.pw.syncText !== ""
+            visible: panel.pw.syncText !== "" && !panel.pw.loginShown
             Icon {
                 name: panel.pw.syncBusy ? "sync" : panel.pw.syncProblem ? "cloud_off" : "cloud_done"
                 size: 14

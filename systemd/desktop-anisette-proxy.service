@@ -1,0 +1,9 @@
+# Reicht den Socket an den Anisette-Server weiter und beendet sich nach 60 s ohne Verbindung –
+# damit stoppt auch der Server (StopWhenUnneeded dort). Der Server selbst kann keine Socket-Aktivierung.
+[Unit]
+Description=Desktop: Anisette-Proxy (beendet sich im Leerlauf)
+Requires=desktop-anisette.service
+After=desktop-anisette.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=60 127.0.0.1:6970

@@ -1,0 +1,12 @@
+# Anisette-on-Wine (~/Apps/anisette-on-wine): liefert icp die Gerätekennung, die Apple beim Anmelden verlangt.
+# Wine läuft nur je Anfrage als kurzer Hilfsprozess. Gestartet vom Proxy, gestoppt sobald der weg ist.
+# ExecStartPost wartet auf den Port, sonst leitet der Proxy die erste Anfrage ins Leere.
+[Unit]
+Description=Desktop: Anisette-Server (Wine)
+StopWhenUnneeded=true
+
+[Service]
+ExecStart=%h/Apps/anisette-on-wine/anisette-on-wine serve --port 6970
+ExecStartPost=/bin/bash -c 'for i in {1..50}; do (exec 3<>/dev/tcp/127.0.0.1/6970) 2>/dev/null && exit 0; sleep 0.1; done; exit 1'
+Environment=PYTHONUNBUFFERED=1
+Nice=10

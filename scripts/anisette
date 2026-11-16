@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# anisette – lokaler Anisette-Server für icp (iCloud-Passwörter), nur bei Bedarf gestartet.
+# Hintergrund (warum Wine, warum kein fremder Server): docs/setup/passwords.md.
+#
+#   scripts/anisette setup <iCloud-Ordner>   Anisette-on-Wine holen, Helfer bauen, Wine-Präfix + Gerätekennung anlegen
+#                                            (Ordner `iCloud` aus dem Store-Paket „iCloud für Windows“ x64)
+#   scripts/anisette install                 Units verlinken, Socket an (alter Dauer-Container aus)
+#   scripts/anisette uninstall               Socket aus, Units entfernen
+#   scripts/anisette status                  eingerichtet? Socket an? läuft gerade etwas? (Exit 0 = bereit)
+#
+# Die Gerätekennung liegt in ~/.local/share/anisette-on-wine (privat, nie ins Repo).
+set -u
+
+REPO=$(cd "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
+APP="$HOME/Apps/anisette-on-wine"
+STATE="${ANISETTE_ON_WINE_HOME:-$HOME/.local/share/anisette-on-wine}"
+UNITDIR="$HOME/.config/systemd/user"
+UNITS=(desktop-anisette.socket desktop-anisette-proxy.service desktop-anisette.service)
+
+case "${1:-}" in
+    setup)
+        dir=${2:-}
+        [ -f "$dir/CoreADI64.dll" ] || { echo "kein iCloud-Ordner (CoreADI64.dll fehlt): $dir" >&2; exit 1; }
+        dir=$(readlink -f -- "$dir")
+        [ -d "$APP" ] || git clone -q https://github.com/Sank6/Anisette-on-Wine "$APP" || exit 1
+        # Fedoras wine-core bringt wineboot/winepath nur als .exe mit (die Wrapper stecken in wine-common)
+        mkdir -p "$APP/.shims"
+        for t in wineboot winepath; do
+            printf '#!/bin/sh\nexec wine %s "$@"\n' "$t" > "$APP/.shims/$t"; chmod +x "$APP/.shims/$t"
+        done
+        export PATH="$APP/.shims:$PATH"
+        cd "$APP" || exit 1
+        ./anisette-on-wine build-helper || exit 1
+        if [ ! -f "$STATE/config.json" ]; then
+            # wineboot bleibt ohne wine-cms am Farbprofil hängen, das Präfix ist dann trotzdem fertig
+            timeout 120 ./anisette-on-wine init
+            WINEPREFIX="$STATE/prefix" wineserver -k 2>/dev/null
+            [ -f "$STATE/config.json" ] || ./anisette-on-wine init --skip-wineboot || exit 1
+        fi
+        win="Z:${dir//\//\\}"
+        ./anisette-on-wine configure --apple-support-dir "$win" --internet-services-dir "$win" || exit 1
+        ./anisette-on-wine provision || exit 1
+        ./anisette-on-wine doctor ;;
+    install)
+        [ -f "$STATE/config.json" ] || { echo "erst scripts/anisette setup <iCloud-Ordner>" >&2; exit 1; }
+        # der frühere Dauer-Container (dadoum, von Apple abgelehnt) belegt denselben Port
+        rm -f "$HOME/.config/containers/systemd/anisette.container"
+        mkdir -p "$UNITDIR"
+        for u in "${UNITS[@]}"; do ln -sf "$REPO/systemd/$u" "$UNITDIR/$u"; done
+        systemctl --user daemon-reload
+        systemctl --user stop anisette.service >/dev/null 2>&1 || true
+        systemctl --user enable --now --quiet desktop-anisette.socket && echo "an: http://127.0.0.1:6969 (startet bei Bedarf)" ;;
+    uninstall)
+        systemctl --user disable --now --quiet desktop-anisette.socket >/dev/null 2>&1 || true
+        systemctl --user stop desktop-anisette-proxy.service desktop-anisette.service >/dev/null 2>&1 || true
+        for u in "${UNITS[@]}"; do rm -f "$UNITDIR/$u"; done
+        systemctl --user daemon-reload
+        echo "aus (Gerätekennung bleibt in $STATE)" ;;
+    status)
+        [ -f "$STATE/config.json" ] && echo "eingerichtet: $STATE" || echo "nicht eingerichtet (scripts/anisette setup <iCloud-Ordner>)"
+        echo "Socket: $(systemctl --user is-active desktop-anisette.socket 2>/dev/null)"
+        echo "Server: $(systemctl --user is-active desktop-anisette.service 2>/dev/null)"
+        [ -f "$STATE/config.json" ] && systemctl --user is-active --quiet desktop-anisette.socket ;;
+    *)
+        sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

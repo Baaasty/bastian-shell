@@ -130,6 +130,11 @@ podman-docker                  # `docker`-Befehl → Podman (+ /etc/containers/n
 podman-compose
 distrobox                      # Container „ubuntu“ für Claude Desktop
 
+# == Anisette für icp (scripts/anisette)
+wine-core                      # nur 64 bit · führt Apples iCloud-DLLs aus (Gerätekennung fürs Anmelden)
+cmake                          # baut den Windows-Helfer von Anisette-on-Wine
+mingw64-gcc-c++                # dito (Cross-Compiler)
+
 # == Netz, Cloud, Hardware
 rclone                         # iCloud Drive/Fotos (icloud-sync, icloud-photos)
 v4l-utils                      # v4l2-ctl: Facecam (Kamera-Regler)

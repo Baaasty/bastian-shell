@@ -70,6 +70,7 @@ HDMI-A-2 links 1080p (Discord) · DP-2 Mitte 1440p@360 (volle Shell) · DP-1 rec
 - Not-Aus: Strg+Alt+Shift+Q = `scripts/hypr panic` (Shell aus, Konsole auf)
 - Discord-Kamera schneller: `scripts/fastprobe build|on|off|status|bench` (wirkt beim nächsten Discord-Start)
 - Discord ohne NVENC (gegen Renderer-Absturz): `scripts/nvenc-block build|on|off|status` (wirkt beim nächsten Discord-Start)
+- iCloud-Passwörter, Anisette (Gerätekennung, startet bei Bedarf): `scripts/anisette setup <iCloud-Ordner>|install|uninstall|status`
 - Bildschirm teilen: `scripts/share-picker status|remembered|forget [app]` (gemerkte Auswahl je App) · laufende Freigaben: `scripts/share-stop list|stop <node>|stop all`
 - Mail/Kalender: Konten + Passwort aus Thunderbird, Shell liest sie (`scripts/tb-accounts --check`)
 - Klänge: `scripts/sounds play [notify-urgent]|build|on|off|status` (Probehören, neu erzeugen, Sound-Theme für Apps)

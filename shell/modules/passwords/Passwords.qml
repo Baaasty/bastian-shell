@@ -59,6 +59,10 @@ Scope {
     property string editError: ""
     property string editNotes: ""       // Notiz im Klartext fürs Formular, nur solange es offen ist
     property string editId: ""          // fest beim Start – die Liste kann im Hintergrund neu laden
+    // Formulare, die gerade im Hintergrund speichern: id -> {creating, form, failed}. Scheitert es, geht das Formular
+    // mit allen Eingaben wieder auf statt verloren zu sein. Nur im Speicher (enthält das Passwort), nie auf Platte.
+    property var drafts: ({})
+    property var editDraft: null        // für PwEdit.begin(): Felder aus diesem Formular statt aus dem Eintrag
     signal editEnded()                  // Fokus zurück in die Suche (PwPanel)
 
     // Sync-Stand (scripts/passwords status = icp status --json, kein Netz)
@@ -73,7 +77,7 @@ Scope {
         if (!d)
             return "";
         if (d.needs_login)
-            return "iCloud login needed · see notification";
+            return "iCloud login needed";
         if (d.failures > 0 && d.next_allowed)
             return "Update failed · next try " + Qt.formatTime(new Date(d.next_allowed * 1000), "HH:mm");
         if (!d.last_success)
@@ -169,6 +173,7 @@ Scope {
         load();
         Hypr.panelOpened("passwords");
         open = true;
+        restoreFailedDraft();
     }
 
     // Anderes Panel geht auf → dieses zu (Hypr.panelOpened)
@@ -317,6 +322,85 @@ Scope {
             });
         });
     }
+    // ------------------------------------------------------------ iCloud-Login (Knopf „Send code“, Ctrl+L, Launcher)
+    // scripts/passwords login --panel meldet sich mit dem gespeicherten Passwort an – das löst den 2FA-Code auf den
+    // Apple-Geräten aus, deshalb nur auf ausdrücklichen Klick, nie von selbst (wiederholte Logins sperren die Apple-ID).
+    property string loginStep: ""       // "" | sending | code | checking | failed
+    property string loginError: ""
+    property bool loginTerminal: false  // gespeichertes Passwort klappt nicht -> nur noch der volle Login im Terminal
+    property bool loginCancelled: false
+    readonly property bool loginShown: (!!syncState && syncState.needs_login) || loginStep !== ""
+    signal loginFocusRequested()        // PwPanel: Fokus auf Knopf bzw. Code-Feld
+
+    function startLogin(): void {
+        if (loginProc.running)
+            return;
+        loginError = "";
+        loginTerminal = false;
+        loginCancelled = false;
+        loginStep = "sending";
+        loginProc.running = true;
+    }
+    function sendCode(code: string): void {
+        code = code.replace(/\D/g, "");
+        if (loginStep !== "code" || code.length !== 6)
+            return;
+        loginStep = "checking";
+        loginProc.write(code + "\n");
+    }
+    function cancelLogin(): void {
+        if (loginProc.running && loginStep === "code") {
+            loginCancelled = true;
+            loginProc.write("\n");     // leere Zeile = abbrechen, icp meldet „kein Code“ und hört auf
+        } else if (!loginProc.running) {
+            loginStep = "";
+            loginError = "";
+        }
+    }
+    function loginInTerminal(): void {
+        run(["login", "--terminal"], () => {});
+    }
+    function onLoginLine(line: string): void {
+        let d = null;
+        try {
+            d = JSON.parse(line);
+        } catch (e) {
+            return;
+        }
+        if (d.step === "code") {
+            loginStep = "code";
+            loginFocusRequested();
+        } else if (d.step === "checking") {
+            loginStep = "checking";
+        } else if (d.ok === true) {
+            loginStep = "";
+            showToast("Signed in to iCloud");
+            refreshStatus();
+            load();
+        } else if (d.ok === false) {
+            loginStep = loginCancelled ? "" : "failed";
+            loginError = d.error || "iCloud login failed";
+            loginTerminal = !!d.terminal;
+            refreshStatus();
+            loginFocusRequested();
+        }
+    }
+    Process {
+        id: loginProc
+        command: [root.bin, "login", "--panel"]
+        stdinEnabled: true
+        stdout: SplitParser {
+            onRead: line => root.onLoginLine(line)
+        }
+        onExited: {
+            // ohne Ergebnis-Zeile beendet (abgestürzt, Shell-Neustart des Skripts)
+            if (root.loginStep === "sending" || root.loginStep === "code" || root.loginStep === "checking") {
+                root.loginStep = root.loginCancelled ? "" : "failed";
+                root.loginError = "Login stopped";
+            }
+        }
+    }
+
     // ------------------------------------------------------------ Bearbeiten
     function startEdit(): void {
         const e = cur;
@@ -386,6 +470,7 @@ Scope {
                     return;
                 }
                 pendingSel = d.id;
+                keepDraft(d.id, true, form);
                 editing = false;
                 creating = false;
                 showToast("Saving the new login to iCloud…");
@@ -419,6 +504,8 @@ Scope {
                     return;
                 }
                 setPending(id, form);
+                if (!form.delete)
+                    keepDraft(id, false, form);
                 editing = false;
                 editNotes = "";
                 showToast(form.delete ? "Moving to Recently Deleted…" : "Saving to iCloud in the background");
@@ -455,6 +542,49 @@ Scope {
         pending = p;
     }
     property string pendingSel: ""      // nach dem Laden diesen Eintrag wählen (neue id bei neuer Website/Benutzer)
+
+    function keepDraft(id: string, isNew: bool, form: var): void {
+        const d = Object.assign({}, drafts);
+        d[id] = { creating: isNew, form: form, failed: "" };
+        drafts = d;
+    }
+    function dropDraft(id: string): void {
+        const d = Object.assign({}, drafts);
+        delete d[id];
+        drafts = d;
+    }
+    // Speichern gescheitert: Entwurf merken, offen = gleich wieder ins Formular, sonst beim nächsten Öffnen
+    function draftFailed(id: string, message: string): void {
+        if (!drafts[id])
+            return;
+        const d = Object.assign({}, drafts);
+        d[id] = Object.assign({}, d[id], { failed: message || "Couldn't save" });
+        drafts = d;
+        if (open)
+            restoreDraft(id);
+    }
+    function restoreDraft(id: string): bool {
+        const d = drafts[id];
+        if (!d || !d.failed || editing)
+            return false;
+        dropDraft(id);
+        if (!d.creating) {
+            pendingSel = id;
+            selectId(id);
+        }
+        creating = d.creating;
+        editId = d.creating ? "" : id;
+        editNotes = "";
+        editDraft = d.form;
+        editError = d.failed;
+        editing = true;
+        return true;
+    }
+    function restoreFailedDraft(): void {
+        for (const id in drafts)
+            if (restoreDraft(id))
+                return;
+    }
 
     function showToast(msg: string): void {
         toast = msg;
@@ -553,32 +683,49 @@ Scope {
             if (root.cur && root.cur.id === id && newId)
                 root.pendingSel = newId;
             root.clearPending(id);
+            root.dropDraft(id);
             root.load();
         }
+        // gescheitert: Formular mit den Eingaben geht wieder auf (sofort oder beim nächsten Öffnen)
         function editFailed(id: string, message: string): void {
             root.clearPending(id);
             root.load();
             if (root.open)
                 root.showToast("Couldn't save · " + message);
+            root.draftFailed(id, message);
         }
         // von scripts/passwords _create-worker: neuer Login gespeichert (Liste neu, ihn wählen) bzw. gescheitert
         function createDone(id: string): void {
             root.pendingSel = id;
+            root.dropDraft(id);
             root.load();
             if (root.open)
                 root.showToast("Saved to iCloud");
         }
-        function createFailed(message: string): void {
+        function createFailed(id: string, message: string): void {
             if (root.open)
                 root.showToast("Couldn't save · " + message);
+            root.draftFailed(id, message);
         }
-        // Klick auf die Fehler-Benachrichtigung: Panel am (unveränderten) Eintrag öffnen
+        // Klick auf die Fehler-Benachrichtigung: Panel am (unveränderten) Eintrag öffnen, samt Formular
         function openAt(id: string): void {
             root.pendingSel = id;
-            if (root.open)
+            if (root.open) {
                 root.load();
-            else
+                root.restoreDraft(id);
+            } else {
                 root.openIt();
+            }
+        }
+        // „Log in“ der Meldungen: Panel auf, Fokus auf „Send code“ (der Code kommt erst nach dem Klick)
+        function openLogin(): void {
+            root.openIt();
+            root.loginFocusRequested();
+        }
+        // Launcher „iCloud Login“: die Auswahl dort ist der Klick – Panel auf und gleich den Code auslösen
+        function login(): void {
+            root.openIt();
+            root.startLogin();
         }
         // Gruppen-Chip wählen ("" = alle, "own" = eigene, sonst Gruppenname) – zum Testen
         function group(name: string): void {

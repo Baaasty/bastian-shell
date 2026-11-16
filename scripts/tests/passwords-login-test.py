@@ -38,6 +38,9 @@ check("nicht angemeldet = Login-Fehler", pw.is_login_error("not signed in / join
 check("anderer Fehler nicht", pw.is_login_error("a login for x / y exists already"), False)
 check("leer nicht", pw.is_login_error(None), False)
 
+# ---------- Anisette: lokaler Socket als Vorgabe ----------
+check("Anisette-URL gesetzt", os.environ.get("ICP_ANISETTE_URL", "").startswith("http://127.0.0.1:"), True)
+
 # ---------- nur einmal pro Vorfall melden ----------
 check("Login nötig -> melden", pw.should_notify_login({"needs_login": True}), True)
 check("zweiter Lauf -> nicht nochmal", pw.should_notify_login({"needs_login": True}), False)
@@ -66,9 +69,9 @@ def fake_notify(choices):
     return notify
 
 
-pw.open_login_terminal = lambda: opened.append(1)
+pw.open_login = lambda: opened.append(1)          # Panel (oder Terminal, wenn die Shell fehlt)
 pw.time.sleep = lambda s: None
-pw.login_done_since = lambda t0, state=None: True     # Terminal-Login klappt sofort
+pw.login_done_since = lambda t0, state=None: True     # Login klappt sofort
 
 pw.notify_choice = fake_notify(["discard"])
 calls = []

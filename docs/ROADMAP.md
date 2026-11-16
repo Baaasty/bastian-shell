@@ -28,6 +28,8 @@ Paketdetails) liegen in Git (`git log -- docs/ROADMAP-HYPRLAND.md`). Ziel: diese
 - [ ] Discord-Popout „Random call“ (Super+Alt+J): Plugin neu einspielen (Restart Discord), dann mehrmals drücken – landet jedes Mal in einem anderen Call mit Leuten, nie voll/AFK; allein gelandet → springt selbst weiter
 - [ ] Passwörter: neuen Login anlegen (Super+O → Ctrl+N, Passwort-Vorschlag Ctrl+G) → erscheint am iPhone
 - [ ] Passwörter: Browser fragt beim Registrieren/Anmelden „Speichern / Aktualisieren / Als weiteren Login“ (Shell-Meldung, sonst Leiste in der Seite)
+- [ ] Passwörter: Speichern gescheitert → Formular mit allen Eingaben wieder offen (Test: Netz aus, Ctrl+N, Ctrl+S)
+- [x] Passwörter: iCloud-Login im Panel („Send code“/Ctrl+L/Launcher „iCloud Login“ → 2FA-Code); Anisette lokal über Wine, nur bei Bedarf (`scripts/anisette`) (2026-11-17)
 - [ ] KWallet ohne Abfrage beim Autologin: Wallet-Passwort leer (Bastian, `kwalletmanager5`) → nach dem nächsten Login keine Abfrage, Helium/Claude bleiben eingeloggt
 - [x] Workspace-Leiste: Tooltip nicht mehr abgeschnitten, entfernter Workspace taucht nicht wieder auf (2026-10-26)
 - [x] Links/Aktivierungen auf dem aktuellen Desktop: Link aus VS Code mit Helium nur auf anderem Desktop → neues Fenster hier, zweiter Link → Tab dort; Ein-Fenster-App kommt her; Claude-Terminal nur markiert (2026-10-26)

@@ -13,7 +13,7 @@ sshs           → scripts/sshs (Link)   SSH-Server-Picker in Kitty; `scripts/ss
 magic-wormhole, wormhole  → ~/.local/share/uv/tools/magic-wormhole   Dateien von PC zu PC schicken · `uv tool install magic-wormhole` (bootstrap 6)
 godot          → ~/.local/opt/godot/Godot_v4.7.2-stable_linux.x86_64 (GitHub-Release godotengine/godot, bootstrap 6)
 icp            → ~/Apps/icp/.venv/bin/icp  (iCloud-Passwörter, git clone github.com/Sank6/iCloud-Keychain-for-Linux + venv;
-                 braucht den Anisette-Container, Browser-Erweiterung von Hand, Login per Apple-ID – bootstrap 6)
+                 braucht Anisette (scripts/anisette, Wine), Browser-Erweiterung von Hand, Login per Apple-ID – bootstrap 6)
 keylight       eigenes Skript → system/dotfiles/.local/bin (Link auf scripts/keylight, volle CLI)
 icloud-sync    eigenes Skript → system/dotfiles/.local/bin – rclone bisync iCloud Drive
 icloud-login   eigenes Skript → system/dotfiles/.local/bin – rclone reconnect
@@ -52,12 +52,11 @@ ubuntu         Image docker.io/library/ubuntu:24.04
 ## Podman (rootless)
 Container:
   ubuntu                 distrobox (s. o.)
-  systemd-anisette       Quadlet ~/.config/containers/systemd/anisette.container (system/dotfiles), Port 127.0.0.1:6969, für icp
   <projekt>-postgres     je Projekt (compose, `bun run services:up`)
   <projekt>-minio        je Projekt mit Datei-Speicher (+ <projekt>-minio-init, einmalig)
   <projekt>-game-local   eigene Images je Projekt (z. B. localhost/soulwick-game:local)
   → Projekt-Container entstehen aus den Projekt-Repos neu, nicht im Bootstrap.
-Images: ubuntu:24.04, dadoum/anisette-v3-server:latest, postgres:15, postgres:17-alpine,
+Images: ubuntu:24.04, postgres:15, postgres:17-alpine,
         pgsty/minio:RELEASE.2026-06-18T00-00-00Z, oven/bun:1.4.3(-slim)
 User-Socket: podman.socket aktiviert, DOCKER_HOST in ~/.bashrc.d/desktop.sh
 
@@ -89,7 +88,7 @@ Fremd, eigene Dateien (in system/dotfiles/.config/systemd/user):
   goxlr.service              goxlr-daemon (GoXLR Utility), default.target
   icloud-photos.service      rclone mount iCloud-Fotos → ~/Data/iCloud/Photos (read-only), default.target
   icloud-sync.{service,timer}  ~/.local/bin/icloud-sync (rclone bisync iCloud Drive)
-  Quadlet anisette.container (→ systemd-anisette)
+  desktop-anisette.socket (scripts/anisette install) → Anisette-on-Wine bei Bedarf, Port 127.0.0.1:6969, für icp
 Fremd, nur aktiviert (Dateien vom System):
   podman.socket (sockets.target); ssh-agent.socket (scripts/sshs install); app-org.kde.krdpserver.service (nur Plasma, entfällt unter Hyprland)
 

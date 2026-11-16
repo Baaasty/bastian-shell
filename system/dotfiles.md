@@ -60,7 +60,7 @@ Spalte „Klasse“:
 | `~/.config/autostart/*.desktop` | K | `claude-desktop.desktop` repariert (2026-10-18): `distrobox-enter -n ubuntu -- claude-desktop --startup`. Claude Desktop schreibt die Datei neu, wenn man dort „Beim Anmelden starten“ umschaltet → dann `system/sync push --apply` |
 | `~/.config/systemd/user/goxlr.service`, `icloud-photos.service`, `icloud-sync.{service,timer}` | L | |
 | `~/.config/systemd/user/app.slice.d/50-mem.conf`, `app-graphical.slice.d/50-mem.conf`, `app-.scope.d/50-oom.conf` | L | RAM-Obergrenze für alle Apps (sonst friert der PC bei vollem RAM ein); bei Überlauf stirbt nur ein Prozess, nicht die ganze App |
-| `~/.config/containers/systemd/anisette.container` | L | Quadlet für icp |
+| `~/.config/environment.d/50-icp.conf` | L | `ICP_ANISETTE_URL` für `icp` im Terminal (Server: `scripts/anisette`) |
 | `~/.config/rclone/icloud-filter.txt` | L | |
 | `~/.local/share/kio/servicemenus/desktop-icloud-sync.desktop` | L | Dolphin-Kontextmenü „Sync iCloud Drive now“ |
 | `~/.config/rclone/rclone.conf` | **c** | iCloud-Tokens! Neu: `rclone config` (Remotes `icloud`, `icloud-photos`), danach `icloud-login` |
@@ -77,7 +77,7 @@ Spalte „Klasse“:
 | `~/.gnupg/` | c | (fast leer) |
 | `~/Workspace/bastian-shell/secrets.json` | c | Hue, statsfm, Mail-Konten, Stalwart … Vorlage: `secrets.example.json` |
 | `.env`, `.env.local` in Projekten | c | aus `.env.example` neu |
-| icp-Speicher, Anisette-Volume `anisette-data` | c | `icp` neu anmelden (Apple-ID + 2FA) |
+| icp-Speicher, Anisette-Gerätekennung (`~/.local/share/anisette-on-wine`) | c | `scripts/anisette setup`, dann `icp` neu anmelden (Apple-ID + 2FA) |
 
 ## Secrets
 
@@ -92,7 +92,7 @@ system/dotfiles/                   # → Symlinks nach ~
   .gitconfig                       # lokal; Vorlage .gitconfig.example
   .bashrc.d/desktop.sh             # DOCKER_HOST (Starship-Block bleibt bei rice theme)
   .ssh/config
-  .config/containers/systemd/anisette.container
+  .config/environment.d/50-icp.conf
   .config/rclone/icloud-filter.txt
   .config/systemd/user/{goxlr.service,icloud-photos.service,icloud-sync.service,icloud-sync.timer}
   .config/systemd/user/{app.slice.d,app-graphical.slice.d}/50-mem.conf, app-.scope.d/50-oom.conf
