@@ -213,7 +213,7 @@ Glass {
             anchors.topMargin: chips.visible ? 8 : 12
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.bottom: loginCard.visible ? loginCard.top : syncLine.visible ? syncLine.top : hideLine.top
+            anchors.bottom: loginCard.visible ? loginCard.top : hideLine.top
             anchors.bottomMargin: 6
             clip: true
             spacing: 2
@@ -261,7 +261,7 @@ Glass {
             hints: [["↵", "copy password"], ["Ctrl+U", "user"], ["Ctrl+T", "2FA"], ["Ctrl+E", "show"], ["F2", "edit"], ["Ctrl+N", "new"]].concat(panel.pw.groups.length ? [["Tab", "group"]] : []).concat(panel.pw.loginShown ? [["Ctrl+L", "iCloud login"]] : [])
         }
 
-        // Logos rechts
+        // Sync-Stand links („Updated 3 min ago“, „Update failed · next try 14:20“), Logos rechts
         RowLayout {
             id: hideLine
             anchors.left: parent.left
@@ -270,8 +270,21 @@ Glass {
             anchors.bottomMargin: 6
             height: 20
             spacing: 6
-            Item {
+            readonly property bool showSync: panel.pw.syncText !== "" && !panel.pw.loginShown
+            Icon {
+                visible: hideLine.showSync
+                name: panel.pw.syncBusy ? "sync" : panel.pw.syncProblem ? "cloud_off" : "cloud_done"
+                size: 14
+                color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
+            }
+            // füllt auch ohne Sync-Text, damit „Refresh icons“ rechts bleibt
+            Txt {
                 Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: hideLine.showSync ? panel.pw.syncText : ""
+                font.pixelSize: Theme.fontSm
+                font.weight: Font.Normal
+                color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
             }
             // Logos: Fortschritt beim Laden, sonst „Refresh icons“ (alle neu holen)
             Txt {
@@ -405,31 +418,6 @@ Glass {
                     codeIn.forceActiveFocus();
                 else
                     panel.focusSearch();
-            }
-        }
-
-        // Sync-Stand: „Updated 3 min ago“, „iCloud login needed …“, „Update failed · next try 14:20“
-        RowLayout {
-            id: syncLine
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: hideLine.top
-            anchors.bottomMargin: 2
-            height: 20
-            spacing: 6
-            visible: panel.pw.syncText !== "" && !panel.pw.loginShown
-            Icon {
-                name: panel.pw.syncBusy ? "sync" : panel.pw.syncProblem ? "cloud_off" : "cloud_done"
-                size: 14
-                color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
-            }
-            Txt {
-                Layout.fillWidth: true
-                elide: Text.ElideRight
-                text: panel.pw.syncText
-                font.pixelSize: Theme.fontSm
-                font.weight: Font.Normal
-                color: panel.pw.syncProblem ? Theme.warning : Theme.textFaint
             }
         }
     }
